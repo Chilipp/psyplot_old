@@ -53,6 +53,9 @@ coverage.xml
 # Sphinx documentation
 docs/_build/
 
+# test results
+tests/psyplot_testresults
+
 # PyBuilder
 target/
 
