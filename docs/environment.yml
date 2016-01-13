@@ -1,5 +1,6 @@
 name: psyplot
 dependencies:
+    - psyplot
     - dask
     - cartopy
     - gdal
