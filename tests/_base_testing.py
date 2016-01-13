@@ -1,12 +1,19 @@
 import os
+import sys
 import re
 import six
 from unittest import TestCase, main
+import matplotlib as mpl
 
 
-ref_dir = os.path.join(os.path.dirname(__file__), 'reference_figures')
+ref_dir = os.path.join(os.path.dirname(__file__), 'reference_figures',
+                       'py' + '.'.join(map(str, sys.version_info[:3])),
+                        'mpl' + mpl.__version__)
+
 
 odir = 'psyplot_testresults'
+
+test_dir = os.path.dirname(__file__)
 
 
 def _modifed_usage(s):
@@ -70,7 +77,14 @@ class PsyPlotTestCase(TestCase):
 
     grid_type = None
 
-    ncfile = 'test-t2m-u-v.nc'
+    ncfile = os.path.join(test_dir, 'test-t2m-u-v.nc')
+
+    @classmethod
+    def create_dirs(cls):
+        if not os.path.exists(ref_dir):
+            os.makedirs(ref_dir)
+        if not os.path.exists(odir):
+            os.makedirs(odir)
 
     def get_ref_file(self, identifier):
         """

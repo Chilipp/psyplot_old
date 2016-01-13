@@ -15,15 +15,10 @@ class BasePlotterTest(bt.PsyPlotTestCase):
 
     @classmethod
     def setUpClass(cls):
-        from matplotlib.backends.backend_pdf import PdfPages
-        cls.ds = open_dataset('test-t2m-u-v.nc')
+        cls.ds = open_dataset(cls.ncfile)
         cls.data = InteractiveList.from_dataset(
             cls.ds, lat=[0, 1], lev=0, time=0, name='t2m', auto_update=True)
         cls.plotter = BasePlotter(cls.data)
-        if not os.path.isdir(bt.odir):
-            os.makedirs(bt.odir)
-
-        cls.pdf = PdfPages('test_%s.pdf' % cls.__name__)
 
     @classmethod
     def tearDownClass(cls):
@@ -31,12 +26,10 @@ class BasePlotterTest(bt.PsyPlotTestCase):
         psyplot.rcParams.update(
             **{key: val[0] for key, val in defaultParams.items()})
         cls.ds.close()
-#        plt.close(cls.plotter.ax.get_figure().number)
-        cls.pdf.close()
+        plt.close(cls.plotter.ax.get_figure().number)
 
     @classmethod
     def tearDown(cls):
-        cls.pdf.savefig(plt.gcf())
         cls.data.update(time=0, todefault=True, replot=True)
 
     def update(self, *args, **kwargs):

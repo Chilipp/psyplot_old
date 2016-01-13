@@ -896,11 +896,15 @@ class Plotter(dict):
         self.cleared = clear
         self._updating = True
 
+        # first we initialize all keys with None. This is necessary in order
+        # to make the validation functioning
         with self.no_validation:
             for key in self._get_formatoptions():
-                fmto = getattr(self, key)
-                self[fmto.key] = fmto.default
-        for key, value in six.iteritems(kwargs):
+                self[key] = None
+        for key in self:  # then we set the default values
+            fmto = getattr(self, key)
+            self._try2set(fmto, fmto.default, validate=False)
+        for key, value in six.iteritems(kwargs):  # then the user values
             self[key] = value
         self.initialize_plot(data, ax=ax, draw=draw, clear=clear,
                              make_plot=make_plot)
@@ -1673,7 +1677,7 @@ class Plotter(dict):
         # we specify the pattern_base by ourselves
         pattern_base = map(lambda s: s.replace('.', '\.'), base_str)
         # pattern for valid keys being all formatoptions in this plotter
-        pattern = '(%s)(?=$)' % '|'.join(self)
+        pattern = '(%s)(?=$)' % '|'.join(self._get_formatoptions())
         self._rc = rcParams.find_and_replace(base_str, pattern=pattern,
                                              pattern_base=pattern_base)
         user_rc = SubDict(rcParams['plotter.user'], base_str, pattern=pattern,

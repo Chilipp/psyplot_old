@@ -6,6 +6,9 @@
 Welcome to psyplot's documentation!
 ===================================
 
+This documentation is in the development. So please forgive us that only the
+API is currently usable.
+
 Contents:
 
 .. toctree::

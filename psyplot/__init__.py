@@ -5,7 +5,7 @@ from .config.rcsetup import rcParams
 from .data import (
     ArrayList, InteractiveArray, InteractiveList, open_dataset, open_mfdataset)
 
-__version__ = "0.00b"
+__version__ = "0.0.0.dev1"
 __author__ = "Philipp Sommer (philipp.sommer@studium.uni-hamburg.de)"
 
 
@@ -15,3 +15,6 @@ logger.debug(
     dt.datetime.now().isoformat(), __version__)
 logger.debug("Logging configuration file: %s", config.logcfg_path)
 logger.debug("Configuration file: %s", config.config_path)
+
+
+rcParams.HEADER += "\n\npsyplot version: " + __version__

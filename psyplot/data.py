@@ -1,5 +1,4 @@
 from threading import Thread
-from Queue import Queue
 from glob import glob
 import re
 import six
@@ -17,6 +16,11 @@ from .config.rcsetup import rcParams, safe_list
 from .docstring import dedent, docstrings, dedents
 from .compat.pycompat import zip, map, isstring, OrderedDict, filter, range
 from .warning import warn, PsyPlotRuntimeWarning
+
+if six.PY2:
+    from Queue import Queue
+else:
+    from queue import Queue
 
 
 # No data variable. This is used for filtering if an attribute could not have
@@ -1261,7 +1265,7 @@ class InteractiveList(ArrayList, InteractiveBase):
             queues[0].get()
         for arr in self:
             arr.start_update(draw=False)
-        if queues[0] is not None:
+        if queues is not None:
             queues[0].task_done()
         return InteractiveBase.start_update(self, draw=draw)
 

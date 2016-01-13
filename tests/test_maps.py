@@ -101,15 +101,11 @@ class FieldPlotterTest(tb.BasePlotterTest, ts.References2D, MapReferences):
 
     @classmethod
     def setUpClass(cls):
-        from matplotlib.backends.backend_pdf import PdfPages
         cls.ds = open_dataset(cls.ncfile)
         cls.data = ArrayList.from_dataset(
             cls.ds, t=0, z=0, name='t2m', auto_update=True)[0]
         cls.plotter = FieldPlotter(cls.data)
-        if not os.path.isdir(bt.odir):
-            os.makedirs(bt.odir)
-
-        cls.pdf = PdfPages('test_%s.pdf' % cls.__name__)
+        cls.create_dirs()
 
     @unittest.skip("axiscolor formatoption not implemented")
     def test_axiscolor(self):
@@ -348,7 +344,6 @@ class VectorPlotterTest(FieldPlotterTest, ts.References2D, MapReferences):
 
     @classmethod
     def setUpClass(cls):
-        from matplotlib.backends.backend_pdf import PdfPages
         cls.ds = open_dataset(cls.ncfile)
         rcParams[VectorPlotter().lonlatbox.default_key] = 'Europe'
         cls.data = ArrayList.from_dataset(
@@ -356,10 +351,7 @@ class VectorPlotterTest(FieldPlotterTest, ts.References2D, MapReferences):
         cls.data.attrs['long_name'] = 'absolute wind speed'
         cls.data.name = 'wind'
         cls.plotter = VectorPlotter(cls.data)
-        if not os.path.isdir(bt.odir):
-            os.makedirs(bt.odir)
-
-        cls.pdf = PdfPages('test_%s.pdf' % cls.__name__)
+        cls.create_dirs()
         cls._color_fmts = cls.plotter.fmt_groups['colors']
 
         # there is an issue with the colorbar that the size of the axes changes
@@ -566,7 +558,6 @@ class CombinedPlotterTest(VectorPlotterTest):
 
     @classmethod
     def setUpClass(cls):
-        from matplotlib.backends.backend_pdf import PdfPages
         cls.ds = open_dataset(cls.ncfile)
         rcParams[CombinedPlotter().lonlatbox.default_key] = 'Europe'
         rcParams[CombinedPlotter().vcmap.default_key] = 'winter'
@@ -576,10 +567,7 @@ class CombinedPlotterTest(VectorPlotterTest):
         cls._data.attrs['long_name'] = 'Temperature'
         cls._data.attrs['name'] = 't2m'
         cls.plotter = CombinedPlotter(cls.data)
-        if not os.path.isdir(bt.odir):
-            os.makedirs(bt.odir)
-
-        cls.pdf = PdfPages('test_%s.pdf' % cls.__name__)
+        cls.create_dirs()
         cls._color_fmts = cls.plotter.fmt_groups['colors']
 
         # there is an issue with the colorbar that the size of the axes changes
@@ -758,7 +746,7 @@ class IconFieldPlotterTest(FieldPlotterTest):
 
     grid_type = 'icon'
 
-    ncfile = 'icon_test.nc'
+    ncfile = os.path.join(bt.test_dir, 'icon_test.nc')
 
     def test_bounds(self):
         """Test bounds formatoption"""
@@ -822,7 +810,7 @@ class IconVectorPlotterTest(VectorPlotterTest):
 
     grid_type = 'icon'
 
-    ncfile = 'icon_test.nc'
+    ncfile = os.path.join(bt.test_dir, 'icon_test.nc')
 
     def test_lonlatbox(self, *args):
         """Test lonlatbox formatoption"""
@@ -886,7 +874,7 @@ class IconCombinedPlotterTest(CombinedPlotterTest):
 
     grid_type = 'icon'
 
-    ncfile = 'icon_test.nc'
+    ncfile = os.path.join(bt.test_dir, 'icon_test.nc')
 
     @unittest.skip("Density for quiver plots of unstructered data is not "
                    "supported!")

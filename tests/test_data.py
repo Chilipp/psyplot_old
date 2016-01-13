@@ -1,6 +1,8 @@
+import os
 from unittest import TestCase, main
 from psyplot.data import CFDecoder, open_dataset
 from psyplot.compat.pycompat import range
+import _base_testing as bt
 import numpy as np
 
 
@@ -25,10 +27,10 @@ class DecoderTest(TestCase):
 
     def _test_dimname(self, func_name, name, uname=None):
         uname = uname or name
-        ds = open_dataset('test-t2m-u-v.nc')
+        ds = open_dataset(os.path.join(bt.test_dir, 'test-t2m-u-v.nc'))
         d = CFDecoder(ds)
         self.assertEqual(getattr(d, func_name)(ds.t2m), name)
-        ds = open_dataset('icon_test.nc')
+        ds = open_dataset(os.path.join(bt.test_dir, 'icon_test.nc'))
         d = CFDecoder(ds)
         self.assertEqual(getattr(d, func_name)(ds.t2m), uname)
 

@@ -46,6 +46,8 @@ handlers:
 
         class: logging.handlers.RotatingFileHandler
 
+        mode: w
+
         level: DEBUG
 
         formatter: full

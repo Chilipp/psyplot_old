@@ -23,32 +23,7 @@ from matplotlib.rcsetup import (
     validate_nseq_float, ValidateInStrings, validate_int, validate_colorlist,
     validate_path_exists, validate_legend_loc)
 from ..docstring import docstrings, dedent, safe_modulo
-
-
-def _get_home():
-    """Find user's home directory if possible.
-    Otherwise, returns None.
-
-    :see:  http://mail.python.org/pipermail/python-list/2005-February/325395.html
-
-    This function is copied from matplotlib version 1.4.3, Jan 2016
-    """
-    try:
-        if six.PY2 and sys.platform == 'win32':
-            path = os.path.expanduser(b"~").decode(sys.getfilesystemencoding())
-        else:
-            path = os.path.expanduser("~")
-    except ImportError:
-        # This happens on Google App Engine (pwd module is not present).
-        pass
-    else:
-        if os.path.isdir(path):
-            return path
-    for evar in ('HOME', 'USERPROFILE', 'TMP'):
-        path = os.environ.get(evar)
-        if path is not None and os.path.isdir(path):
-            return path
-    return None
+from .logsetup import _get_home
 
 
 @docstrings.get_sectionsf('safe_list')
@@ -334,7 +309,7 @@ base rcParams dictionary."""
                             s))
             except KeyError:
                 pass
-        if found:
+        if not found:
             raise
         else:
             raise KeyError("{0} does not match the specified pattern!".format(
@@ -392,9 +367,21 @@ class RcParams(dict):
     @property
     def validate(self):
         """Dictionary with validation methods as values"""
-        return dict((key, converter) for key, (default, converter) in
+        return dict((key, val[1]) for key, val in
                     six.iteritems(defaultParams)
                     if key not in _all_deprecated)
+
+    @property
+    def descriptions(self):
+        """The description of each keyword in the rcParams dictionary"""
+        return {key: val[2] for key, val in six.iteritems(defaultParams)
+                if len(val) >= 3}
+
+    HEADER = """Configuration parameters of the psyplot module
+
+You can copy this file (or parts of it) to another path and save it as
+PSYPLOTRC. The directory should then be stored in the PSYPLOTCONFIGDIR
+environment variable."""
 
     msg_depr = "%s is deprecated and replaced with %s; please use the latter."
     msg_depr_ignore = "%s is deprecated and ignored. Use %s"
@@ -574,14 +561,15 @@ See rcParams.keys() for a list of valid parameters.' % (key,))
             with open(fname) as f:
                 self.update(yaml.load(f))
 
-    def dump(self, fname, overwrite=True, include_keys=None,
-             exclude_keys=['project.plotters']):
+    def dump(self, fname=None, overwrite=True, include_keys=None,
+             exclude_keys=['project.plotters'], include_descriptions=True):
         """Dump this instance to a yaml file
 
         Parameters
         ----------
-        fname: str
-            file name to write to
+        fname: str or None
+            file name to write to. If Non, the string that would be written
+            to a file is returned
         overwrite: bool
             If True and `fname` already exists, it will be overwritten
         include_keys: None or list of str
@@ -589,6 +577,12 @@ See rcParams.keys() for a list of valid parameters.' % (key,))
             included
         exclude_keys: list of str
             Keys from the :class:`RcParams` instance to be excluded
+
+        Returns
+        -------
+        str or None
+            if fname is ``None``, the string is returned. Otherwise, ``None``
+            is returned
 
         Raises
         ------
@@ -598,15 +592,39 @@ See rcParams.keys() for a list of valid parameters.' % (key,))
         See Also
         --------
         load_from_file"""
-        if not overwrite and os.path.exists(fname):
+        if fname is not None and not overwrite and os.path.exists(fname):
             raise IOError(
                 '%s already exists! Set overwrite=True to overwrite it!' % (
                     fname))
-        d = {key: val for key, val in self.iteritems() if (
+        kwargs = dict(encoding='utf-8') if six.PY2 else {}
+        d = {key: val for key, val in six.iteritems(self) if (
                 include_keys is None or key in include_keys) and
              key not in exclude_keys}
-        with open(fname, 'w') as f:
-            yaml.dump(d, f, encoding='utf-8')
+        if include_descriptions:
+            s = yaml.dump(d, **kwargs)
+            desc = self.descriptions
+            i = 2
+            lines = ['\n'.join('# ' + l for l in self.HEADER.split('\n')),
+                     '\nCreated with python\n%s\n\n' % sys.version] + s.split(
+                         '\n')
+            for l in lines[2:]:
+                key = l.split(':')[0]
+                if key in desc:
+                    lines.insert(i, '# ' + desc[key])
+                    i += 1
+                i += 1
+            s = '\n'.join(lines)
+            if fname is None:
+                return s
+            else:
+                with open(fname, 'w') as f:
+                    f.write(s)
+        else:
+            if fname is None:
+                return yaml.dump(d, **kwargs)
+            with open(fname, 'w') as f:
+                yaml.dump(d, f, **kwargs)
+        return None
 
 
 def psyplot_fname():
@@ -1357,34 +1375,74 @@ tick_strings = bound_strings + ['hour', 'day', 'week', 'month', 'monthend',
 #: :class:`dict` with default values and validation functions
 defaultParams = {
     # BasePlot
-    'plotter.baseplotter.tight': [False, validate_bool],
-    'plotter.simpleplotter.grid': [False, try_and_error(
-        validate_bool_maybe_none, validate_color)],
+    'plotter.baseplotter.tight': [False, validate_bool,
+                                  'fmt key for tight layout of the plots'],
+    'plotter.simpleplotter.grid': [
+        False, try_and_error(validate_bool_maybe_none, validate_color),
+        'fmt key to visualize the grid on simple plots (i.e. without '
+        'projection)'],
     # labels
-    'plotter.baseplotter.title': ['', six.text_type],
-    'plotter.baseplotter.figtitle': ['', six.text_type],
-    'plotter.baseplotter.text': [[], validate_text],
-    'plotter.simpleplotter.ylabel': ['', six.text_type],
-    'plotter.simpleplotter.xlabel': ['', six.text_type],
-    'plotter.plot2d.clabel': ['', six.text_type],
+    'plotter.baseplotter.title': [
+        '', six.text_type, 'fmt key to control the title of the axes'],
+    'plotter.baseplotter.figtitle': [
+        '', six.text_type, 'fmt key to control the title of the axes'],
+    'plotter.baseplotter.text': [
+        [], validate_text, 'fmt key to show text anywhere on the plot'],
+    'plotter.simpleplotter.ylabel': [
+        '', six.text_type, 'fmt key to modify the y-axis label for simple'
+        'plot (i.e. plots withouth projection)'],
+    'plotter.simpleplotter.xlabel': [
+        '', six.text_type, 'fmt key to modify the y-axis label for simple'
+        'plot (i.e. plots withouth projection)'],
+    'plotter.plot2d.clabel': [
+        '', six.text_type, 'fmt key to modify the colorbar label for 2D'
+        'plots'],
     # text sizes
-    'plotter.baseplotter.titlesize': ['large', validate_fontsize],
-    'plotter.baseplotter.figtitlesize': [12, validate_fontsize],
-    'plotter.simpleplotter.labelsize': ['medium', DictValValidator(
-        'labelsize', ['x', 'y'], validate_fontsize, None, True)],
-    'plotter.simpleplotter.ticksize': ['medium', DictValValidator(
-        'ticksize', ['major', 'minor'], validate_fontsize, 'major', True)],
-    'plotter.plot2d.cticksize': ['medium', validate_fontsize],
-    'plotter.plot2d.clabelsize': ['medium', validate_fontsize],
+    'plotter.baseplotter.titlesize': [
+        'large', validate_fontsize,
+        'fmt key for the fontsize of the axes title'],
+    'plotter.baseplotter.figtitlesize': [
+        12, validate_fontsize, 'fmt key for the fontsize of the figure title'],
+    'plotter.simpleplotter.labelsize': [
+        'medium', DictValValidator(
+            'labelsize', ['x', 'y'], validate_fontsize, None, True),
+        'fmt key for the fontsize of the x- and y-l abel of simple plots '
+        '(i.e. without projection)'],
+    'plotter.simpleplotter.ticksize': [
+        'medium', DictValValidator(
+            'ticksize', ['major', 'minor'], validate_fontsize, 'major', True),
+        'fmt key for the fontsize of the ticklabels of x- and y-axis of '
+        'simple plots (i.e. without projection)'],
+    'plotter.plot2d.cticksize': [
+        'medium', validate_fontsize,
+        'fmt key for the fontsize of the ticklabels of the colorbar of 2D '
+        'plots'],
+    'plotter.plot2d.clabelsize': [
+        'medium', validate_fontsize,
+        'fmt key for the fontsize of the colorbar label'],
     # text weights
-    'plotter.baseplotter.titleweight': [None, validate_fontweight],
-    'plotter.baseplotter.figtitleweight': [None, validate_fontweight],
-    'plotter.simpleplotter.labelweight': [None, DictValValidator(
-        'labelweight', ['x', 'y'], validate_fontweight, None, True)],
+    'plotter.baseplotter.titleweight': [
+        None, validate_fontweight,
+        'fmt key for the fontweight of the axes title'],
+    'plotter.baseplotter.figtitleweight': [
+        None, validate_fontweight,
+        'fmt key for the fontweight of the figure title'],
+    'plotter.simpleplotter.labelweight': [
+        None, DictValValidator(
+        'labelweight', ['x', 'y'], validate_fontweight, None, True),
+        'fmt key for the fontweight of the x- and y-l abel of simple plots '
+        '(i.e. without projection)'],
     'plotter.simpleplotter.tickweight': [None, DictValValidator(
-        'tickweight', ['major', 'minor'], validate_fontweight, 'major', True)],
-    'plotter.plot2d.ctickweight': [None, validate_fontweight],
-    'plotter.plot2d.clabelweight': [None, validate_fontweight],
+        'tickweight', ['major', 'minor'], validate_fontweight, 'major', True),
+        'fmt key for the fontweight of the ticklabels of x- and y-axis of '
+        'simple plots (i.e. without projection)'],
+    'plotter.plot2d.ctickweight': [
+        None, validate_fontweight,
+        'fmt key for the fontweight of the ticklabels of the colorbar of 2D '
+        'plots'],
+    'plotter.plot2d.clabelweight': [
+        None, validate_fontweight,
+        'fmt key for the fontweight of the colorbar label'],
     # text properties
     'plotter.baseplotter.titleprops': [{}, validate_dict],
     'plotter.baseplotter.figtitleprops': [{}, validate_dict],
@@ -1487,11 +1545,6 @@ defaultParams = {
     'plotter.maps.plot.min_circle_ratio': [0.05, validate_float],
     'plotter.maps.lsm': [True, try_and_error(validate_bool,
                                              validate_float)],
-    'countries': [False, try_and_error(validate_bool, validate_color)],
-    'plotter.maps.land_color': [None, try_and_error(
-        validate_none, validate_color)],
-    'plotter.maps.ocean_color': [None, try_and_error(
-        validate_none, validate_color)],
     'plotter.maps.mask': [None, lambda x: x],  # TODO: implement validation
 
     'plotter.baseplotter.maskleq': [None, try_and_error(
@@ -1529,48 +1582,68 @@ defaultParams = {
     'plotter.user': [{}, validate_dict_yaml],
 
     # decoder
-    'decoder.x': [set(), validate_stringset],
-    'decoder.y': [set(), validate_stringset],
-    'decoder.z': [set(), validate_stringset],
-    'decoder.t': [{'time'}, validate_stringset],
-    'decoder.interp_kind': ['linear', validate_str],
+    'decoder.x': [set(), validate_stringset,
+                  'names that shall be interpreted as the longitudinal x dim'],
+    'decoder.y': [set(), validate_stringset,
+                  'names that shall be interpreted as the latitudinal y dim'],
+    'decoder.z': [set(), validate_stringset,
+                  'names that shall be interpreted as the vertical z dim'],
+    'decoder.t': [{'time'}, validate_stringset,
+                  'names that shall be interpreted as the time dimension'],
+    'decoder.interp_kind': [
+        'linear', validate_str,
+        'interpolation method to calculate 2D-bounds (see the `kind` parameter'
+        'in the :meth:`psyplot.data.CFDecoder.get_plotbounds` method)'],
 
     # data
-    'datapath': [None, validate_path_exists],
-
-    # shapes
-    # boundary shape file for lonlatbox keyword
-    'shapes.boundaryfile': [None, validate_shape_exists],
-    # land sea mask shapefile
-    'shapes.lsm': [None, validate_shape_exists],
-    'shapes.shapes': [None, validate_shape_exists],
-    'shapes.default_field': ['COUNTRY', validate_str],
+    'datapath': [None, validate_path_exists, 'path for supplementary data'],
 
     # default texts
     'texts.labels': [{'tinfo': '%H:%M',
                       'dtinfo': '%B %d, %Y. %H:%M',
                       'dinfo': '%B %d, %Y',
                       'desc': '%(long_name)s [%(units)s]',
-                      'sdesc': '%(name)s [%(units)s]'}, validate_dict],
-    'texts.default_position': [(1., 1.), validate_nseq_float(2)],
-    'texts.delimiter': [', ', validate_str],
+                      'sdesc': '%(name)s [%(units)s]'}, validate_dict,
+                     'labels that shall be replaced in TextBase formatoptions',
+                     ' (e.g. the title formatoption) when inserted within '
+                     'curly braces ({}))'],
+    'texts.default_position': [(1., 1.), validate_nseq_float(2),
+                               'default position for the text fmt key'],
+    'texts.delimiter': [', ', validate_str,
+                        'default delimiter to separate netCDF meta attributes '
+                        'when displayed on the plot'],
     'ticks.which': ['major', ValidateInStrings(
-        'ticks.which', ['major', 'minor'], True)],
+        'ticks.which', ['major', 'minor'], True),
+        'default tick that is used when using a x- or y-tick formatoption'],
 
     # color lists for user-defined colormaps (see for example
     # psyplot.plotter.colors._cmapnames)
-    'colors.cmaps': [{}, validate_cmaps],
+    'colors.cmaps': [
+        {}, validate_cmaps,
+        'User defined color lists that shall be accessible through the '
+        ':meth:`psyplot.plotter.colors.get_cmap` function'],
 
     # yaml file that holds definitions of lonlatboxes
-    'lonlatbox.boxes': [{}, validate_dict_yaml],
+    'lonlatbox.boxes': [
+        {}, validate_dict_yaml,
+        'longitude-latitude boxes that shall be accessible for the lonlatbox, '
+        'map_extent, etc. keywords. May be a dictionary or the path to a '
+        'yaml file'],
 
     # list settings
-    'lists.auto_update': [True, validate_bool],
+    'lists.auto_update': [True, validate_bool,
+                          'default value (boolean) for the auto_update '
+                          'parameter in the initialization of Plotter, '
+                          'Project, etc. instances'],
 
     # project settings
     # auto_import: If True the plotters in project,plotters are automatically
     # imported
-    'project.auto_import': [True, validate_bool],
+    'project.auto_import': [True, validate_bool,
+                            'boolean controlling whether all plotters '
+                            'specified in the project.plotters item will be '
+                            'automatically imported when importing the '
+                            'psyplot.project module'],
     'project.plotters': [{  # these plotters are automatically registered
         'plot1d': {
             'module': 'psyplot.plotter.simpleplotter',
@@ -1622,7 +1695,10 @@ defaultParams = {
                         'on a map'),
             'example_call': (
                 "filename, name=[['my_variable', ['u_var', 'v_var']]], ...")},
-        }, validate_dict],
+        }, validate_dict,
+        'mapping from identifier to plotter definitions for the Project class.'
+        ' See the :func:`psyplot.project.register_plotter` function for '
+        'possible keywords and values'],
     }
 
 # add combinedplotter strings for windplot

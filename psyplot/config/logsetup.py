@@ -3,10 +3,38 @@
 This module defines the essential functions for setting up the
 :class:`logging.Logger` instances that are used by the psyplot package."""
 import os
+import six
+import sys
 import logging
 import logging.config
 import yaml
 from ..docstring import dedent
+
+
+def _get_home():
+    """Find user's home directory if possible.
+    Otherwise, returns None.
+
+    :see:  http://mail.python.org/pipermail/python-list/2005-February/325395.html
+
+    This function is copied from matplotlib version 1.4.3, Jan 2016
+    """
+    try:
+        if six.PY2 and sys.platform == 'win32':
+            path = os.path.expanduser(b"~").decode(sys.getfilesystemencoding())
+        else:
+            path = os.path.expanduser("~")
+    except ImportError:
+        # This happens on Google App Engine (pwd module is not present).
+        pass
+    else:
+        if os.path.isdir(path):
+            return path
+    for evar in ('HOME', 'USERPROFILE', 'TMP'):
+        path = os.environ.get(evar)
+        if path is not None and os.path.isdir(path):
+            return path
+    return None
 
 
 @dedent
@@ -36,8 +64,8 @@ def setup_logging(default_path=None, default_level=logging.INFO,
     -----
     Function taken from
     http://victorlin.me/posts/2012/08/26/good-logging-practice-in-python"""
-    from .rcsetup import _get_home
-    path = default_path or os.path.dirname(__file__) + '/logging.yaml'
+    path = default_path or os.path.join(
+        os.path.dirname(__file__), 'logging.yaml')
     value = os.getenv(env_key, None)
     home = _get_home()
     if value:
@@ -48,7 +76,7 @@ def setup_logging(default_path=None, default_level=logging.INFO,
         for handler in config.get('handlers', {}).values():
             if '~' in handler.get('filename', ''):
                 handler['filename'] = handler['filename'].replace(
-                    '~', _get_home())
+                    '~', home)
         logging.config.dictConfig(config)
     else:
         path = None

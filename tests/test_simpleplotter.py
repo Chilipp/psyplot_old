@@ -4,7 +4,7 @@ import unittest
 import numpy as np
 import matplotlib.pyplot as plt
 from psyplot.plotter.simpleplotter import SimplePlotter, Simple2DPlotter
-import psyplot.project as syp
+import psyplot.project as psy
 import test_baseplotter as tb
 import _base_testing as bt
 from psyplot import InteractiveList, ArrayList, open_dataset
@@ -21,19 +21,15 @@ class SimplePlotterTest(tb.BasePlotterTest):
 
     @classmethod
     def setUpClass(cls):
-        from matplotlib.backends.backend_pdf import PdfPages
-        cls.ds = open_dataset('test-t2m-u-v.nc')
+        cls.ds = open_dataset(cls.ncfile)
         cls.data = InteractiveList.from_dataset(
             cls.ds, lat=[0, 1], lev=0, time=0, name='t2m', auto_update=True)
         cls.plotter = SimplePlotter(cls.data)
-        if not os.path.isdir(bt.odir):
-            os.makedirs(bt.odir)
-
-        cls.pdf = PdfPages('test_%s.pdf' % cls.__name__)
+        cls.create_dirs()
 
     def plot(self, **kwargs):
         name = kwargs.pop('name', 't2m')
-        return syp.plot.plot1d(
+        return psy.plot.plot1d(
             self.ncfile, name=name, t=0, z=0, y=[0, 1], **kwargs)
 
     def ref_grid(self, close=True):
@@ -42,8 +38,8 @@ class SimplePlotterTest(tb.BasePlotterTest):
         Create reference file for
         :attr:`~psyplot.plotter.simpleplotter.SimplePlotter.grid`
         formatoption"""
-        lines = syp.plot.plot1d(
-            'test-t2m-u-v.nc', name='t2m', time=0, lev=0, lat=[0, 1],
+        lines = psy.plot.plot1d(
+            self.ncfile, name='t2m', time=0, lev=0, lat=[0, 1],
             grid=True)
         sp = self.plot(grid=True)
         sp.export(os.path.join(bt.ref_dir, self.get_ref_file('grid1')))
@@ -84,8 +80,8 @@ class SimplePlotterTest(tb.BasePlotterTest):
         Create reference file for
         :attr:`~psyplot.plotter.simpleplotter.SimplePlotter.xticks`
         formatoption"""
-        sp = syp.plot.plot1d(
-            'test-t2m-u-v.nc', name='t2m', lon=0, lev=0, lat=[0, 1],
+        sp = psy.plot.plot1d(
+            self.ncfile, name='t2m', lon=0, lev=0, lat=[0, 1],
             xticklabels={'major': '%m', 'minor': '%d'},
             xtickprops={'pad': 7.0},
             xticks={'minor': 'week', 'major': 'month'})
@@ -352,19 +348,15 @@ class Simple2DPlotterTest(SimplePlotterTest, References2D):
 
     def plot(self, **kwargs):
         name = kwargs.pop('name', 't2m')
-        return syp.plot.plot2d(self.ncfile, name=name, **kwargs)
+        return psy.plot.plot2d(self.ncfile, name=name, **kwargs)
 
     @classmethod
     def setUpClass(cls):
-        from matplotlib.backends.backend_pdf import PdfPages
-        cls.ds = open_dataset('test-t2m-u-v.nc')
+        cls.ds = open_dataset(cls.ncfile)
         cls.data = ArrayList.from_dataset(
             cls.ds, t=0, z=0, name='t2m', auto_update=True)[0]
         cls.plotter = Simple2DPlotter(cls.data)
-        if not os.path.isdir(bt.odir):
-            os.makedirs(bt.odir)
-
-        cls.pdf = PdfPages('test_%s.pdf' % cls.__name__)
+        cls.create_dirs()
 
     @unittest.skip("legend formatoption not implemented for 2D-Plotter")
     def ref_legend(self, *args, **kwargs):

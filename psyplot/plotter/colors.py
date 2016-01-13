@@ -45,7 +45,9 @@ docstrings.params['cmap_note'] = """
 
 
 class FixedColorMap(LinearSegmentedColormap):
-    """Colormap to fix a bug for in the
+    """Bug fixing colormap with same functionality as matplotlibs colormap
+
+    This class fixes a bug in the
     :meth:`cartopy.mpl.geoaxes.GeoAxes.streamplot` method in python 3.4
 
     Notes
@@ -66,12 +68,15 @@ class FixedColorMap(LinearSegmentedColormap):
         >>> m = ax.streamplot(x, y, u, v, density=[1.0, 1.0],
         ...                   color=plotter.plot._kwargs['color'],
         ...                   norm=plotter.plot._kwargs['norm'])
-    This raises in matplotlib.colors, line 557, in __call__
+
+    This raises in matplotlib.colors, line 557, in
+    :meth:`matplotlib.colors.Colormap.__call__`::
+
         ``xa = np.array([X])``
-    ValueError: setting an array element with a sequence.
+        ValueError: setting an array element with a sequence.
     """
 
-    if six.PY34:
+    if six.PY3:
         def __call__(self, X, *args, **kwargs):
             if isinstance(X, np.ma.core.MaskedArray) and X.ndim == 0:
                 X = np.array(np.nan)

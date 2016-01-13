@@ -11,5 +11,6 @@ Submodules
 
 .. toctree::
 
+   psyplot.compat.mplcompat
    psyplot.compat.pycompat
 
