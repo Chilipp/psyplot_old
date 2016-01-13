@@ -1,6 +1,9 @@
 name: psyplot
+channels:
+    - chilipp
+    - scitools
 dependencies:
-    - '-c chilipp psyplot'
+    - psyplot
     - dask
-    - '-c scitools cartopy'
+    - cartopy
     - gdal
