@@ -1,6 +1,6 @@
 name: psyplot
 dependencies:
-    - psyplot
+    - '-c chilipp psyplot'
     - dask
-    - cartopy
+    - '-c scitools cartopy'
     - gdal
