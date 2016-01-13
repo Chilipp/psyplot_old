@@ -1,5 +1,0 @@
-name: psyplot
-dependencies:
-    - python=2.7
-    - xray=0.6.1
-    - cartopy=0.13.0
