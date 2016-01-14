@@ -5,8 +5,8 @@ from .config.rcsetup import rcParams
 from .data import (
     ArrayList, InteractiveArray, InteractiveList, open_dataset, open_mfdataset)
 
-__version__ = "0.0.1.dev1"
-__author__ = "Philipp Sommer (philipp.sommer@studium.uni-hamburg.de)"
+__version__ = "0.0.2.dev1"
+__author__ = "Philipp Sommer (philipp.sommer@unil.ch)"
 
 
 logger = _logging.getLogger(__name__)
