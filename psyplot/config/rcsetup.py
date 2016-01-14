@@ -214,12 +214,12 @@ base rcParams dictionary."""
             In [4]: print d['arrowsize']
             Out [4]: 1.0
 
-        To convert it to a usual dictionary, simply use :class:`dict` and the
-        :attr:`data` property
+        To convert it to a usual dictionary, simply use the :attr:`data`
+        attribute
 
         .. ipython::
 
-            In [5]: dict(d.data)
+            In [5]: d.data
 
         Note that changing one keyword of your :class:`SubDict` will not change
         the :attr:`base` dictionary, unless you set the :attr:`trace` attribute
@@ -685,41 +685,7 @@ def psyplot_fname():
         if os.path.exists(fname):
             return fname
 
-    path = _get_data_path()  # guaranteed to exist or raise
-    fname = os.path.join(path, 'psyplotrc.yaml')
-    if not os.path.exists(fname):
-        return None
-
-    return fname
-
-
-def _get_data_path():
-    """Return the psyplot data path
-
-    Notes
-    -----
-    By default it is the data directory in the psyplot directory, otherwise
-    you can specify it via the `PSYPLOTDATA` environment variable
-
-    Notes
-    -----
-    This function is motivated by the matplotlib [1] module
-
-    References
-    ----------
-    [1]: http://matplotlib.org/api/"""
-    if 'PSYPLOTDATA' in os.environ:
-        path = os.environ['PSYPLOTDATA']
-        if not os.path.isdir(path):
-            raise RuntimeError(
-                'Path in environment PSYPLOTDATA not a directory')
-        return path
-
-    path = os.path.join(
-        os.path.split(os.path.dirname(__file__))[0], 'psyplot_data')
-    if not os.path.isdir(path):
-        warn("Could not find data path!")
-    return path
+    return None
 
 
 def _get_configdir():
@@ -1639,7 +1605,7 @@ defaultParams = {
     # project settings
     # auto_import: If True the plotters in project,plotters are automatically
     # imported
-    'project.auto_import': [True, validate_bool,
+    'project.auto_import': [False, validate_bool,
                             'boolean controlling whether all plotters '
                             'specified in the project.plotters item will be '
                             'automatically imported when importing the '

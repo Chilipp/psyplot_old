@@ -1,15 +1,21 @@
 from setuptools import setup, find_packages
+import sys
+
+needs_pytest = {'pytest', 'test', 'ptr'}.intersection(sys.argv)
+pytest_runner = ['pytest-runner'] if needs_pytest else []
+
 
 def readme():
     with open('README.rst') as f:
         return f.read()
 
+
 setup(name='psyplot',
-      version='0.0.0.dev1',
+      version='0.0.1.dev1',
       description='Python package for interactive data visualization',
       long_description=readme(),
       classifiers=[
-        'Development Status :: 2 - Pre-Alpha'
+        'Development Status :: 2 - Pre-Alpha',
         'Intended Audience :: Developers',
         'Topic :: Scientific/Engineering :: Visualization',
         'Topic :: Scientific/Engineering :: GIS',
@@ -34,7 +40,7 @@ setup(name='psyplot',
           'xray>=0.6',
           'PyYAML'
       ],
-      setup_requires=['pytest-runner'],
+      setup_requires=pytest_runner,
       tests_require=['pytest'],
       include_package_data=True,
       zip_safe=False)

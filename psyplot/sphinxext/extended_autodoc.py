@@ -296,12 +296,50 @@ class AutoSummDirective(AutoDirective, Autosummary):
 
         dn = summ_nodes.pop(documenter.fullname)
         doc_nodes = self.inject_summ_nodes(doc_nodes, summ_nodes)
-        # insert the nodes directly after the title for autoclass directive
-        if self.name == 'autoclass' and 'noindex' not in self.options:
+        # insert the nodes directly after the paragraphs
+        if self.name == 'autoclass':
             for node in dn[::-1]:
-                doc_nodes[1].insert(1, node)
+                self._insert_after_paragraphs(doc_nodes[1], node)
             dn = []
+        elif self.name == 'automodule':
+            # insert table before the documentation of the members
+            istart = 2 if 'noindex' not in self.options else 0
+            found = False
+            if len(doc_nodes[istart:]) >= 2:
+                for i in range(istart, len(doc_nodes)):
+                    if isinstance(doc_nodes[i], sphinx.addnodes.index):
+                        found = True
+                        break
+            if found:
+                for node in dn[::-1]:
+                    doc_nodes.insert(i, node)
+                dn = []
         return self.warnings + dn + doc_nodes
+
+    def _insert_after_paragraphs(self, node, insertion):
+        """Inserts the given `insertion` node after the paragraphs in `node`
+
+        This method inserts the `insertion` node after the instances of
+        nodes.paragraph in the given `node`.
+        Usually the node of one documented class is set up like
+
+        Name of the documented item (allways) (nodes.Element)
+        Summary (sometimes) (nodes.paragraph)
+        description (sometimes) (nodes.paragraph)
+        Parameters section (sometimes) (nodes.rubric)
+
+        We want to be below the description, so we loop until we
+        are below all the paragraphs. IF that does not work,
+        we simply put it at the end"""
+        found = False
+        if len(node) >= 2:
+            for i in range(len(node[1])):
+                if not isinstance(node[1][i], nodes.paragraph):
+                    node[1].insert(i + 1, insertion)
+                    found = True
+                    break
+        if not found:
+            node.insert(1, insertion)
 
     def inject_summ_nodes(self, doc_nodes, summ_nodes):
         """Method to inject the autosummary nodes into the autodoc nodes
@@ -325,6 +363,7 @@ class AutoSummDirective(AutoDirective, Autosummary):
         -----
         `doc_nodes` are modified in place and not copied!"""
         for i, node in enumerate(doc_nodes):
+            # check if the node has a autosummary table in the summ_nodes
             if (len(node) and isinstance(node[0], nodes.Element) and
                     node[0].get('module') and node[0].get('fullname')):
                 node_summ_nodes = summ_nodes.get("%s.%s" % (
@@ -332,8 +371,7 @@ class AutoSummDirective(AutoDirective, Autosummary):
                 if not node_summ_nodes:
                     continue
                 for summ_node in node_summ_nodes[::-1]:
-                    node.insert(1, summ_node)
-#        doc_nodes.extend(list(chain(*new_nodes.values())))
+                    self._insert_after_paragraphs(node, summ_node)
         return doc_nodes
 
     def autosumm_nodes(self, documenter, grouped_documenters):
@@ -367,8 +405,10 @@ class AutoSummDirective(AutoDirective, Autosummary):
             if not items:
                 continue
             node = nodes.rubric()
+            # create note for the section title (we could also use .. rubric
+            # but that causes problems for latex documentations)
             self.state.nested_parse(
-                ViewList(['.. rubric:: %s' % section]), 0, node)
+                ViewList(['**%s**' % section]), 0, node)
             this_nodes += node
             this_nodes += self.get_table(items)
             for mdocumenter, check_module in documenters:

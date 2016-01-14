@@ -2112,6 +2112,21 @@ class Cbar(Formatoption):
 
 
 class CLabel(TextBase, Formatoption):
+    """
+    Show the colorbar label
+
+    Set the label of the colorbar.
+    %(replace_note)s
+
+    Possible types
+    --------------
+    str
+        The title for the :meth:`~matplotlib.colorbar.Colorbar.set_label`
+        method.
+
+    See Also
+    --------
+    clabelsize, clabelweight, clabelprops"""
 
     children = ['plot']
 
@@ -2139,6 +2154,24 @@ class CLabel(TextBase, Formatoption):
                 cbar.ax.yaxis.set_label_position('left')
             elif pos == 'ft':
                 cbar.ax.xaxis.set_label_position('top')
+
+
+class VCLabel(CLabel):
+    """
+    Show the colorbar label of the vector plot
+
+    Set the label of the colorbar.
+    %(replace_note)s
+
+    Possible types
+    --------------
+    str
+        The title for the :meth:`~matplotlib.colorbar.Colorbar.set_label`
+        method.
+
+    See Also
+    --------
+    vclabelsize, vclabelweight, vclabelprops"""
 
 
 class CbarOptions(Formatoption):
@@ -3016,7 +3049,7 @@ class CombinedBase(Plotter):
                        cbarspacing='vcbarspacing', other_cbars=['cbar'],
                        index_in_list=1)
     vcbarspacing = CbarSpacing('vcbarspacing', cbar='vcbar', index_in_list=1)
-    vclabel = CLabel('vclabel', plot='vplot', cbar='vcbar', index_in_list=1)
+    vclabel = VCLabel('vclabel', plot='vplot', cbar='vcbar', index_in_list=1)
     vclabelsize = label_size(vclabel, 'Vector colorbar label',
                              dependencies=['vclabel'])
     vclabelweight = label_weight(vclabel, 'Vector colorbar label',

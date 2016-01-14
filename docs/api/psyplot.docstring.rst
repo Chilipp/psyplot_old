@@ -3,5 +3,4 @@ psyplot.docstring module
 
 .. automodule:: psyplot.docstring
     :members:
-    :undoc-members:
     :show-inheritance:

@@ -28,7 +28,7 @@ docstrings.params['replace_note'] = dedents("""
       also replaced when enclosed by '{}'. The standard labels are
 
       - %s""" % '\n      - '.join(
-    ': '.join(item) for item in six.iteritems(rcParams['texts.labels'])))
+    '%s: ``%s``' % tuple(item) for item in six.iteritems(rcParams['texts.labels'])))
 
 docstrings.params['colors'] = dedents("""
     The following color abbreviations are supported:

@@ -3,5 +3,4 @@ psyplot.config.rcsetup module
 
 .. automodule:: psyplot.config.rcsetup
     :members:
-    :undoc-members:
     :show-inheritance:

@@ -11,7 +11,6 @@ from numpy import (
     pi, reshape)
 from datetime import datetime, timedelta
 import logging
-from scipy.interpolate import interp2d
 from .config.rcsetup import rcParams, safe_list
 from .docstring import dedent, docstrings, dedents
 from .compat.pycompat import zip, map, isstring, OrderedDict, filter, range
@@ -2000,6 +1999,7 @@ class CFDecoder(object):
         if coord.ndim == 1:
             return _infer_interval_breaks(coord)
         elif coord.ndim == 2:
+            from scipy.interpolate import interp2d
             kind = kind or rcParams['decoder.interp_kind']
             x, y = map(arange, coord.shape)
             new_x, new_y = map(_infer_interval_breaks, [x, y])

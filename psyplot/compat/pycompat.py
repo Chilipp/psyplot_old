@@ -1,4 +1,6 @@
-"""Compatibility module for different python versions"""
+"""Compatibility module for different python versions
+
+That's a test"""
 import os
 import six
 
@@ -35,8 +37,10 @@ elif six.PY2:
     # Python 2
 
     class DictMethods(object):
+        """okay"""
         @staticmethod
         def iteritems(d):
+            "checked"
             return dict.iteritems(d)
 
         @staticmethod

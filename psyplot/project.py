@@ -953,8 +953,8 @@ def register_plotter(identifier, module, plotter_name, sorter=True,
         try:
             plotter_cls = getattr(import_module(module), plotter_name)
         except Exception as e:
-            critical("Could not import %s!\n" + e.message if six.PY2 else str(
-                e))
+            critical("Could not import %s!\n" % module +
+                     e.message if six.PY2 else str(e))
             return
     else:
         plotter_cls = None
