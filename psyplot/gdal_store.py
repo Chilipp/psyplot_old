@@ -16,13 +16,17 @@ to open a GeoTIFF file named ``'my_tiff.tiff'`` you can do::
 Or you use the `engine` of the :func:`psyplot.open_dataset` function:
 
     >>> ds = open_dataset('my_tiff.tiff', engine='gdal')"""
-from gdal import Open, GetDataTypeName
 from numpy import arange, nan, dtype
 from xarray import Variable
 from collections import OrderedDict
 from xarray.core.utils import FrozenOrderedDict
 from xarray.backends.common import AbstractDataStore
 from .compat.pycompat import range
+try:
+    import gdal
+except ImportError as e:
+    from .data import _MissingModule
+    gdal = _MissingModule(e)
 try:
     from dask.array import Array
     with_dask = True
@@ -44,7 +48,7 @@ class GdalStore(AbstractDataStore):
         ----------
         filename: str
             The path to the GeoTIFF file"""
-        self.ds = Open(filename)
+        self.ds = gdal.Open(filename)
         self._filename = filename
 
     def get_variables(self):  # pragma: no cover
@@ -66,7 +70,8 @@ class GdalStore(AbstractDataStore):
         for iband in range(1, ds.RasterCount+1):
             if with_dask:
                 dsk = {('x', 0, 0): (load, iband)}
-                dt = dtype(GetDataTypeName(ds.GetRasterBand(iband).DataType))
+                dt = dtype(
+                    gdal.GetDataTypeName(ds.GetRasterBand(iband).DataType))
                 arr = Array(dsk, 'x', chunks, shape=shape, dtype=dt)
             else:
                 arr = load(iband)
