@@ -412,6 +412,10 @@ docstrings.get_sections(
     'xarray.Dataset.to_netcdf')
 
 
+#: str. Name of the attribute that is assigned to a unique number for a dataset
+PSYPLOT_ATTR = '_psyplot_num'
+
+
 @docstrings.dedent
 def to_netcdf(ds, *args, **kwargs):
     """
@@ -437,7 +441,40 @@ def to_netcdf(ds, *args, **kwargs):
                 encoding=obj.encoding)
     if to_update:
         ds = ds.update(to_update)
+    if PSYPLOT_ATTR in ds.attrs:
+        del ds.attrs[PSYPLOT_ATTR]
     return xarray_api.to_netcdf(ds, *args, **kwargs)
+
+
+def _get_fname_netCDF4(store):
+    """Try to get the file name from the NetCDF4DataStore store"""
+    return getattr(store, '_filename', None)
+
+
+def _get_fname_scipy(store):
+    """Try to get the file name from the ScipyDataStore store"""
+    try:
+        return store.ds.filename
+    except AttributeError:
+        return None
+
+
+def _get_fname_nio(store):
+    """Try to get the file name from the NioDataStore store"""
+    try:
+        f = store.ds.file
+    except AttributeError:
+        return None
+    s = str(f).splitlines()[0].rstrip().lstrip()
+    if s.startswith('Nio file:'):
+        try:
+            return s.split('\t')[1]
+        except IndexError:
+            return None
+
+
+#: functions to use to extract the file name from a data store
+get_fname_funcs = [_get_fname_netCDF4, _get_fname_scipy, _get_fname_nio]
 
 
 @docstrings.get_sectionsf('get_filename_ds')
@@ -507,7 +544,11 @@ def get_filename_ds(ds, dump=True, paths=None, **kwargs):
     store_mod = store.__module__ if store is not None else None
     store_cls = store.__class__.__name__ if store is not None else None
     if store is not None:
-        fname = getattr(store, '_filename', None)
+        # try several datasets
+        for func in get_fname_funcs:
+            fname = func(store)
+            if fname is not None:
+                break
     # check if paths is provided and if yes, save the file
     if fname is None and paths is not None:
         fname = next(paths, None)
@@ -1341,9 +1382,10 @@ class ArrayList(list):
             nums = count()
         if 'ds' in data:
             ds = data['ds']
-            if not hasattr(ds, '_num'):
-                ds._num = next(nums)
-            return [(ds._num, ds if not use_fname else data['fname'])]
+            if PSYPLOT_ATTR not in ds.attrs:
+                ds.attrs[PSYPLOT_ATTR] = next(nums)
+            return [(ds.attrs[PSYPLOT_ATTR],
+                     ds if not use_fname else data['fname'])]
         for key in ignore_keys:
             data.pop(key, None)
         return list(unique_everseen(
@@ -2914,7 +2956,8 @@ def open_dataset(filename_or_obj, decode_cf=True, decode_times=True,
         filename_or_obj = GdalStore(filename_or_obj)
         engine = None
     ds = xarray.open_dataset(filename_or_obj, decode_cf=decode_cf,
-                           decode_coords=False, engine=engine, **kwargs)
+                           decode_coords=False, engine=engine,
+                           decode_times=decode_times, **kwargs)
     if decode_cf:
         ds = CFDecoder.decode_ds(
             ds, decode_coords=decode_coords, decode_times=decode_times,

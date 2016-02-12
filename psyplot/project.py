@@ -313,7 +313,7 @@ class Project(ArrayList):
     @property
     def dsnames(self):
         """The set of dataset names in this instance"""
-        return {t[0] for t in self._get_dsnames(self.array_info())}
+        return {t[0] for t in self._get_dsnames(self.array_info()) if t[0]}
 
     @docstrings.get_sectionsf('Project')
     @docstrings.dedent
@@ -475,9 +475,11 @@ class Project(ArrayList):
             or `fmt` respectively."""
         if not isinstance(filename_or_obj, xarray.Dataset):
             if mf_mode:
-                filename_or_obj = open_mfdataset(filename_or_obj)
+                filename_or_obj = open_mfdataset(filename_or_obj,
+                                                 engine=engine)
             else:
-                filename_or_obj = open_dataset(filename_or_obj)
+                filename_or_obj = open_dataset(filename_or_obj,
+                                               engine=engine)
         fmt = dict(fmt)
         possible_fmts = list(plotter_cls._get_formatoptions())
         additional_fmt, kwargs = sort_kwargs(

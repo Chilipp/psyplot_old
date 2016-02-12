@@ -532,11 +532,7 @@ To restore your project, simply use the
         @savefig docs_getting_started_saved.png width=4in
         In [35]: axes[1].plot([6, 7])
 
-        @verbatim
         In [36]: settings = lines.save_project()
-
-        @suppress
-        In [36]: settings = lines.save_project(use_rel_paths=False)
 
     and loading the project again
 
