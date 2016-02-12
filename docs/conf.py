@@ -66,7 +66,7 @@ extensions = [
 templates_path = ['_templates']
 
 # boolean controlling wether to calculate the examples or not
-process_examples = False
+process_examples = True
 
 example_gallery_config = {'dont_preprocess': ['../examples/example_cdo.ipynb']}
 
