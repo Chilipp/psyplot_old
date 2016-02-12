@@ -11,7 +11,7 @@ def readme():
 
 
 setup(name='psyplot',
-      version='0.1.0',
+      version='0.1.1',
       description='Python package for interactive data visualization',
       long_description=readme(),
       classifiers=[
@@ -34,7 +34,7 @@ setup(name='psyplot',
       author='Philipp Sommer',
       author_email='philipp.sommer@unil.ch',
       license="GPLv2",
-      packages=find_packages(exclude=['docs', 'tests*']),
+      packages=find_packages(exclude=['docs', 'tests*', 'examples']),
       install_requires=[
           'matplotlib',
           'xarray',
@@ -42,5 +42,7 @@ setup(name='psyplot',
       ],
       setup_requires=pytest_runner,
       tests_require=['pytest'],
+      package_data={'psyplot': ['sphinxext/_static/example_gallery_styles.css',
+                                'sphinxext/_static/no_image.png']},
       include_package_data=True,
       zip_safe=False)

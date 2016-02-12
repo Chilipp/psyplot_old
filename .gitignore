@@ -53,8 +53,6 @@ coverage.xml
 # Sphinx documentation
 docs/_build/
 docs/index.doctree
-# pictures that are created on runtime when building the docs
-docs/_static/docs_*.png 
 
 # test results
 tests/psyplot_testresults

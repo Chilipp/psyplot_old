@@ -108,7 +108,7 @@ Hence it is equivalent if you type
 
 .. ipython::
 
-    In [7]: maps = psy.plot.mapplot(ds, name='t2m', t=1)
+    In [7]: maps = psy.plot.mapplot('demo.nc', name='t2m', t=1)
 
     @suppress
     In [8]: maps.close(True, True)
@@ -117,7 +117,7 @@ or
 
 .. ipython::
 
-    In [8]: maps = psy.plot.mapplot(ds, name='t2m', time=1)
+    In [8]: maps = psy.plot.mapplot('demo.nc', name='t2m', time=1)
 
     @suppress
     In [9]: maps.close(True, True)
@@ -126,7 +126,7 @@ and finally you can also be very specific using the `dims` keyword via
 
 .. ipython::
 
-    In [9]: maps = psy.plot.mapplot(ds, name='t2m', dims={'time': 1})
+    In [9]: maps = psy.plot.mapplot('demo.nc', name='t2m', dims={'time': 1})
 
     @suppress
     In [10]: maps.close(True, True)
@@ -137,7 +137,7 @@ corresponding to March 1979 you can use
 
 .. ipython::
 
-    In [10]: maps = psy.plot.mapplot(ds, name='t2m', t='1979-03', method='nearest')
+    In [10]: maps = psy.plot.mapplot('demo.nc', name='t2m', t='1979-03', method='nearest')
 
     @suppress
     In [11]: maps.close(True, True)
@@ -215,7 +215,7 @@ and the desired value as keyword argument, e.g.
 
 .. ipython::
 
-    In [27]: maps = psy.plot.mapplot(ds, name='t2m', title='my title',
+    In [27]: maps = psy.plot.mapplot('demo.nc', name='t2m', title='my title',
        ....:                         cbar='r')
 
     @suppress
@@ -227,7 +227,7 @@ be really sure, use the `fmt` keyword via
 
 .. ipython::
 
-    In [28]: maps = psy.plot.mapplot(ds, name='t2m', fmt={'title': 'my title',
+    In [28]: maps = psy.plot.mapplot('demo.nc', name='t2m', fmt={'title': 'my title',
        ....:                                              'cbar': 'r'})
 
     @suppress
@@ -262,7 +262,7 @@ of all the plots. There are however several ways to modify this behaviour:
 
       .. ipython::
 
-          In [9]: maps = psy.plot.mapplot(ds, name='t2m', auto_update=False)
+          In [9]: maps = psy.plot.mapplot('demo.nc', name='t2m', auto_update=False)
 
           @suppress
           In [10]: maps.close(True, True)
@@ -323,7 +323,7 @@ list of dimension values and/or names. For example
 
 .. ipython::
 
-    In [12]: maps = psy.plot.mapplot(ds, name='t2m', time=[0, 1])
+    In [12]: maps = psy.plot.mapplot('demo.nc', name='t2m', time=[0, 1])
 
     In [13]: maps
 
@@ -335,7 +335,7 @@ Furthermore
 
 .. ipython::
 
-    In [14]: maps = psy.plot.mapplot(ds, name=['t2m', 'u'], time=[0, 1])
+    In [14]: maps = psy.plot.mapplot('demo.nc', name=['t2m', 'u'], time=[0, 1])
 
     In [15]: maps
 
@@ -353,7 +353,7 @@ second time step into one figure and sort by time. This will produce
 
     @savefig docs_multiple_plots.png width=4in
     In [16]: maps = psy.plot.mapplot(
-       ....:     ds, name=['t2m', 'u'], time=[0, 1], ax=(2, 2), sort=['time'],
+       ....:     'demo.nc', name=['t2m', 'u'], time=[0, 1], ax=(2, 2), sort=['time'],
        ....:     title='%(long_name)s, %b')
 
     In [17]: maps
@@ -369,7 +369,7 @@ second time step into one figure and sort by time. This will produce
     Hence you might think of choosing your data slice via
     ``psy.plot.mapplot(..., x=[1, 2, 3, 4, 5], ...)``. However this would result
     in 5 different plots! Instead you have to write
-    ``psy.plot.mapplot(..., x=[[1, 2, 3, 4, 5]], ...)``. The same holds
+    ``psy.plot.mapplot(..., x=[[1, 2, 3, 4, 5]], ...)``. The same is true
     for plotting methods like the
     :attr:`~psyplot.project.ProjectPlotter.mapvector` method. Since this
     method needs two variables (one for the latitudinal and one for the
@@ -378,13 +378,13 @@ second time step into one figure and sort by time. This will produce
     .. ipython::
         :okexcept:
 
-        In [18]: maps = psy.plot.mapvector(ds, name=['u', 'v'])
+        In [18]: maps = psy.plot.mapvector('demo.nc', name=['u', 'v'])
 
     results in a :class:`ValueError`. Instead you have to write
 
     .. ipython::
 
-        In [19]: maps = psy.plot.mapvector(ds, name=[['u', 'v']])
+        In [19]: maps = psy.plot.mapvector('demo.nc', name=[['u', 'v']])
 
         @suppress
         In [20]: maps.close(True, True)
@@ -402,7 +402,7 @@ attribute and type
 
     @suppress
     In [16]: maps = psy.plot.mapplot(
-       ....:     ds, name=['t2m', 'u'], time=[0, 1], ax=(2, 2), sort=['time'],
+       ....:     'demo.nc', name=['t2m', 'u'], time=[0, 1], ax=(2, 2), sort=['time'],
        ....:     title='%(long_name)s, %b')
 
     In [20]: maps(t=0)
@@ -465,7 +465,7 @@ method:
 .. ipython::
 
     @suppress
-    In [28]: maps = psy.plot.mapplot(ds, name='t2m', time=[0, 1], ax=(1, 2))
+    In [28]: maps = psy.plot.mapplot('demo.nc', name='t2m', time=[0, 1], ax=(1, 2))
 
     @verbatim
     In [28]: maps.save_project('test.pkl')
@@ -526,7 +526,7 @@ To restore your project, simply use the
 
         In [33]: fig, axes = plt.subplots(1, 2)
 
-        In [34]: lines = psy.plot.lineplot(ds, name=['t2m'], t=0, z=0, y=0,
+        In [34]: lines = psy.plot.lineplot('demo.nc', name=['t2m'], t=0, z=0, y=0,
            ....:                           ax=axes[0])
 
         @savefig docs_getting_started_saved.png width=4in

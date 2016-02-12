@@ -1430,7 +1430,7 @@ class ArrayList(list):
                 fname = info['fname']
                 if fname is None:
                     warn("Could not open array %s because no filename was "
-                         "specified!")
+                         "specified!" % arr_name)
                     arrays.pop(i)
                     continue
                 elif fname not in datasets:

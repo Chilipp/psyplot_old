@@ -5,7 +5,7 @@ from .config.rcsetup import rcParams
 from .data import (
     ArrayList, InteractiveArray, InteractiveList, open_dataset, open_mfdataset)
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __author__ = "Philipp Sommer (philipp.sommer@unil.ch)"
 
 
