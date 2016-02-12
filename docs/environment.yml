@@ -10,5 +10,4 @@ dependencies:
     - cartopy
     - gdal
     - seaborn
-    - nbconvert
-    - jupyter
+    - ipython

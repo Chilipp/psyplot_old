@@ -99,7 +99,7 @@ To build the docs, check out the github_ repository and install the
 requirements in ``'docs/environment.yml'``. The easiest way to do this is via
 anaconda by typing::
 
-    $ conda env create -n psyplot_docs -f docs/environment.yml
+    $ conda env create -n psyplot -f docs/environment.yml
     $ source activate psyplot_docs
 
 Then build the docs via::
