@@ -537,6 +537,8 @@ class Gallery(object):
     def from_sphinx(cls, app):
         """Class method to create a :class:`Gallery` instance from the
         configuration of a sphinx application"""
+        app.config.html_static_path.append(os.path.join(
+            os.path.dirname(__file__), '_static'))
         if not app.config.process_examples:
             return
         cls(**app.config.example_gallery_config).process_directories()

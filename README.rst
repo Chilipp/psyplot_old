@@ -12,8 +12,11 @@ developers in their daily work by providing a flexibel visualization tool that
 can be enhanced by their own visualization scripts.
 
 The package is very new and there are many features that will be included in
-the future. So we are very pleased for feedback! Please simply raise an issue
+the near future. So we are very pleased for feedback! Please simply raise an issue
 on `GitHub <https://github.com/Chilipp/psyplot>`__.
+
+You can see the full documentation on
+`readthedocs.org <http://psyplot.readthedocs.org/en/latest/>`__.
 
 
 Acknowledgment

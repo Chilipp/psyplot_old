@@ -66,7 +66,7 @@ extensions = [
 templates_path = ['_templates']
 
 # boolean controlling wether to calculate the examples or not
-process_examples = True
+process_examples = False
 
 example_gallery_config = {'dont_preprocess': ['../examples/example_cdo.ipynb']}
 
@@ -88,6 +88,8 @@ autoclass_content = 'both'
 
 not_document_data = ['psyplot.config.rcsetup.defaultParams',
                      'psyplot.config.rcsetup.rcParams']
+
+ipython_savefig_dir = os.path.join(os.path.dirname(__file__), '_static')
 
 # General information about the project.
 project = u'psyplot'
