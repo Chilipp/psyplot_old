@@ -3,4 +3,5 @@ psyplot.project module
 
 .. automodule:: psyplot.project
     :members:
+    :undoc-members:
     :show-inheritance:

@@ -3,6 +3,7 @@ psyplot.plotter package
 
 .. automodule:: psyplot.plotter
     :members:
+    :undoc-members:
     :show-inheritance:
 
 Submodules
@@ -14,5 +15,5 @@ Submodules
    psyplot.plotter.boxes
    psyplot.plotter.colors
    psyplot.plotter.maps
-   psyplot.plotter.simpleplotter
+   psyplot.plotter.simple
 

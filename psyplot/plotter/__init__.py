@@ -9,9 +9,9 @@ Important plotters are
 
 .. autosummary::
 
-    simpleplotter.SimplePlotter
-    simpleplotter.Simple2DPlotter
-    simpleplotter.SimpleVectorPlotter
+    simple.LinePlotter
+    simple.Simple2DPlotter
+    simple.SimpleVectorPlotter
     maps.FieldPlotter
     maps.VectorPlotter
     maps.CombinedPlotter"""
@@ -19,27 +19,30 @@ Important plotters are
 import six
 from abc import ABCMeta, abstractmethod
 from textwrap import TextWrapper
+import logging
 from itertools import chain, groupby, tee, repeat, starmap
 from collections import defaultdict
-from difflib import get_close_matches
 from threading import RLock
 from datetime import datetime, timedelta
 from numpy import datetime64, timedelta64, ndarray
-from xray.core.formatting import format_timestamp, format_timedelta
+from xarray.core.formatting import format_timestamp, format_timedelta
 from .. import rcParams
 from ..warning import warn, critical, PsyPlotRuntimeWarning
-from ..compat.pycompat import map, filter, filterfalse, zip, range
+from ..compat.pycompat import map, filter, zip, range
 from ..config.rcsetup import defaultParams, SubDict
 from ..docstring import docstrings, dedent
-from ..data import InteractiveList
+from ..data import (
+    InteractiveList, _TempBool, _no_auto_update_getter, check_key,
+    unique_everseen)
 
 
 #: if True, include the link in the formatoption table of the
-#: :attr:`Plotter.keys` method (i.e. print ":attr:`~psyplot.plotter.maps.title`"
-#: instead of "title" in the output string). This is set to True when the doc
-#: is built to make the formatoptions in the plotting methods of the
-#: :class:`syplot.project.ProjectPlotter` class link to the right formatoption
-#: Otherwise it is set to False because it would be an overkill
+#: :attr:`Plotter.keys` method (i.e. print
+#: ":attr:`~psyplot.plotter.maps.title`" instead of "title" in the output
+#: string). This is set to True when the doc is built to make the formatoptions
+#: in the plotting methods of the :class:`syplot.project.ProjectPlotter` class
+#: link to the right formatoption. Otherwise it is set to False because it
+#: would be an overkill
 _fmt_links = False
 
 
@@ -66,8 +69,8 @@ def format_time(x):
 
     This function formats :class:`datetime.datetime` and
     :class:`datetime.timedelta` objects (and the corresponding numpy objects)
-    using the :func:`xray.core.formatting.format_timestamp` and the
-    :func:`xray.core.formatting.format_timedelta` functions.
+    using the :func:`xarray.core.formatting.format_timestamp` and the
+    :func:`xarray.core.formatting.format_timedelta` functions.
 
     Parameters
     ----------
@@ -94,7 +97,7 @@ def is_data_dependent(fmto, data):
     ----------
     fmto: Formatoption
         The :class:`Formatoption` instance to check
-    data: xray.DataArray
+    data: xarray.DataArray
         The data array to use if the :attr:`~Formatoption.data_dependent`
         attribute is a callable
 
@@ -105,97 +108,6 @@ def is_data_dependent(fmto, data):
     if callable(fmto.data_dependent):
         return fmto.data_dependent(data)
     return fmto.data_dependent
-
-
-@docstrings.get_sectionsf('check_key', sections=['Parameters', 'Returns',
-                                                 'Raises'])
-@dedent
-def check_key(key, possible_keys, raise_error=True,
-              name='formatoption keyword', *args, **kwargs):
-    """
-    Checks whether the key is in a list of possible keys
-
-    This function checks whether the given `key` is in `possible_keys` and if
-    not looks for similar sounding keys
-
-    Parameters
-    ----------
-    key: str
-        Key to check
-    possible_keys: list of strings
-        a list of possible keys to use
-    raise_error: bool
-        If not True, a list of similar keys is returned
-    name: str
-        The name of the key that shall be used in the error message
-    ``*args`` and ``**kwargs``
-        They are passed to the :func:`difflib.get_close_matches` function
-        (i.e. `n` to increase the number of returned similar keys and
-        `cutoff` to change the sensibility)
-
-    Returns
-    -------
-    str
-        The `key` if it is a valid string, else an empty string
-    list
-        A list of similar formatoption strings (if found)
-    str
-        An error message which includes
-
-    Raises
-    ------
-    KeyError
-        If the key is not a valid formatoption and `raise_error` is True"""
-    if key not in possible_keys:
-        similarkeys = get_close_matches(key, possible_keys, *args, **kwargs)
-        if similarkeys:
-            msg = ('Unknown %s %s! Possible similiar '
-                   'frasings are %s.') % (name, key, ', '.join(similarkeys))
-        else:
-            msg = ("Unknown %s %s! See show_fmtkeys "
-                   "function for possible formatopion keywords") % (name, key)
-        if not raise_error:
-            return '', similarkeys, msg
-        raise KeyError(msg)
-    else:
-        return key, [key], ''
-
-
-class _TempBool(object):
-    """Wrapper around a boolean defining an __enter__ and __exit__ method
-
-    Parameters
-    ----------
-    value: bool
-        value of the object"""
-
-    #: default boolean value for the :attr:`value` attribute
-    default = False
-
-    #: boolean value indicating whether there shall be a validation or not
-    value = False
-
-    def __init__(self, default=False):
-        """
-        Parameters
-        ----------
-        default: bool
-            value of the object"""
-        self.default = default
-        self.value = default
-
-    def __enter__(self):
-        self.value = not self.default
-
-    def __exit__(self, type, value, tb):
-        self.value = self.default
-
-    if six.PY2:
-        def __nonzero__(self):
-            return self.value
-    else:
-        def __bool__(self):
-            return self.value
 
 
 def _child_property(childname):
@@ -361,6 +273,15 @@ class Formatoption(object):
             return self.plotter.data
 
     @property
+    def decoder(self):
+        """The :class:`~psyplot.data.CFDecoder` instance that decodes the
+        :attr:`raw_data`"""
+        data = self.raw_data
+        if isinstance(data, InteractiveList):
+            return data[0].decoder
+        return data.decoder
+
+    @property
     def data(self):
         """The :class:`psyplot.DataArray` that is plotted"""
         if self.index_in_list is not None and isinstance(
@@ -481,15 +402,15 @@ class Formatoption(object):
         self._child_mapping.update(kwargs)
         # reset the dependency lists to match the current plotter setup
         for attr in ['children', 'dependencies', 'connections', 'parents']:
-            setattr(self, attr, list(map(lambda key: self._child_mapping[key],
-                                         getattr(self, attr))))
+            setattr(self, attr,
+                    [self._child_mapping[key] for key in getattr(self, attr)])
 
     def __set__(self, instance, value):
         if isinstance(value, Formatoption):
             setattr(instance, '_' + self.key, value)
-            return
-        fmto = getattr(instance, self.key)
-        fmto.set_value(value)
+        else:
+            fmto = getattr(instance, self.key)
+            fmto.set_value(value)
 
     def __get__(self, instance, owner):
         if instance is None:
@@ -530,9 +451,9 @@ class Formatoption(object):
                     self.validate(value)
             except ValueError:
                 self.logger.error("Error while setting %s!" % self.key,
-                                          exc_info=True)
+                                  exc_info=True)
 
-    def check_and_set(self, value, todefault=False):
+    def check_and_set(self, value, todefault=False, validate=True):
         """Checks the value and sets the value if it changed
 
         This method checks the value and sets it only if the :meth:`diff`
@@ -549,7 +470,8 @@ class Formatoption(object):
         -------
         bool
             A boolean to indicate whether it has been set or not"""
-        value = self.validate(value)
+        if validate:
+            value = self.validate(value)
         if self.diff(value):
             self.set_value(value, validate=False, todefault=todefault)
             return True
@@ -570,14 +492,14 @@ class Formatoption(object):
             True if the value differs from what is currently set"""
         return value != self.value
 
-    def initialize_plot(self, value):
+    def initialize_plot(self, value, *args, **kwargs):
         """Method that is called when the plot is made the first time
 
         Parameters
         ----------
         value
             The value to use for the initialization"""
-        self.update(value)
+        self.update(value, *args, **kwargs)
 
     @abstractmethod
     def update(self, value):
@@ -600,6 +522,7 @@ class Formatoption(object):
             Any other keyword argument that shall be passed to the update
             method of `fmto`"""
         # lock all  the childrens and the formatoption itself
+        self.lock.acquire()
         fmto._lock_children()
         fmto.lock.acquire()
         # update the other plotter
@@ -611,6 +534,7 @@ class Formatoption(object):
         # release the locks
         fmto.lock.release()
         fmto._release_children()
+        self.lock.release()
 
     def _lock_children(self):
         """acquire the locks of the children"""
@@ -687,8 +611,8 @@ class DictFormatoption(Formatoption):
 class Plotter(dict):
     """Interactive plotting object for one or more data arrays
 
-    This class is the base for the interactive plotting with the psyplot module.
-    It capabilities are determined by it's descriptor classes that are
+    This class is the base for the interactive plotting with the psyplot
+    module. It capabilities are determined by it's descriptor classes that are
     derived from the :class:`Formatoption` class"""
 
     #: List of base strings in the :attr:`psyplot.rcParams` dictionary
@@ -727,7 +651,7 @@ class Plotter(dict):
         if self._ax is None:
             import matplotlib.pyplot as plt
             plt.figure()
-            self._ax = plt.axes()
+            self._ax = plt.axes(projection=self._get_sample_projection())
         return self._ax
 
     @ax.setter
@@ -764,14 +688,19 @@ class Plotter(dict):
             return self.data.base_variables
 
     @property
-    def auto_update(self):
-        """:class:`bool`. Boolean controlling whether the :meth:`start_update`
-        method is automatically called by the :meth:`update` method"""
-        return self._auto_update
+    def iter_base_variables(self):
+        """A mapping from the base_variable names to the variables"""
+        if isinstance(self.data, InteractiveList):
+            return chain(*(arr.iter_base_variables for arr in self.data))
+        else:
+            return self.data.iter_base_variables
 
-    @auto_update.setter
-    def auto_update(self, value):
-        self._auto_update = value
+    no_auto_update = property(_no_auto_update_getter,
+                              doc=_no_auto_update_getter.__doc__)
+
+    @no_auto_update.setter
+    def no_auto_update(self, value):
+        self.no_auto_update.value = bool(value)
 
     @property
     def changed(self):
@@ -820,6 +749,11 @@ class Plotter(dict):
         return dict(ret)
 
     @property
+    def groups(self):
+        """A mapping from the group short name to the group description"""
+        return {group: groups[group] for group in self.fmt_groups}
+
+    @property
     def data(self):
         """The :class:`psyplot.InteractiveBase` instance of this plotter"""
         return self._data
@@ -827,7 +761,6 @@ class Plotter(dict):
     @data.setter
     def data(self, value):
         self._data = value
-        self.set_logger(force=True)
 
     @property
     def plot_data(self):
@@ -836,17 +769,29 @@ class Plotter(dict):
 
     @plot_data.setter
     def plot_data(self, value):
+        self._set_data(value)
+
+    def _set_data(self, value):
         if isinstance(value, InteractiveList):
             self._plot_data = value.copy()
         else:
             self._plot_data = value
+
+    @property
+    def logger(self):
+        """:class:`logging.Logger` of this plotter"""
+        try:
+            return self.data.logger.getChild(self.__class__.__name__)
+        except AttributeError:
+            name = '%s.%s' % (self.__module__, self.__class__.__name__)
+            return logging.getLogger(name)
 
     docstrings.keep_params('InteractiveBase.parameters', 'auto_update')
 
     @docstrings.get_sectionsf('Plotter')
     @docstrings.dedent
     def __init__(self, data=None, ax=None, auto_update=None, project=None,
-                 draw=True, make_plot=True, clear=False, **kwargs):
+                 draw=None, make_plot=True, clear=False, **kwargs):
         """
         Parameters
         ----------
@@ -872,7 +817,7 @@ class Plotter(dict):
         self.data = data
         if auto_update is None:
             auto_update = rcParams['lists.auto_update']
-        self.auto_update = auto_update
+        self.auto_update = not bool(auto_update)
         self._registered_updates = {}
         self._todefault = False
         self._old_fmt = []
@@ -894,7 +839,9 @@ class Plotter(dict):
         self._force = set()
         self.replot = True
         self.cleared = clear
-        self._updating = True
+        self._updating = False
+        # will be set to True when the plot is first initialized
+        self._initialized = False
 
         # first we initialize all keys with None. This is necessary in order
         # to make the validation functioning
@@ -966,12 +913,11 @@ class Plotter(dict):
             key, possible_keys=list(self), raise_error=raise_error,
             name='formatoption keyword', *args, **kwargs)
 
-
     docstrings.keep_params('Plotter.parameters', 'ax', 'make_plot', 'clear')
 
     @docstrings.dedent
     def initialize_plot(self, data=None, ax=None, make_plot=True, clear=False,
-                        draw=True, remove=False):
+                        draw=None, remove=False):
         """
         Initialize the plot for a data array
 
@@ -996,7 +942,8 @@ class Plotter(dict):
         self.ax = ax
         if data is None:  # nothing to do if no data is given
             return
-        self.auto_update = self.auto_update or data.auto_update
+        self.no_auto_update = not (
+            not self.no_auto_update or not data.no_auto_update)
         data.plotter = self
         if not make_plot:  # stop here if we shall not plot
             return
@@ -1004,20 +951,32 @@ class Plotter(dict):
         if remove:
             self.logger.debug("    Removing old formatoptions...")
             for fmto in self._fmtos:
-                fmto.remove()
+                try:
+                    fmto.remove()
+                except:
+                    self.logger.debug(
+                        "Could not remove %s while initializing", fmto.key,
+                        exc_info=True)
         if clear:
             self.logger.debug("    Clearing axes...")
             self.ax.clear()
         fmto_groups = self._grouped_fmtos(self._sorted_by_priority(
             list(self._fmtos)))
         self.plot_data = self.data
+        self._updating = True
         for priority, grouper in fmto_groups:
             self._plot_by_priority(priority, grouper, initializing=True)
         self.cleared = False
         self.replot = False
+        self._initialized = True
+        self._updating = False
 
+        if draw is None:
+            draw = rcParams['auto_draw']
         if draw:
             self.draw()
+            if rcParams['auto_show']:
+                self.show()
 
     docstrings.keep_params('InteractiveBase._register_update.parameters',
                            'force', 'todefault')
@@ -1051,15 +1010,15 @@ class Plotter(dict):
         self._registered_updates.update(fmt)
 
     @docstrings.dedent
-    def start_update(self, draw=True, queues=None, queue2=None,
+    def start_update(self, draw=None, queues=None, queue2=None,
                      update_shared=True):
         """
         Conduct the registered plot updates
 
         This method starts the updates from what has been registered by the
         :meth:`update` method. You can call this method if you did not set the
-        `auto_update` parameter when calling the :meth:`update` method and when
-        the :attr:`auto_update` attribute is False.
+        `auto_update` parameter to True when calling the :meth:`update` method
+        and when the :attr:`no_auto_update` attribute is True.
 
         Parameters
         ----------
@@ -1071,7 +1030,21 @@ class Plotter(dict):
 
         See Also
         --------
-        :attr:`auto_update`, update"""
+        :attr:`no_auto_update`, update"""
+        def update_the_others():
+            for fmto in fmtos:
+                for other_fmto in fmto.shared:
+                    if not other_fmto.plotter._updating:
+                        other_fmto.plotter._register_update(
+                            force=[other_fmto.key])
+            for fmto in fmtos:
+                for other_fmto in fmto.shared:
+                    if not other_fmto.plotter._updating:
+                        other_draw = other_fmto.plotter.start_update(
+                            draw=False, update_shared=False)
+                        if other_draw:
+                            self._figs2draw.add(
+                                other_fmto.plotter.ax.get_figure())
         if self.disabled:
             return False
 
@@ -1112,6 +1085,7 @@ class Plotter(dict):
         # we reinitialize the plot
         if self.cleared:
             self.reinit(draw=draw)
+            update_the_others()
             self._release_all(queue=None if queues is None else queues[1])
             return True
         # otherwise we update it
@@ -1119,20 +1093,13 @@ class Plotter(dict):
         for priority, grouper in fmto_groups:
             arr_draw = True
             self._plot_by_priority(priority, grouper)
-        for fmto in fmtos:
-            for other_fmto in fmto.shared:
-                if not other_fmto.plotter._updating:
-                    other_fmto.plotter._register_update(force=[other_fmto.key])
-        for fmto in fmtos:
-            for other_fmto in fmto.shared:
-                if not other_fmto.plotter._updating:
-                    other_draw = other_fmto.plotter.start_update(
-                        draw=False, update_shared=False)
-                    if other_draw:
-                        self._figs2draw.add(
-                            other_fmto.plotter.ax.get_figure())
+        update_the_others()
+        if draw is None:
+            draw = rcParams['auto_draw']
         if draw and arr_draw:
             self.draw()
+            if rcParams['auto_show']:
+                self.show()
         self.replot = False
         # make sure that all locks are released
         self._release_all(True, queue=None if queues is None else queues[1])
@@ -1193,7 +1160,7 @@ class Plotter(dict):
         self._initializing = False
 
     @docstrings.dedent
-    def reinit(self, draw=True):
+    def reinit(self, draw=None, clear=False):
         """
         Reinitializes the plot with the same data and on the same axes.
 
@@ -1208,7 +1175,7 @@ class Plotter(dict):
         # False if any fmto has requires_clearing attribute set to True,
         # because this then has been cleared before
         self.initialize_plot(
-            self.data, self.ax, draw=draw, clear=not any(
+            self.data, self._ax, draw=draw, clear=clear or not any(
                 fmto.requires_clearing for fmto in self._fmtos),
             remove=True)
 
@@ -1252,17 +1219,21 @@ class Plotter(dict):
                 continue
             seen.add(key)
             fmto = getattr(self, key)
-            # if the key is shared, a warning will be printed later
+            # if the key is shared, a warning will be printed as long as
+            # this plotter is not also updating (for example due to a whole
+            # project update)
             if key in self._shared and key not in self._force:
-                warn(("%s formatoption is shared with another plotter."
-                      " Use the unshare method to enable the updating") % (
-                          fmto.key),
-                     logger=self.logger)
+                if not self._shared[key].plotter._updating:
+                    warn(("%s formatoption is shared with another plotter."
+                          " Use the unshare method to enable the updating") % (
+                              fmto.key),
+                         logger=self.logger)
                 changed = False
             else:
                 try:
                     changed = fmto.check_and_set(
-                        value, todefault=self._todefault)
+                        value, todefault=self._todefault,
+                        validate=not self.no_validation)
                 except:
                     self._registered_updates.pop(key, None)
                     raise
@@ -1428,7 +1399,7 @@ class Plotter(dict):
         return unique_everseen(chain(fmtos, *map(base_fmtos, cls.__mro__)))
 
     docstrings.keep_types('check_key.parameters', 'kwargs',
-                          '``\*args`` and ``\*\*kwargs``')
+                          '``\*args,\*\*kwargs``')
 
     @classmethod
     @docstrings.get_sectionsf('Plotter._enhance_keys')
@@ -1526,9 +1497,8 @@ class Plotter(dict):
                 grouped_keys[fmto.groupname].append(fmto.key)
             text = ""
             for group, keys in six.iteritems(grouped_keys):
-
                 text += titled_group(group) + cls.show_keys(
-                    keys, indent=indent, grouped=False, print_fmts=False) + \
+                    keys, indent=indent, grouped=False, func=six.text_type) + \
                         '\n\n'
             return func(text.rstrip())
         if not keys:
@@ -1690,15 +1660,15 @@ class Plotter(dict):
     docstrings.keep_params('InteractiveBase.update.parameters', 'auto_update')
 
     @docstrings.dedent
-    def update(self, fmt={}, replot=False, auto_update=False, draw=True,
+    def update(self, fmt={}, replot=False, auto_update=False, draw=None,
                force=False, todefault=False, **kwargs):
         """
         Update the formatoptions and the plot
 
         If the :attr:`data` attribute of this plotter is None, the plotter is
         updated like a usual dictionary (see :meth:`dict.update`). Otherwise
-        the update is registered and performed if `auto_update` is True or if
-        the :meth:`start_update` method is called (see below).
+        the update is registered and the plot is updated if `auto_update` is
+        True or if the :meth:`start_update` method is called (see below).
 
         Parameters
         ----------
@@ -1719,13 +1689,14 @@ class Plotter(dict):
             fmt.update(kwargs)
         # if the data is None, update like a usual dictionary (but with
         # validation)
-        if self.data is None:
+        if not self._initialized:
             for key, val in six.iteritems(fmt):
                 self[key] = val
+            return
 
         self._register_update(fmt=fmt, replot=replot, force=force,
                               todefault=todefault)
-        if self.auto_update or auto_update:
+        if not self.no_auto_update or auto_update:
             self.start_update(draw=draw)
 
     def _set_sharing_keys(self, keys):
@@ -1753,8 +1724,9 @@ class Plotter(dict):
         keys.difference_update(fmto_groups)
         return keys
 
+    @docstrings.get_sectionsf('Plotter.share')
     @docstrings.dedent
-    def share(self, plotters, keys=None, draw=True, auto_update=False):
+    def share(self, plotters, keys=None, draw=None, auto_update=False):
         """
         Share the formatoptions of this plotter with others
 
@@ -1777,16 +1749,22 @@ class Plotter(dict):
         See Also
         --------
         unshare, unshare_me"""
-        auto_update = auto_update or self.auto_update
+        auto_update = auto_update or not self.no_auto_update
         if isinstance(plotters, Plotter):
             plotters = [plotters]
         keys = self._set_sharing_keys(keys)
         for plotter in plotters:
             for key in keys:
-                plotter._shared[key] = getattr(self, key)
-                getattr(self, key).shared.add(getattr(plotter, key))
-        self.update(force=keys, auto_update=auto_update, draw=draw)
+                fmto = self._shared.get(key, getattr(self, key))
+                if not getattr(plotter, key) == fmto:
+                    plotter._shared[key] = getattr(self, key)
+                    fmto.shared.add(getattr(plotter, key))
+        # now exit if we are not initialized
+        if self._initialized:
+            self.update(force=keys, auto_update=auto_update, draw=draw)
         for plotter in plotters:
+            if not plotter._initialized:
+                continue
             old_registered = plotter._registered_updates.copy()
             plotter._registered_updates.clear()
             try:
@@ -1796,11 +1774,17 @@ class Plotter(dict):
             finally:
                 plotter._registered_updates.clear()
                 plotter._registered_updates.update(old_registered)
+        if draw is None:
+            draw = rcParams['auto_draw']
         if draw:
             self.draw()
+            if rcParams['auto_show']:
+                self.show()
 
-    def unshare(self, plotters, keys=None, auto_update=False, draw=True):
-        """Close the sharing connection of this plotter with others
+    @docstrings.dedent
+    def unshare(self, plotters, keys=None, auto_update=False, draw=None):
+        """
+        Close the sharing connection of this plotter with others
 
         This method undoes the sharing connections made by the :meth:`share`
         method and releases the given `plotters` again, such that the
@@ -1822,6 +1806,7 @@ class Plotter(dict):
         See Also
         --------
         share, unshare_me"""
+        auto_update = auto_update or not self.no_auto_update
         if isinstance(plotters, Plotter):
             plotters = [plotters]
         keys = self._set_sharing_keys(keys)
@@ -1830,9 +1815,12 @@ class Plotter(dict):
                                update_other=False)
         self.update(force=keys, auto_update=auto_update, draw=draw)
 
-    def unshare_me(self, keys=None, auto_update=False, draw=True,
+    @docstrings.get_sectionsf('Plotter.unshare_me')
+    @docstrings.dedent
+    def unshare_me(self, keys=None, auto_update=False, draw=None,
                    update_other=True):
-        """Close the sharing connection of this plotter with others
+        """
+        Close the sharing connection of this plotter with others
 
         This method undoes the sharing connections made by the :meth:`share`
         method and release this plotter again.
@@ -1850,6 +1838,7 @@ class Plotter(dict):
         See Also
         --------
         share, unshare"""
+        auto_update = auto_update or not self.no_auto_update
         keys = self._set_sharing_keys(keys)
         to_update = []
         for key in keys:
@@ -1887,31 +1876,10 @@ class Plotter(dict):
         """Saves the current formatoptions"""
         self._old_fmt.append(self.changed)
 
-    @dedent
-    def set_logger(self, name=None, force=False):
-        """
-        Sets the logging.Logger instance of this plotter.
-
-        Parameters
-        ----------
-        name: str
-            name of the Logger. If None and the :attr:`data` attribute is not
-            None, it will be named like <module name>.<arr_name>.<class name>,
-            where <arr_name> is the name of the array in the :attr:`data`
-            attribute
-        force: Bool.
-            If False, do not set it if the instance has already a logger
-            attribute."""
-        import logging
-        if name is None:
-            try:
-                name = '%s.%s.%s' % (self.__module__, self.data.arr_name,
-                                     self.__class__.__name__)
-            except AttributeError:
-                name = '%s.%s' % (self.__module__, self.__class__.__name__)
-        if not hasattr(self, 'logger') or force:
-            self.logger = logging.getLogger(name)
-            self.logger.debug('Initializing...')
+    def show(self):
+        """Shows all open figures"""
+        import matplotlib.pyplot as plt
+        plt.show(block=False)
 
     @dedent
     def has_changed(self, key, include_last=True):
@@ -1996,23 +1964,3 @@ class Plotter(dict):
         """Returns None. May be subclassed to return a projection that
         can be used when creating a subplot"""
         pass
-
-
-def unique_everseen(iterable, key=None):
-    """List unique elements, preserving order. Remember all elements ever seen.
-
-    Function taken from https://docs.python.org/2/library/itertools.html"""
-    # unique_everseen('AAAABBBCCDAABBB') --> A B C D
-    # unique_everseen('ABBCcAD', str.lower) --> A B C D
-    seen = set()
-    seen_add = seen.add
-    if key is None:
-        for element in filterfalse(seen.__contains__, iterable):
-            seen_add(element)
-            yield element
-    else:
-        for element in iterable:
-            k = key(element)
-            if k not in seen:
-                seen_add(k)
-                yield element

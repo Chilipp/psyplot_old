@@ -414,8 +414,10 @@ class AutoSummDirective(AutoDirective, Autosummary):
             for mdocumenter, check_module in documenters:
                 if (mdocumenter.objtype == 'class' and
                         not (check_module and not mdocumenter.check_module())):
-                    summ_nodes.update(self.autosumm_nodes(
-                        mdocumenter, mdocumenter.get_grouped_documenters()))
+                    if hasattr(mdocumenter, 'get_grouped_documenters'):
+                        summ_nodes.update(self.autosumm_nodes(
+                            mdocumenter, mdocumenter.get_grouped_documenters())
+                            )
         summ_nodes[documenter.fullname] = this_nodes
         return summ_nodes
 

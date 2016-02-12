@@ -11,11 +11,11 @@ def readme():
 
 
 setup(name='psyplot',
-      version='0.0.2.dev1',
+      version='0.1.0',
       description='Python package for interactive data visualization',
       long_description=readme(),
       classifiers=[
-        'Development Status :: 2 - Pre-Alpha',
+        'Development Status :: 5 - Production/Stable',
         'Intended Audience :: Developers',
         'Topic :: Scientific/Engineering :: Visualization',
         'Topic :: Scientific/Engineering :: GIS',
@@ -37,7 +37,7 @@ setup(name='psyplot',
       packages=find_packages(exclude=['docs', 'tests*']),
       install_requires=[
           'matplotlib',
-          'xray>=0.6',
+          'xarray',
           'PyYAML'
       ],
       setup_requires=pytest_runner,

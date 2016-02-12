@@ -3,6 +3,7 @@ API Reference
 
 .. automodule:: psyplot
     :members:
+    :undoc-members:
     :show-inheritance:
 
 .. autosummary:: 

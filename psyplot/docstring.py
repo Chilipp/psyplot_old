@@ -57,15 +57,15 @@ def safe_modulo(s, meta, checked='', print_warning=True):
                     warn("%r is not a valid key!" % key)
                 full = m.group()
                 s = s.replace(full, '%' + full)
-        if checked != 'KEY':
-            return safe_modulo(s, meta, checked='KEY',
+        if 'KEY' not in checked:
+            return safe_modulo(s, meta, checked=checked + 'KEY',
                                print_warning=print_warning)
-        if not isinstance(meta, dict) or checked == 'VALUE':
+        if not isinstance(meta, dict) or 'VALUE' in checked:
             raise
         s = sub(r"""(?<!%)(%%)*%(?!%) # uneven number of %
                     \s*(\w|$)         # format strings""", '%\g<0>', s,
                 flags=VERBOSE)
-        return safe_modulo(s, meta, checked='VALUE',
+        return safe_modulo(s, meta, checked=checked + 'VALUE',
                            print_warning=print_warning)
 
 dedentf = dedent

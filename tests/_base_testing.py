@@ -4,12 +4,11 @@ import re
 import six
 from unittest import TestCase, main
 import matplotlib as mpl
-
+import numpy as np
 
 ref_dir = os.path.join(os.path.dirname(__file__), 'reference_figures',
-                       'py' + '.'.join(map(str, sys.version_info[:3])),
-                        'mpl' + mpl.__version__)
-
+                       'py' + '.'.join(map(str, sys.version_info[:2])),
+                       'mpl' + mpl.__version__.rsplit('.', 1)[0])
 
 odir = 'psyplot_testresults'
 
@@ -102,12 +101,13 @@ class PsyPlotTestCase(TestCase):
         -------
         str
             The basename of the reference file"""
-        if self.grid_type:
-            f = '_'.join(
-                ['test', self.plot_type, identifier, self.grid_type]) + '.png'
-        else:
-            f = '_'.join(['test', self.plot_type, identifier]) + '.png'
-        return f
+        identifiers = ['test']
+        if self.plot_type is not None:
+            identifiers.append(self.plot_type)
+        identifiers.append(identifier)
+        if self.grid_type is not None:
+            identifiers.append(self.grid_type)
+        return "_".join(identifiers) + '.png'
 
     def compare_figures(self, fname, tol=1, **kwargs):
         """Saves and compares the figure to the reference figure with the same
@@ -119,3 +119,33 @@ class PsyPlotTestCase(TestCase):
             os.path.join(ref_dir, fname), os.path.join(odir, fname),
             tol=tol)
         self.assertIsNone(results, msg=results)
+
+    def assertAlmostArrayEqual(self, actual, desired, rtol=1e-07, atol=0,
+                               msg=None, **kwargs):
+        """Asserts that the two given arrays are almost the same
+
+        This method uses the :func:`numpy.testing.assert_allclose` function
+        to compare the two given arrays.
+
+        Parameters
+        ----------
+        actual : array_like
+            Array obtained.
+        desired : array_like
+            Array desired.
+        rtol : float, optional
+            Relative tolerance.
+        atol : float, optional
+            Absolute tolerance.
+        equal_nan : bool, optional.
+            If True, NaNs will compare equal.
+        err_msg : str, optional
+            The error message to be printed in case of failure.
+        verbose : bool, optional
+            If True, the conflicting values are appended to the error message.
+        """
+        try:
+            np.testing.assert_allclose(actual, desired, rtol=rtol, atol=atol,
+                                       err_msg=msg or '', **kwargs)
+        except AssertionError as e:
+            self.fail(e.message)

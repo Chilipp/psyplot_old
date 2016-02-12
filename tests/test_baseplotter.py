@@ -1,23 +1,25 @@
-import os
+"""Test module of the :mod:`psyplot.plotter.baseplotter` module"""
 from itertools import chain
 import _base_testing as bt
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from xray import open_dataset
 import psyplot
 from psyplot.plotter.baseplotter import BasePlotter
-from psyplot import InteractiveList
+from psyplot import InteractiveList, open_dataset
 from psyplot.compat.mplcompat import bold
 
 
 class BasePlotterTest(bt.PsyPlotTestCase):
+    """Test :class:`psyplot.plotter.baseplotter.BasePlotter` class"""
+
+    var = 't2m'
 
     @classmethod
     def setUpClass(cls):
         cls.ds = open_dataset(cls.ncfile)
         cls.data = InteractiveList.from_dataset(
-            cls.ds, lat=[0, 1], lev=0, time=0, name='t2m', auto_update=True)
+            cls.ds, y=[0, 1], z=0, t=0, name=cls.var, auto_update=True)
         cls.plotter = BasePlotter(cls.data)
 
     @classmethod
@@ -30,26 +32,28 @@ class BasePlotterTest(bt.PsyPlotTestCase):
 
     @classmethod
     def tearDown(cls):
-        cls.data.update(time=0, todefault=True, replot=True)
+        cls.data.update(t=0, todefault=True, replot=True)
 
     def update(self, *args, **kwargs):
         """Update the plotter of this instance"""
         self.plotter.update(*args, **kwargs)
 
-    def _label_test(self, key, label_func):
+    def _label_test(self, key, label_func, has_time=True):
         kwargs = {
             key: "Test plot at %Y-%m-%d, {tinfo} o'clock of %(long_name)s"}
         self.update(**kwargs)
+        t_str = '1979-01-31, 18:00' if has_time else '%Y-%m-%d, %H:%M'
         self.assertEqual(
-            u"Test plot at 1979-01-31, 18:00 o'clock of %s" % (
-                self.data.attrs.get('long_name', 'Temperature')),
+            u"Test plot at %s o'clock of %s" % (
+                t_str, self.data.attrs.get('long_name', 'Temperature')),
             label_func().get_text())
-        self.data.update(time=1)
+        self.data.update(t=1)
+        t_str = '1979-02-28, 18:00' if has_time else '%Y-%m-%d, %H:%M'
         self.assertEqual(
-            u"Test plot at 1979-02-28, 18:00 o'clock of %s" % (
-                self.data.attrs.get('long_name', 'Temperature')),
+            u"Test plot at %s o'clock of %s" % (
+                t_str, self.data.attrs.get('long_name', 'Temperature')),
             label_func().get_text())
-        self.data.update(time=0)
+        self.data.update(t=0)
 
     def test_title(self):
         """Test title, titlesize, titleweight, titleprops formatoptions"""
@@ -96,7 +100,7 @@ class BasePlotterTest(bt.PsyPlotTestCase):
         self.assertTrue(text is not False)
         if not text:
             return
-        self.assertEqual(text.get_text(), getattr(self.data, 'name', 't2m'))
+        self.assertEqual(text.get_text(), getattr(self.data, 'name', self.var))
         self.assertEqual(text.get_fontsize(), 16)
 
     def test_maskgreater(self):
@@ -131,40 +135,21 @@ class BasePlotterTest(bt.PsyPlotTestCase):
             self.assertLessEqual(data[data < 251].max(), 250)
             self.assertGreaterEqual(data[data > 250].max(), 251)
 
-    def test_axiscolor(self):
-        """Test axiscolor formatoption"""
-        ax = self.plotter.ax
-        positions = ['top', 'right', 'left', 'bottom']
-        # test updating all to red
-        self.update(axiscolor='red')
-        self.assertEqual(['red']*4, list(self.plotter['axiscolor'].values()),
-                         "Edgecolors are not red but " + ', '.join(
-                         self.plotter['axiscolor'].values()))
-        # test updating all to the default setup
-        self.update(axiscolor=None)
-        for pos in positions:
-            error = "Edgecolor ({0}) is not the default color ({1})!".format(
-                ax.spines[pos].get_edgecolor(), mpl.rcParams['axes.edgecolor'])
-            self.assertEqual(mpl.colors.colorConverter.to_rgba(
-                                 mpl.rcParams['axes.edgecolor']),
-                             ax.spines[pos].get_edgecolor(), msg=error)
-            error = "Linewidth ({0}) is not the default width ({1})!".format(
-                ax.spines[pos].get_linewidth(), mpl.rcParams['axes.linewidth'])
-            self.assertEqual(mpl.rcParams['axes.linewidth'],
-                             ax.spines[pos].get_linewidth(), msg=error)
-        # test updating only one spine
-        self.update(axiscolor={'top': 'red'})
-        self.assertEqual((1., 0., 0., 1.0), ax.spines['top'].get_edgecolor(),
-                         msg="Axiscolor ({0}) has not been updated".format(
-                             ax.spines['top'].get_edgecolor()))
-        self.assertGreater(ax.spines['top'].get_linewidth(), 0.0,
-                           "Line width of axis is 0!")
-        for pos in positions[1:]:
-            error = "Edgecolor ({0}) is not the default color ({1})!".format(
-                ax.spines[pos].get_edgecolor(), mpl.rcParams['axes.edgecolor'])
-            self.assertEqual(mpl.colors.colorConverter.to_rgba(
-                                 mpl.rcParams['axes.edgecolor']),
-                             ax.spines[pos].get_edgecolor(), msg=error)
+
+class TestBase2D(object):
+    """Test :class:`psyplot.plotter.baseplotter.BasePlotter` class without time
+    and vertical dimension"""
+
+    def _label_test(self, key, label_func, has_time=False):
+        return super(TestBase2D, self)._label_test(
+            key, label_func, has_time=has_time)
+
+
+class BasePlotterTest2D(TestBase2D, BasePlotterTest):
+    """Test :class:`psyplot.plotter.baseplotter.BasePlotter` class without time
+    and vertical dimension"""
+
+    var = 't2m_2d'
 
 
 if __name__ == '__main__':

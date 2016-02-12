@@ -1,3 +1,4 @@
+"""Test module of the :mod:`psyplot.plotter.maps` module"""
 import os
 import re
 import unittest
@@ -12,10 +13,11 @@ from psyplot.plotter.maps import (
     FieldPlotter, VectorPlotter, rcParams, CombinedPlotter, InteractiveList)
 import test_baseplotter as tb
 import _base_testing as bt
-import test_simpleplotter as ts
+import test_simple as ts
 from psyplot import ArrayList, open_dataset
 import psyplot.project as syp
 from psyplot.compat.mplcompat import bold
+from psyplot.compat.pycompat import filter
 
 
 class MapReferences(object):
@@ -96,14 +98,14 @@ class FieldPlotterTest(tb.BasePlotterTest, ts.References2D, MapReferences):
     plot_type = 'map'
 
     def plot(self, **kwargs):
-        name = kwargs.pop('name', 't2m')
+        name = kwargs.pop('name', self.var)
         return syp.plot.mapplot(self.ncfile, name=name, **kwargs)
 
     @classmethod
     def setUpClass(cls):
         cls.ds = open_dataset(cls.ncfile)
         cls.data = ArrayList.from_dataset(
-            cls.ds, t=0, z=0, name='t2m', auto_update=True)[0]
+            cls.ds, t=0, z=0, name=cls.var, auto_update=True)[0]
         cls.plotter = FieldPlotter(cls.data)
         cls.create_dirs()
 
@@ -134,9 +136,11 @@ class FieldPlotterTest(tb.BasePlotterTest, ts.References2D, MapReferences):
         self.assertEqual(list(map(
             lambda t: float(t.get_text()), cbar.ax.get_xticklabels())), cticks)
         self.update(cticklabels='%3.1f')
-        cticks = np.round(cticks, decimals=1).tolist()
-        self.assertEqual(list(map(
-            lambda t: float(t.get_text()), cbar.ax.get_xticklabels())), cticks)
+        test_ticks = np.round(
+            list(map(lambda t: float(t.get_text()),
+                     cbar.ax.get_xticklabels())),
+            1).tolist()
+        self.assertAlmostArrayEqual(test_ticks, cticks, atol=0.1)
         self.update(cticksize=20, ctickweight='bold', ctickprops={
             'labelcolor': 'r'})
         texts = cbar.ax.get_xticklabels()
@@ -303,12 +307,14 @@ class VectorPlotterTest(FieldPlotterTest, ts.References2D, MapReferences):
 
     plot_type = 'mapvector'
 
+    var = ['u', 'v']
+
     def plot(self, **kwargs):
         color_fmts = syp.plot.mapvector.plotter_cls().fmt_groups['colors']
         fix_colorbar = not color_fmts.intersection(kwargs)
         kwargs.setdefault('color', 'absolute')
         kwargs.setdefault('lonlatbox', 'Europe')
-        sp = syp.plot.mapvector(self.ncfile, name=[['u', 'v']], **kwargs)
+        sp = syp.plot.mapvector(self.ncfile, name=[self.var], **kwargs)
         if fix_colorbar:
             # if we have no color formatoptions, we have to consider that
             # the position of the plot may have slighty changed
@@ -347,13 +353,12 @@ class VectorPlotterTest(FieldPlotterTest, ts.References2D, MapReferences):
         cls.ds = open_dataset(cls.ncfile)
         rcParams[VectorPlotter().lonlatbox.default_key] = 'Europe'
         cls.data = ArrayList.from_dataset(
-            cls.ds, t=0, z=0, name=[['u', 'v']], auto_update=True)[0]
+            cls.ds, t=0, z=0, name=[cls.var], auto_update=True)[0]
         cls.data.attrs['long_name'] = 'absolute wind speed'
         cls.data.name = 'wind'
         cls.plotter = VectorPlotter(cls.data)
         cls.create_dirs()
         cls._color_fmts = cls.plotter.fmt_groups['colors']
-
         # there is an issue with the colorbar that the size of the axes changes
         # slightly after replotting. Therefore we force a replot here
         cls.plotter.update(color='absolute')
@@ -444,7 +449,7 @@ class StreamVectorPlotterTest(VectorPlotterTest):
     @classmethod
     def setUpClass(cls):
         rcParams[VectorPlotter().plot.default_key] = 'stream'
-        return super(cls, cls).setUpClass()
+        return super(StreamVectorPlotterTest, cls).setUpClass()
 
     def get_ref_file(self, identifier):
         return super(StreamVectorPlotterTest, self).get_ref_file(
@@ -537,6 +542,8 @@ class CombinedPlotterTest(VectorPlotterTest):
 
     data = _CombinedPlotterData()
 
+    var = ['t2m', ['u', 'v']]
+
     @property
     def vector_mode(self):
         """:class:`bool` indicating whether a vector specific formatoption is
@@ -562,7 +569,7 @@ class CombinedPlotterTest(VectorPlotterTest):
         rcParams[CombinedPlotter().lonlatbox.default_key] = 'Europe'
         rcParams[CombinedPlotter().vcmap.default_key] = 'winter'
         cls._data = ArrayList.from_dataset(
-            cls.ds, t=0, z=0, name=[['t2m', ['u', 'v']]], auto_update=True,
+            cls.ds, t=0, z=0, name=[cls.var], auto_update=True,
             prefer_list=True)[0]
         cls._data.attrs['long_name'] = 'Temperature'
         cls._data.attrs['name'] = 't2m'
@@ -582,7 +589,7 @@ class CombinedPlotterTest(VectorPlotterTest):
         kwargs.setdefault('color', 'absolute')
         if self.vector_mode:
             kwargs = self._rename_fmts(kwargs)
-        sp = syp.plot.mapcombined(self.ncfile, name=[['t2m', ['u', 'v']]],
+        sp = syp.plot.mapcombined(self.ncfile, name=[self.var],
                                   **kwargs)
         if not self.vector_mode or fix_colorbar:
             # if we have no color formatoptions, we have to consider that
@@ -661,20 +668,22 @@ class CombinedPlotterTest(VectorPlotterTest):
     def ref_arrowsize(self, *args, **kwargs):
         pass
 
-    def _label_test(self, key, label_func):
+    def _label_test(self, key, label_func, has_time=True):
         kwargs = {
             key: "Test plot at %Y-%m-%d, {tinfo} o'clock of %(long_name)s"}
         self.update(**kwargs)
+        t_str = '1979-01-31, 18:00' if has_time else '%Y-%m-%d, %H:%M'
         self.assertEqual(
-            u"Test plot at 1979-01-31, 18:00 o'clock of %s" % (
-                self.data.attrs.get('long_name', 'Temperature')),
+            u"Test plot at %s o'clock of %s" % (
+                t_str, self.data.attrs.get('long_name', 'Temperature')),
             label_func().get_text())
-        self._data.update(time=1)
+        self._data.update(t=1)
+        t_str = '1979-02-28, 18:00' if has_time else '%Y-%m-%d, %H:%M'
         self.assertEqual(
-            u"Test plot at 1979-02-28, 18:00 o'clock of %s" % (
-                self.data.attrs.get('long_name', 'Temperature')),
+            u"Test plot at %s o'clock of %s" % (
+                t_str, self.data.attrs.get('long_name', 'Temperature')),
             label_func().get_text())
-        self._data.update(time=0)
+        self._data.update(t=0)
 
     def test_miss_color(self, *args, **kwargs):
         FieldPlotterTest.test_miss_color(self, *args, **kwargs)
@@ -741,6 +750,368 @@ class CombinedPlotterTest(VectorPlotterTest):
             self.assertEqual(label.get_ha(), 'left')
 
 
+class CircumpolarFieldPlotterTest(FieldPlotterTest):
+    """Test :class:`psyplot.plotter.maps.FieldPlotter` class for circumpolar
+    grid"""
+
+    grid_type = 'circumpolar'
+
+    ncfile = os.path.join(bt.test_dir, 'circumpolar_test.nc')
+
+    @classmethod
+    def setUpClass(cls):
+        rcParams['plotter.maps.projection'] = 'northpole'
+        rcParams['plotter.maps.clat'] = 90
+        super(CircumpolarFieldPlotterTest, cls).setUpClass()
+
+    def ref_map_grid(self, close=True):
+        """Create reference file for xgrid formatoption.
+
+        Create reference file for
+        :attr:`~psyplot.plotter.maps.FieldPlotter.xgrid` (and others)
+        formatoption"""
+        sp = self.plot()
+        sp.update(xgrid=False, ygrid=False)
+        sp.export(os.path.join(bt.ref_dir, self.get_ref_file('grid1')))
+        sp.update(xgrid='rounded', ygrid=['data', 1000])
+        sp.export(os.path.join(bt.ref_dir, self.get_ref_file('grid2')))
+        sp.update(xgrid=True, ygrid=True, grid_color='w')
+        sp.export(os.path.join(bt.ref_dir, self.get_ref_file('grid3')))
+        sp.update(xgrid=True, ygrid=True, grid_color='k', grid_settings={
+            'linestyle': 'dashed'})
+        sp.export(os.path.join(bt.ref_dir, self.get_ref_file('grid4')))
+        if close:
+            sp.close(True, True)
+
+    def test_bounds(self):
+        """Test bounds formatoption"""
+        self.assertEqual(
+            np.round(self.plotter.bounds.norm.boundaries, 2).tolist(),
+            np.linspace(240, 310, 11, endpoint=True).tolist())
+        self.update(bounds='minmax')
+        bounds = [240.33, 246.83, 253.34, 259.85, 266.35, 272.86, 279.36,
+                  285.87, 292.37, 298.88, 305.39]
+        self.assertEqual(
+            np.round(self.plotter.bounds.norm.boundaries, 2).tolist(), bounds)
+        self.update(bounds=['rounded', 5, 5, 95])
+        self.assertEqual(
+            np.round(self.plotter.bounds.norm.boundaries, 2).tolist(),
+            np.linspace(250, 300, 5, endpoint=True).tolist())
+
+    def test_grid(self, *args):
+        """Test xgrid, ygrid, grid_color, grid_labels, grid_settings fmts"""
+        self.update(xgrid=False, ygrid=False)
+        self.compare_figures(next(iter(args), self.get_ref_file('grid1')))
+        self.update(xgrid='rounded', ygrid=['data', 1000])
+        self.compare_figures(next(iter(args), self.get_ref_file('grid2')))
+        self.update(xgrid=True, ygrid=True, grid_color='w')
+        self.compare_figures(next(iter(args), self.get_ref_file('grid3')))
+        self.update(xgrid=True, ygrid=True, grid_color='k',
+                    grid_settings={'linestyle': 'dashed'})
+        self.compare_figures(next(iter(args), self.get_ref_file('grid4')))
+
+    def test_lonlatbox(self, *args):
+        """Test lonlatbox formatoption"""
+        def get_unmasked(coord):
+            """return the values of the coordinate that is not masked in the
+            data"""
+            return coord.values[~np.isnan(data.values)]
+        self.update(lonlatbox='Europe|India')
+        ax = self.plotter.ax
+        list(starmap(self.assertAlmostEqual, zip(
+            ax.get_extent(ccrs.PlateCarree()), (-55.6, 120.6,  -24.4, 85.9),
+            repeat(1), repeat("Failed to set the extent to Europe and India!"))
+            ))
+        # test whether latitudes and longitudes succeded
+        msg = "Failed to fit into lonlatbox limits for %s of %s."
+        if isinstance(self.plotter.plot_data, InteractiveList):
+            all_data = self.plotter.plot_data
+        else:
+            all_data = [self.plotter.plot_data]
+        for data in all_data:
+            self.assertGreaterEqual(get_unmasked(data.longitude).min(), -55.6,
+                                    msg=msg % ('longitude', 'minimum'))
+            self.assertLessEqual(get_unmasked(data.longitude).max(), 120.6,
+                                 msg=msg % ('longitude', 'maximum'))
+            self.assertGreaterEqual(get_unmasked(data.latitude).min(), -24.4,
+                                    msg=msg % ('latitude', 'minimum'))
+            self.assertLessEqual(get_unmasked(data.latitude).max(), 85.9,
+                                 msg=msg % ('latitude', 'maximum'))
+        self.compare_figures(next(iter(args), self.get_ref_file('lonlatbox')))
+
+    def test_map_extent(self, *args):
+        """Test map_extent formatoption"""
+        self.update(map_extent='Europe|India')
+        self.compare_figures(next(iter(args), self.get_ref_file('map_extent')))
+
+    @unittest.skip('Not implemented for circumpolar grids')
+    def ref_datagrid(self):
+        pass
+
+    @unittest.skip('Not implemented for circumpolar grids')
+    def test_datagrid(self):
+        pass
+
+
+class CircumpolarVectorPlotterTest(VectorPlotterTest):
+    """Test :class:`psyplot.plotter.maps.VectorPlotter` class for circumpolar
+    grid"""
+
+    grid_type = 'circumpolar'
+
+    ncfile = os.path.join(bt.test_dir, 'circumpolar_test.nc')
+
+    @classmethod
+    def setUpClass(cls):
+        rcParams['plotter.maps.projection'] = 'northpole'
+        rcParams['plotter.maps.clat'] = 90
+        rcParams['plotter.vector.arrowsize'] = 200
+        rcParams['plotter.maps.lonlatbox'] = 'Europe'
+        super(CircumpolarVectorPlotterTest, cls).setUpClass()
+
+    def ref_map_grid(self, close=True):
+        """Create reference file for xgrid formatoption.
+
+        Create reference file for
+        :attr:`~psyplot.plotter.maps.FieldPlotter.xgrid` (and others)
+        formatoption"""
+        sp = self.plot()
+        sp.update(xgrid=False, ygrid=False)
+        sp.export(os.path.join(bt.ref_dir, self.get_ref_file('grid1')))
+        sp.update(xgrid='rounded', ygrid=['data', 1000])
+        sp.export(os.path.join(bt.ref_dir, self.get_ref_file('grid2')))
+        sp.update(xgrid=True, ygrid=True, grid_color='w')
+        sp.export(os.path.join(bt.ref_dir, self.get_ref_file('grid3')))
+        sp.update(xgrid=True, ygrid=True, grid_color='k', grid_settings={
+            'linestyle': 'dashed'})
+        sp.export(os.path.join(bt.ref_dir, self.get_ref_file('grid4')))
+        if close:
+            sp.close(True, True)
+
+    def test_bounds(self):
+        """Test bounds formatoption"""
+        self.update(color='absolute')
+        self.assertEqual(
+            np.round(self.plotter.bounds.norm.boundaries, 2).tolist(),
+            np.linspace(0, 15, 11, endpoint=True).tolist())
+        self.update(bounds='minmax')
+        bounds = [0.18, 1.32, 2.46, 3.61, 4.75, 5.89, 7.03, 8.17, 9.31, 10.45,
+                  11.59]
+        self.assertEqual(
+            np.round(self.plotter.bounds.norm.boundaries, 2).tolist(), bounds)
+        self.update(bounds=['rounded', 5, 5, 95])
+        self.assertEqual(
+            np.round(self.plotter.bounds.norm.boundaries, 2).tolist(),
+            np.round(np.linspace(1.0, 9.5, 5, endpoint=True), 2).tolist())
+
+    def test_grid(self, *args):
+        """Test xgrid, ygrid, grid_color, grid_labels, grid_settings fmts"""
+        self.update(xgrid=False, ygrid=False)
+        self.compare_figures(next(iter(args), self.get_ref_file('grid1')))
+        self.update(xgrid='rounded', ygrid=['data', 1000])
+        self.compare_figures(next(iter(args), self.get_ref_file('grid2')))
+        self.update(xgrid=True, ygrid=True, grid_color='w')
+        self.compare_figures(next(iter(args), self.get_ref_file('grid3')))
+        self.update(xgrid=True, ygrid=True, grid_color='k',
+                    grid_settings={'linestyle': 'dashed'})
+        self.compare_figures(next(iter(args), self.get_ref_file('grid4')))
+
+    def test_lonlatbox(self, *args):
+        """Test lonlatbox formatoption"""
+        def get_unmasked(coord):
+            """return the values of the coordinate that is not masked in the
+            data"""
+            return coord.values[~np.isnan(data[0].values)]
+        self.update(lonlatbox='Europe|India')
+        ax = self.plotter.ax
+        list(starmap(self.assertAlmostEqual, zip(
+            ax.get_extent(ccrs.PlateCarree()), (-55.6, 120.6,  -24.4, 85.9),
+            repeat(1), repeat("Failed to set the extent to Europe and India!"))
+            ))
+        # test whether latitudes and longitudes succeded
+        msg = "Failed to fit into lonlatbox limits for %s of %s."
+        if isinstance(self.plotter.plot_data, InteractiveList):
+            all_data = self.plotter.plot_data
+        else:
+            all_data = [self.plotter.plot_data]
+        for data in all_data:
+            self.assertGreaterEqual(get_unmasked(data.longitude).min(), -55.6,
+                                    msg=msg % ('longitude', 'minimum'))
+            self.assertLessEqual(get_unmasked(data.longitude).max(), 120.6,
+                                 msg=msg % ('longitude', 'maximum'))
+            self.assertGreaterEqual(get_unmasked(data.latitude).min(), -24.4,
+                                    msg=msg % ('latitude', 'minimum'))
+            self.assertLessEqual(get_unmasked(data.latitude).max(), 85.9,
+                                 msg=msg % ('latitude', 'maximum'))
+        self.compare_figures(next(iter(args), self.get_ref_file('lonlatbox')))
+
+    def test_map_extent(self, *args):
+        """Test map_extent formatoption"""
+        self.update(map_extent='Europe|India')
+        self.compare_figures(next(iter(args), self.get_ref_file('map_extent')))
+
+    @unittest.skip('Not implemented for circumpolar grids')
+    def ref_datagrid(self):
+        pass
+
+    @unittest.skip('Not implemented for circumpolar grids')
+    def test_datagrid(self):
+        pass
+
+    @unittest.skip('Not implemented for circumpolar grids')
+    def test_density(self):
+        pass
+
+    @unittest.skip('Not implemented for circumpolar grids')
+    def ref_density(self):
+        pass
+
+
+class CircumpolarCombinedPlotterTest(CombinedPlotterTest):
+    """Test :class:`psyplot.plotter.maps.CombinedPlotter` class for circumpolar
+    grid"""
+
+    grid_type = 'circumpolar'
+
+    ncfile = os.path.join(bt.test_dir, 'circumpolar_test.nc')
+
+    @classmethod
+    def setUpClass(cls):
+        rcParams['plotter.maps.projection'] = 'northpole'
+        rcParams['plotter.maps.clat'] = 90
+        rcParams['plotter.vector.arrowsize'] = 200
+        rcParams['plotter.maps.lonlatbox'] = 'Europe'
+        super(CircumpolarCombinedPlotterTest, cls).setUpClass()
+
+    def ref_map_grid(self, close=True):
+        """Create reference file for xgrid formatoption.
+
+        Create reference file for
+        :attr:`~psyplot.plotter.maps.FieldPlotter.xgrid` (and others)
+        formatoption"""
+        sp = self.plot()
+        sp.update(xgrid=False, ygrid=False)
+        sp.export(os.path.join(bt.ref_dir, self.get_ref_file('grid1')))
+        sp.update(xgrid='rounded', ygrid=['data', 1000])
+        sp.export(os.path.join(bt.ref_dir, self.get_ref_file('grid2')))
+        sp.update(xgrid=True, ygrid=True, grid_color='w')
+        sp.export(os.path.join(bt.ref_dir, self.get_ref_file('grid3')))
+        sp.update(xgrid=True, ygrid=True, grid_color='k', grid_settings={
+            'linestyle': 'dashed'})
+        sp.export(os.path.join(bt.ref_dir, self.get_ref_file('grid4')))
+        if close:
+            sp.close(True, True)
+
+    def test_bounds(self):
+        """Test bounds formatoption"""
+        # test bounds of scalar field
+        self.assertEqual(
+            np.round(self.plotter.bounds.norm.boundaries, 2).tolist(),
+            np.linspace(245, 290, 11, endpoint=True).tolist())
+        self.update(bounds='minmax')
+        bounds = [249.35, 253.42, 257.48, 261.54, 265.6, 269.67, 273.73,
+                  277.79, 281.85, 285.91, 289.98]
+        self.assertEqual(
+            np.round(self.plotter.bounds.norm.boundaries, 2).tolist(), bounds)
+        self.update(bounds=['rounded', 5, 5, 95])
+        self.assertEqual(
+            np.round(self.plotter.bounds.norm.boundaries, 2).tolist(),
+            np.linspace(255, 290, 5, endpoint=True).tolist())
+
+        # test vector bounds
+        self.update(color='absolute')
+        self.assertEqual(
+            np.round(self.plotter.vbounds.norm.boundaries, 2).tolist(),
+            np.linspace(0, 15, 11, endpoint=True).tolist())
+        self.update(vbounds='minmax')
+        bounds = [0.18, 1.32, 2.46, 3.61, 4.75, 5.89, 7.03, 8.17, 9.31, 10.45,
+                  11.59]
+        self.assertEqual(
+            np.round(self.plotter.vbounds.norm.boundaries, 2).tolist(), bounds)
+        self.update(vbounds=['rounded', 5, 5, 95])
+        self.assertEqual(
+            np.round(self.plotter.vbounds.norm.boundaries, 2).tolist(),
+            np.round(np.linspace(1.0, 9.5, 5, endpoint=True), 2).tolist())
+
+    @property
+    def _minmax_cticks(self):
+        if not self.vector_mode:
+            arr = self.plotter.plot_data[0].values
+            arr = arr[~np.isnan(arr)]
+            return np.round(
+                np.linspace(arr.min(), arr.max(), 11, endpoint=True),
+                decimals=2).tolist()
+        arr = self.plotter.plot_data[1].values
+        speed = (arr[0]**2 + arr[1]**2) ** 0.5
+        speed = speed[~np.isnan(speed)]
+        return np.round(
+            np.linspace(speed.min(), speed.max(), 11, endpoint=True),
+            decimals=2).tolist()
+
+    def test_grid(self, *args):
+        """Test xgrid, ygrid, grid_color, grid_labels, grid_settings fmts"""
+        self.update(xgrid=False, ygrid=False)
+        self.compare_figures(next(iter(args), self.get_ref_file('grid1')))
+        self.update(xgrid='rounded', ygrid=['data', 1000])
+        self.compare_figures(next(iter(args), self.get_ref_file('grid2')))
+        self.update(xgrid=True, ygrid=True, grid_color='w')
+        self.compare_figures(next(iter(args), self.get_ref_file('grid3')))
+        self.update(xgrid=True, ygrid=True, grid_color='k',
+                    grid_settings={'linestyle': 'dashed'})
+        self.compare_figures(next(iter(args), self.get_ref_file('grid4')))
+
+    def test_lonlatbox(self, *args):
+        """Test lonlatbox formatoption"""
+        def get_unmasked(coord):
+            """return the values of the coordinate that is not masked in the
+            data"""
+            arr = data if data.ndim == 2 else data[0]
+            return coord.values[~np.isnan(arr.values)]
+        self.update(lonlatbox='Europe|India')
+        ax = self.plotter.ax
+        list(starmap(self.assertAlmostEqual, zip(
+            ax.get_extent(ccrs.PlateCarree()), (-55.6, 120.6,  -24.4, 85.9),
+            repeat(1), repeat("Failed to set the extent to Europe and India!"))
+            ))
+        # test whether latitudes and longitudes succeded
+        msg = "Failed to fit into lonlatbox limits for %s of %s."
+        if isinstance(self.plotter.plot_data, InteractiveList):
+            all_data = self.plotter.plot_data
+        else:
+            all_data = [self.plotter.plot_data]
+        for data in all_data:
+            self.assertGreaterEqual(get_unmasked(data.longitude).min(), -55.6,
+                                    msg=msg % ('longitude', 'minimum'))
+            self.assertLessEqual(get_unmasked(data.longitude).max(), 120.6,
+                                 msg=msg % ('longitude', 'maximum'))
+            self.assertGreaterEqual(get_unmasked(data.latitude).min(), -24.4,
+                                    msg=msg % ('latitude', 'minimum'))
+            self.assertLessEqual(get_unmasked(data.latitude).max(), 85.9,
+                                 msg=msg % ('latitude', 'maximum'))
+        self.compare_figures(next(iter(args), self.get_ref_file('lonlatbox')))
+
+    def test_map_extent(self, *args):
+        """Test map_extent formatoption"""
+        self.update(map_extent='Europe|India')
+        self.compare_figures(next(iter(args), self.get_ref_file('map_extent')))
+
+    @unittest.skip('Not implemented for circumpolar grids')
+    def ref_datagrid(self):
+        pass
+
+    @unittest.skip('Not implemented for circumpolar grids')
+    def test_datagrid(self):
+        pass
+
+    @unittest.skip('Not implemented for circumpolar grids')
+    def test_density(self):
+        pass
+
+    @unittest.skip('Not implemented for circumpolar grids')
+    def ref_density(self):
+        pass
+
+
 class IconFieldPlotterTest(FieldPlotterTest):
     """Test :class:`psyplot.plotter.maps.FieldPlotter` class for icon grid"""
 
@@ -754,14 +1125,14 @@ class IconFieldPlotterTest(FieldPlotterTest):
             np.round(self.plotter.bounds.norm.boundaries, 2).tolist(),
             np.linspace(240, 310, 11, endpoint=True).tolist())
         self.update(bounds='minmax')
-        bounds = [241.19, 248., 254.81, 261.62, 268.43, 275.24, 282.05, 288.86,
-                  295.67, 302.48, 309.29]
+        bounds = [240.95, 247.79, 254.62, 261.46, 268.29, 275.13, 281.96,
+                  288.8, 295.63, 302.46, 309.3]
         self.assertEqual(
             np.round(self.plotter.bounds.norm.boundaries, 2).tolist(), bounds)
         self.update(bounds=['rounded', 5, 5, 95])
         self.assertEqual(
             np.round(self.plotter.bounds.norm.boundaries, 2).tolist(),
-            np.linspace(250, 305, 5, endpoint=True).tolist())
+            np.linspace(255, 305, 5, endpoint=True).tolist())
 
     def test_lonlatbox(self, *args):
         """Test lonlatbox formatoption"""
@@ -791,18 +1162,6 @@ class IconFieldPlotterTest(FieldPlotterTest):
             self.assertLessEqual(get_unmasked(data.clat).max(), 81.0,
                                  msg=msg % ('latitude', 'maximum'))
         self.compare_figures(next(iter(args), self.get_ref_file('lonlatbox')))
-
-    @unittest.skip(
-        'miss_color formatoption does not work for unstructered data')
-    def test_miss_color(self, *args):
-        """Test miss_color formatoption"""
-        pass
-
-    @unittest.skip(
-        'miss_color formatoption does not work for unstructered data')
-    def ref_miss_color(self, *args):
-        """Test miss_color formatoption"""
-        pass
 
 
 class IconVectorPlotterTest(VectorPlotterTest):
@@ -858,8 +1217,8 @@ class IconVectorPlotterTest(VectorPlotterTest):
             np.round(self.plotter.bounds.norm.boundaries, 2).tolist(),
             np.linspace(0, 15, 11, endpoint=True).tolist())
         self.update(bounds='minmax')
-        bounds = [0.13, 1.2, 2.27, 3.34, 4.41, 5.48, 6.55, 7.62, 8.69, 9.76,
-                  10.83]
+        bounds = [0.24,  1.31,  2.38,  3.45,  4.51,  5.58,  6.65,  7.72,
+                  8.79,  9.85, 10.92]
         self.assertEqual(
             np.round(self.plotter.bounds.norm.boundaries, 2).tolist(), bounds)
         self.update(bounds=['rounded', 5, 5, 95])
@@ -893,8 +1252,8 @@ class IconCombinedPlotterTest(CombinedPlotterTest):
             np.round(self.plotter.bounds.norm.boundaries, 2).tolist(),
             np.linspace(250, 290, 11, endpoint=True).tolist())
         self.update(bounds='minmax')
-        bounds = [252.64, 256.24, 259.84, 263.44, 267.04, 270.64, 274.24,
-                  277.84, 281.44, 285.04, 288.64]
+        bounds = [252.61, 256.22, 259.83, 263.43, 267.04, 270.65, 274.26,
+                  277.87, 281.48, 285.09, 288.7]
         self.assertEqual(
             np.round(self.plotter.bounds.norm.boundaries, 2).tolist(), bounds)
         self.update(bounds=['rounded', 5, 5, 95])
@@ -908,8 +1267,8 @@ class IconCombinedPlotterTest(CombinedPlotterTest):
             np.round(self.plotter.vbounds.norm.boundaries, 2).tolist(),
             np.linspace(0, 15, 11, endpoint=True).tolist())
         self.update(vbounds='minmax')
-        bounds = [0.13, 1.2, 2.27, 3.34, 4.41, 5.48, 6.55, 7.62, 8.69, 9.76,
-                  10.83]
+        bounds = [0.24,  1.31,  2.38,  3.45,  4.51,  5.58,  6.65,  7.72,
+                  8.79,  9.85, 10.92]
         self.assertEqual(
             np.round(self.plotter.vbounds.norm.boundaries, 2).tolist(), bounds)
         self.update(vbounds=['rounded', 5, 5, 95])
@@ -947,18 +1306,6 @@ class IconCombinedPlotterTest(CombinedPlotterTest):
                                  msg=msg % ('latitude', 'maximum'))
         self.compare_figures(next(iter(args), self.get_ref_file('lonlatbox')))
 
-    @unittest.skip(
-        'miss_color formatoption does not work for unstructered data')
-    def test_miss_color(self, *args):
-        """Test miss_color formatoption"""
-        pass
-
-    @unittest.skip(
-        'miss_color formatoption does not work for unstructered data')
-    def ref_miss_color(self, *args):
-        """Test miss_color formatoption"""
-        pass
-
     @property
     def _minmax_cticks(self):
         if not self.vector_mode:
@@ -973,6 +1320,111 @@ class IconCombinedPlotterTest(CombinedPlotterTest):
         return np.round(
             np.linspace(speed.min(), speed.max(), 11, endpoint=True),
             decimals=2).tolist()
+
+
+class FieldPlotterTest2D(tb.TestBase2D, FieldPlotterTest):
+    """Test :class:`psyplot.plotter.maps.FieldPlotter` class without time and
+    vertical dimension"""
+
+    var = 't2m_2d'
+
+
+class VectorPlotterTest2D(tb.TestBase2D, VectorPlotterTest):
+    """Test :class:`psyplot.plotter.maps.VectorPlotter` class without time and
+    vertical dimension"""
+
+    var = ['u_2d', 'v_2d']
+
+
+class StreamVectorPlotterTest2D(tb.TestBase2D, StreamVectorPlotterTest):
+    """Test case for stream plot of :class:`psyplot.plotter.maps.VectorPlotter`
+    without time and vertical dimension"""
+
+    var = ['u_2d', 'v_2d']
+
+
+class CombinedPlotterTest2D(tb.TestBase2D, CombinedPlotterTest):
+    """Test :class:`psyplot.plotter.maps.CombinedPlotter` class without time and
+    vertical dimension"""
+
+    var = ['t2m', ['u_2d', 'v_2d']]
+
+    def _label_test(self, key, label_func, has_time=None):
+        if has_time is None:
+            has_time = not bool(self.vector_mode)
+        CombinedPlotterTest._label_test(
+            self, key, label_func, has_time=has_time)
+
+
+class CircumpolarFieldPlotterTest2D(
+        tb.TestBase2D, CircumpolarFieldPlotterTest):
+    """Test :class:`psyplot.plotter.maps.FieldPlotter` class without time and
+    vertical dimension for circumpolar grids"""
+
+    var = 't2m_2d'
+
+
+class CircumpolarVectorPlotterTest2D(
+        tb.TestBase2D, CircumpolarVectorPlotterTest):
+    """Test :class:`psyplot.plotter.maps.VectorPlotter` class without time and
+    vertical dimension for circumpolar grids"""
+
+    var = ['u_2d', 'v_2d']
+
+
+class CircumpolarCombinedPlotterTest2D(
+        tb.TestBase2D, CircumpolarCombinedPlotterTest):
+    """Test :class:`psyplot.plotter.maps.CombinedPlotter` class without time and
+    vertical dimension for circumpolar grids"""
+
+    var = ['t2m', ['u_2d', 'v_2d']]
+
+    def _label_test(self, key, label_func, has_time=None):
+        if has_time is None:
+            has_time = not bool(self.vector_mode)
+        CombinedPlotterTest._label_test(
+            self, key, label_func, has_time=has_time)
+
+
+class IconFieldPlotterTest2D(tb.TestBase2D, IconFieldPlotterTest):
+    """Test :class:`psyplot.plotter.maps.FieldPlotter` class for icon grid
+    without time and vertical dimension"""
+
+    var = 't2m_2d'
+
+
+class IconVectorPlotterTest2D(tb.TestBase2D, IconVectorPlotterTest):
+    """Test :class:`psyplot.plotter.maps.VectorPlotter` class for icon grid
+    without time and vertical dimension"""
+
+    var = ['u_2d', 'v_2d']
+
+
+class IconCombinedPlotterTest2D(tb.TestBase2D, IconCombinedPlotterTest):
+    """Test :class:`psyplot.plotter.maps.CombinedPlotter` class for icon grid
+    without time and vertical dimension"""
+
+    var = ['t2m', ['u_2d', 'v_2d']]
+
+    def _label_test(self, key, label_func, has_time=None):
+        if has_time is None:
+            has_time = not bool(self.vector_mode)
+        CombinedPlotterTest._label_test(
+            self, key, label_func, has_time=has_time)
+
+
+tests2d = [FieldPlotterTest2D, VectorPlotterTest2D, StreamVectorPlotterTest2D,
+           CombinedPlotterTest2D, IconFieldPlotterTest2D,
+           IconVectorPlotterTest2D, IconCombinedPlotterTest2D,
+           CircumpolarCombinedPlotterTest2D, CircumpolarFieldPlotterTest2D,
+           CircumpolarVectorPlotterTest2D]
+
+# skip the reference creation functions of the 2D Plotter tests
+for cls in tests2d:
+    skip_msg = "Reference figures for this class are created by the %s" % (
+        cls.__name__[:-2])
+    for funcname in filter(lambda s: s.startswith('ref'), dir(cls)):
+        setattr(cls, funcname, unittest.skip(skip_msg)(lambda self: None))
 
 
 if __name__ == '__main__':

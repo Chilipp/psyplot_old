@@ -1,19 +1,24 @@
+import os
 from threading import Thread
 from glob import glob
+from importlib import import_module
 import re
 import six
-from itertools import chain, product, repeat, starmap
-import xray
-from xray.core.utils import NDArrayMixin
-from xray.core.formatting import first_n_items
-from numpy import (
-    array, unique, zeros, asarray, r_, arange, datetime64, dtype, vectorize,
-    pi, reshape)
+from copy import deepcopy
+from itertools import chain, product, repeat, starmap, count
+from difflib import get_close_matches
+import xarray
+from xarray.core.utils import NDArrayMixin
+from xarray.core.formatting import first_n_items, format_item
+import xarray.backends.api as xarray_api
+from pandas import to_datetime
+import numpy as np
 from datetime import datetime, timedelta
 import logging
 from .config.rcsetup import rcParams, safe_list
 from .docstring import dedent, docstrings, dedents
-from .compat.pycompat import zip, map, isstring, OrderedDict, filter, range
+from .compat.pycompat import (
+    zip, map, isstring, OrderedDict, filter, range, getcwd, filterfalse)
 from .warning import warn, PsyPlotRuntimeWarning
 
 if six.PY2:
@@ -28,6 +33,157 @@ _NODATA = object
 
 
 logger = logging.getLogger(__name__)
+
+
+class _TempBool(object):
+    """Wrapper around a boolean defining an __enter__ and __exit__ method
+
+    Parameters
+    ----------
+    value: bool
+        value of the object"""
+
+    #: default boolean value for the :attr:`value` attribute
+    default = False
+
+    #: boolean value indicating whether there shall be a validation or not
+    value = False
+
+    def __init__(self, default=False):
+        """
+        Parameters
+        ----------
+        default: bool
+            value of the object"""
+        self.default = default
+        self.value = default
+
+    def __enter__(self):
+        self.value = not self.default
+
+    def __exit__(self, type, value, tb):
+        self.value = self.default
+
+    if six.PY2:
+        def __nonzero__(self):
+            return self.value
+    else:
+        def __bool__(self):
+            return self.value
+
+    def __repr__(self):
+        return repr(bool(self))
+
+    def __str__(self):
+        return str(bool(self))
+
+
+def _no_auto_update_getter(self):
+    """:class:`bool`. Boolean controlling whether the :meth:`start_update`
+    method is automatically called by the :meth:`update` method
+
+
+    Examples
+    --------
+    You can disable the automatic update via
+
+        >>> with data.no_auto_update:
+        ...     data.update(time=1)
+        ...     data.start_update()
+
+    To permanently disable the automatic update, simply set
+
+        >>> data.no_auto_update = True
+        >>> data.update(time=1)
+        >>> data.no_auto_update = False  # reenable automatical update"""
+    if getattr(self, '_no_auto_update', None) is not None:
+        return self._no_auto_update
+    else:
+        self._no_auto_update = _TempBool()
+    return self._no_auto_update
+
+
+def unique_everseen(iterable, key=None):
+    """List unique elements, preserving order. Remember all elements ever seen.
+
+    Function taken from https://docs.python.org/2/library/itertools.html"""
+    # unique_everseen('AAAABBBCCDAABBB') --> A B C D
+    # unique_everseen('ABBCcAD', str.lower) --> A B C D
+    seen = set()
+    seen_add = seen.add
+    if key is None:
+        for element in filterfalse(seen.__contains__, iterable):
+            seen_add(element)
+            yield element
+    else:
+        for element in iterable:
+            k = key(element)
+            if k not in seen:
+                seen_add(k)
+                yield element
+
+
+def is_remote_url(path):
+    return bool(re.search('^https?\://', path))
+
+
+@docstrings.get_sectionsf('check_key', sections=['Parameters', 'Returns',
+                                                 'Raises'])
+@dedent
+def check_key(key, possible_keys, raise_error=True,
+              name='formatoption keyword',
+              msg=("See show_fmtkeys function for possible formatopion "
+                   "keywords"),
+              *args, **kwargs):
+    """
+    Checks whether the key is in a list of possible keys
+
+    This function checks whether the given `key` is in `possible_keys` and if
+    not looks for similar sounding keys
+
+    Parameters
+    ----------
+    key: str
+        Key to check
+    possible_keys: list of strings
+        a list of possible keys to use
+    raise_error: bool
+        If not True, a list of similar keys is returned
+    name: str
+        The name of the key that shall be used in the error message
+    msg: str
+        The additional message that shall be used if no close match to
+        key is found
+    ``*args,**kwargs``
+        They are passed to the :func:`difflib.get_close_matches` function
+        (i.e. `n` to increase the number of returned similar keys and
+        `cutoff` to change the sensibility)
+
+    Returns
+    -------
+    str
+        The `key` if it is a valid string, else an empty string
+    list
+        A list of similar formatoption strings (if found)
+    str
+        An error message which includes
+
+    Raises
+    ------
+    KeyError
+        If the key is not a valid formatoption and `raise_error` is True"""
+    if key not in possible_keys:
+        similarkeys = get_close_matches(key, possible_keys, *args, **kwargs)
+        if similarkeys:
+            msg = ('Unknown %s %s! Possible similiar '
+                   'frasings are %s.') % (name, key, ', '.join(similarkeys))
+        else:
+            msg = ("Unknown %s %s! ") % (name, key) + msg
+        if not raise_error:
+            return '', similarkeys, msg
+        raise KeyError(msg)
+    else:
+        return key, [key], ''
 
 
 def sort_kwargs(kwargs, *param_lists):
@@ -59,13 +215,13 @@ def _infer_interval_breaks(coord):
     >>> _infer_interval_breaks(np.arange(5))
     array([-0.5,  0.5,  1.5,  2.5,  3.5,  4.5])
 
-    Taken from xray.plotting.plot module
+    Taken from xarray.plotting.plot module
     """
-    coord = asarray(coord)
+    coord = np.asarray(coord)
     deltas = 0.5 * (coord[1:] - coord[:-1])
     first = coord[0] - deltas[0]
     last = coord[-1] + deltas[-1]
-    return r_[[first], coord[:-1] + deltas, [last]]
+    return np.r_[[first], coord[:-1] + deltas, [last]]
 
 
 @docstrings.get_sectionsf('setup_coords')
@@ -120,7 +276,7 @@ def setup_coords(arr_names=None, sort=[], dims={}, **kwargs):
         arr_names = repeat('arr{0}')
     dims = OrderedDict(dims)
     for key, val in six.iteritems(kwargs):
-        dims[key] = val
+        dims.setdefault(key, val)
     sorted_dims = OrderedDict()
     if sort:
         for key in sort:
@@ -157,9 +313,9 @@ def is_slice(arr):
     get_index_from_coord"""
     if len(arr) == 1:
         return slice(arr[0], arr[0] + 1)
-    step = unique(arr[1:] - arr[:-1])
+    step = np.unique(arr[1:] - arr[:-1])
     if len(step) == 1:
-        return slice(arr[0], arr[-1], step)
+        return slice(arr[0], arr[-1] + 1, step[0])
 
 
 def get_index_from_coord(coord, base_index):
@@ -171,7 +327,7 @@ def get_index_from_coord(coord, base_index):
 
     Parameters
     ----------
-    coord: xray.Coordinate or xray.Variable
+    coord: xarray.Coordinate or xarray.Variable
         Coordinate to convert
     base_index: pandas.Index
         The base index from which the `coord` was extracted
@@ -190,8 +346,182 @@ def get_index_from_coord(coord, base_index):
         return base_index.get_loc(values[()])
     if len(values) == len(base_index) and (values == base_index).all():
         return slice(None)
-    values = array(list(map(lambda i: base_index.get_loc(i), values)))
+    values = np.array(list(map(lambda i: base_index.get_loc(i), values)))
     return is_slice(values) or values
+
+
+#: mapping that translates datetime format strings to regex patterns
+t_patterns = {
+        '%Y': '[0-9]{4}',
+        '%m': '[0-9]{1,2}',
+        '%d': '[0-9]{1,2}',
+        '%H': '[0-9]{1,2}',
+        '%M': '[0-9]{1,2}',
+        '%S': '[0-9]{1,2}',
+    }
+
+
+@docstrings.get_sectionsf('get_tdata')
+@dedent
+def get_tdata(t_format, files):
+    """
+    Get the time information from file names
+
+    Parameters
+    ----------
+    t_format: str
+        The string that can be used to get the time information in the files.
+        Any numeric datetime format string (e.g. %Y, %m, %H) can be used, but
+        not non-numeric strings like %b, etc. See [1]_ for the datetime format
+        strings
+    files: list of str
+        The that contain the time informations
+
+    Returns
+    -------
+    pandas.Index
+        The time coordinate
+    list of str
+        The file names as they are sorten in the returned index
+
+    References
+    ----------
+    .. [1] https://docs.python.org/2/library/datetime.html"""
+    def median(arr):
+        return arr.min() + (arr.max() - arr.min())/2
+    import re
+    import datetime as dt
+    from pandas import Index
+    t_pattern = t_format
+    for fmt, patt in t_patterns.items():
+        t_pattern = t_pattern.replace(fmt, patt)
+    t_pattern = re.compile(t_pattern)
+    time = range(len(files))
+    for i, f in enumerate(files):
+        time[i] = median(np.array(list(map(
+            lambda s: np.datetime64(dt.datetime.strptime(s, t_format)),
+            t_pattern.findall(f)))))
+    ind = np.argsort(time)  # sort according to time
+    files = np.array(files)[ind]
+    time = np.array(time)[ind]
+    return Index(time, name='time'), files
+
+
+docstrings.get_sections(
+    dedents(xarray.Dataset.to_netcdf.__doc__.split('\n', 1)[1]),
+    'xarray.Dataset.to_netcdf')
+
+
+@docstrings.dedent
+def to_netcdf(ds, *args, **kwargs):
+    """
+    Store the given dataset as a netCDF file
+
+    This functions works essentially the same as the usual
+    :meth:`xarray.Dataset.to_netcdf` method but can also encode absolute time
+    units
+
+    Parameters
+    ----------
+    ds: xarray.Dataset
+        The dataset to store
+    %(xarray.Dataset.to_netcdf.parameters)s
+    """
+    to_update = {}
+    for v, obj in six.iteritems(ds.variables):
+        units = obj.attrs.get('units', obj.encoding.get('units', None))
+        if units == 'day as %Y%m%d.%f' and np.issubdtype(
+                obj.dtype, np.datetime64):
+            to_update[v] = xarray.Variable(
+                obj.dims, AbsoluteTimeEncoder(obj), attrs=obj.attrs,
+                encoding=obj.encoding)
+    if to_update:
+        ds = ds.update(to_update)
+    return xarray_api.to_netcdf(ds, *args, **kwargs)
+
+
+@docstrings.get_sectionsf('get_filename_ds')
+@docstrings.dedent
+def get_filename_ds(ds, dump=True, paths=None, **kwargs):
+    """
+    Return the filename of the corresponding to a dataset
+
+    This method returns the path to the `ds` or saves the dataset
+    if there exists no filename
+
+    Parameters
+    ----------
+    ds: xarray.Dataset
+        The dataset you want the path information for
+    dump: bool
+        If True and the dataset has not been dumped so far, it is asked
+        for a filename or the one generated by `paths` is used
+    paths: iterable or True
+        An iterator over filenames to use if a dataset has no filename.
+        If paths is ``True``, an iterator over temporary files will be
+        created without raising a warning
+
+    Other Parameters
+    ----------------
+    ``**kwargs``
+        Any other keyword for the :func:`to_netcdf` function
+    %(xarray.Dataset.to_netcdf.parameters)s
+
+    Returns
+    -------
+    str or None
+        None, if the dataset has not yet been dumped to the harddisk and
+        `dump` is False, otherwise the complete the path to the input
+        file
+    str
+        The module of the :class:`xarray.backends.common.AbstractDataStore`
+        instance that is used to hold the data
+    str
+        The class name of the
+        :class:`xarray.backends.common.AbstractDataStore` instance that is
+        used to open the data
+    """
+    from tempfile import NamedTemporaryFile
+
+    def dump_nc():
+        # make sure that the data store is not closed by providing a
+        # write argument
+        store = to_netcdf(ds, fname, writer=xarray_api.ArrayWriter(),
+                          **kwargs)
+        store_mod = store.__module__
+        store_cls = store.__class__.__name__
+        ds._file_obj = store
+        return store_mod, store_cls
+
+    def tmp_it():
+        while True:
+            yield NamedTemporaryFile(suffix='.nc').name
+
+    fname = None
+    if paths is True:
+        paths = tmp_it
+    elif paths is not None:
+        paths = iter(paths)
+    # try to get the filename from  the data store of the obj
+    store = getattr(ds, '_file_obj', None)
+    store_mod = store.__module__ if store is not None else None
+    store_cls = store.__class__.__name__ if store is not None else None
+    if store is not None:
+        fname = getattr(store, '_filename', None)
+    # check if paths is provided and if yes, save the file
+    if fname is None and paths is not None:
+        fname = next(paths, None)
+        if fname is not None:
+            store_mod, store_cls = dump_nc()
+    # check create a temporary file with the data if dump is True
+    if fname is None:
+        fname = NamedTemporaryFile().name + '.nc'
+        if not dump and paths is None:
+            return None, None, None
+        warn('Saving unsaved dataset to %s' % fname)
+        store_mod, store_cls = dump_nc()
+
+    return fname, store_mod, store_cls
 
 
 class InteractiveBase(object):
@@ -215,17 +545,42 @@ class InteractiveBase(object):
     def plotter(self):
         self._plotter = None
 
-    @property
-    def auto_update(self):
-        """:class:`bool`. Boolean controlling whether the :meth:`start_update`
-        method is automatically called by the :meth:`update` method"""
-        return self._auto_update
+    no_auto_update = property(_no_auto_update_getter,
+                              doc=_no_auto_update_getter.__doc__)
 
-    @auto_update.setter
-    def auto_update(self, value):
+    @no_auto_update.setter
+    def no_auto_update(self, value):
         if self.plotter is not None:
-            self.plotter.auto_update = value
-        self._auto_update = value
+            self.plotter.no_auto_update = value
+        self.no_auto_update.value = bool(value)
+
+    @property
+    def logger(self):
+        """:class:`logging.Logger` of this instance"""
+        try:
+            return self._logger
+        except AttributeError:
+            name = '%s.%s.%s' % (self.__module__, self.__class__.__name__,
+                                 self.arr_name)
+            self._logger = logging.getLogger(name)
+            self.logger.debug('Initializing...')
+            return self._logger
+
+    @logger.setter
+    def logger(self, value):
+        self._logger = value
+
+    @property
+    def ax(self):
+        """The matplotlib axes the plotter of this data object plots on"""
+        return None if self.plotter is None else self.plotter.ax
+
+    @ax.setter
+    def ax(self, value):
+        if self.plotter is None:
+            raise ValueError(
+                'Cannot set the axes because the plotter attribute is None!')
+        self.plotter.ax = value
 
     _plotter = None
 
@@ -247,6 +602,8 @@ class InteractiveBase(object):
     #: :class:`str`. The internal name of the :class:`InteractiveBase` instance
     arr_name = None
 
+    _no_auto_update = None
+
     @docstrings.get_sectionsf('InteractiveBase')
     @dedent
     def __init__(self, plotter=None, arr_name='data', auto_update=None):
@@ -261,14 +618,14 @@ class InteractiveBase(object):
         auto_update: bool
             Default: None. A boolean indicating whether this list shall
             automatically update the contained arrays when calling the
-            :meth:`update` method or not. See also the :attr:`auto_update`
-            attribute. If None, the value from the ``lists.auto_update'``
+            :meth:`update` method or not. See also the :attr:`no_auto_update`
+            attribute. If None, the value from the ``'lists.auto_update'``
             key in the :attr:`psyplot.rcParams` dictionary is used."""
         self.plotter = plotter
         self.arr_name = arr_name
         if auto_update is None:
             auto_update = rcParams['lists.auto_update']
-        self.auto_update = auto_update
+        self.auto_update = not bool(auto_update)
         self.replot = False
 
     def interactive_plot(self, plotter=None):
@@ -325,20 +682,21 @@ class InteractiveBase(object):
     @docstrings.get_sectionsf('InteractiveBase.start_update',
                               sections=['Parameters', 'Returns'])
     @dedent
-    def start_update(self, draw=True, queues=None):
+    def start_update(self, draw=None, queues=None):
         """
         Conduct the formerly registered updates
 
         This method conducts the updates that have been registered via the
         :meth:`update` method. You can call this method if the
-        :attr:`auto_update` attribute of this instance and the `auto_update`
+        :attr:`no_auto_update` attribute of this instance and the `auto_update`
         parameter in the :meth:`update` method has been set to False
 
         Parameters
         ----------
-        draw: bool
+        draw: bool or None
             Boolean to control whether the figure of this array shall be drawn
-            at the end
+            at the end. If None, it defaults to the `'auto_draw'`` parameter
+            in the :attr:`psyplot.rcParams` dictionary
         queues: list of :class:`Queue.Queue` instances
             The queues that are passed to the
             :meth:`psyplot.plotter.Plotter.start_update` method to ensure a
@@ -355,7 +713,7 @@ class InteractiveBase(object):
 
         See Also
         --------
-        :attr:`auto_update`, update
+        :attr:`no_auto_update`, update
         """
         if self.plotter is not None:
             return self.plotter.start_update(draw=draw, queues=queues)
@@ -365,7 +723,7 @@ class InteractiveBase(object):
     @docstrings.get_sectionsf('InteractiveBase.update',
                               sections=['Parameters', 'Notes'])
     @docstrings.dedent
-    def update(self, fmt={}, replot=False, draw=True, auto_update=False,
+    def update(self, fmt={}, replot=False, draw=None, auto_update=False,
                force=False, todefault=False, **kwargs):
         """
         Update the coordinates and the plot
@@ -378,7 +736,8 @@ class InteractiveBase(object):
         %(InteractiveBase._register_update.parameters)s
         auto_update: bool
             Boolean determining whether or not the :meth:`start_update` method
-            is called at the end.
+            is called at the end. This parameter has no effect if the
+            :attr:`no_auto_update` attribute is set to ``True``.
         %(InteractiveBase.start_update.parameters.draw)s
         ``**kwargs``
             Any other formatoption that shall be updated (additionally to those
@@ -386,10 +745,11 @@ class InteractiveBase(object):
 
         Notes
         -----
-        If the :attr:`auto_update` attribute and the given `auto_update`
-        parameter are both False, the update of the plots are registered and
-        conducted at the next call of the :meth:`start_update` method or the
-        next call of this method (if the `auto_update` parameter is then True).
+        If the :attr:`no_auto_update` attribute is True and the given
+        `auto_update` parameter are is False, the update of the plots are
+        registered and conducted at the next call of the :meth:`start_update`
+        method or the next call of this method (if the `auto_update` parameter
+        is then True).
         """
         fmt = dict(fmt)
         fmt.update(kwargs)
@@ -397,14 +757,14 @@ class InteractiveBase(object):
         self._register_update(replot=replot, fmt=fmt, force=force,
                               todefault=todefault)
 
-        if self.auto_update or auto_update:
+        if not self.no_auto_update or auto_update:
             self.start_update(draw=draw)
 
 
-class InteractiveArray(xray.DataArray, InteractiveBase):
-    """Interactive version of the :class:`xray.DataArray`
+class InteractiveArray(xarray.DataArray, InteractiveBase):
+    """Interactive version of the :class:`xarray.DataArray`
 
-    This class keeps reference to the base :class:`xray.Dataset` where it
+    This class keeps reference to the base :class:`xarray.Dataset` where it
     originates from and enables to switch between the coordinates in this
     array. Furthermore it has a :attr:`plotter` attribute to enable interactive
     plotting via an :class:`psyplot.plotter.Plotter` instance."""
@@ -412,7 +772,19 @@ class InteractiveArray(xray.DataArray, InteractiveBase):
     @property
     def base(self):
         """Base dataset this instance gets its data from"""
-        return getattr(self, '_base', self.to_dataset())
+        if self._base is None:
+            if 'variable' in self.dims:
+                def to_dataset(i):
+                    return self.isel(variable=i).to_dataset(
+                        name=self.coords['variable'].values[i])
+                ds = to_dataset(0)
+                if len(self.coords['variable']) > 1:
+                    for i in range(1, len(self.coords['variable'])):
+                        ds.merge(to_dataset(i), inplace=True)
+                self._base = ds
+            else:
+                self._base = self.to_dataset()
+        return self._base
 
     @base.setter
     def base(self, value):
@@ -450,16 +822,20 @@ class InteractiveArray(xray.DataArray, InteractiveBase):
         ret[0] += 1
         return ret
 
+    logger = InteractiveBase.logger
+    _idims = None
+    _base = None
+
     @docstrings.dedent
     def __init__(self, *args, **kwargs):
         """
         The ``*args`` and ``**kwargs`` are essentially the same as for the
-        :class:`xray.DataArray` method, additional ``**kwargs`` are
+        :class:`xarray.DataArray` method, additional ``**kwargs`` are
         described below.
 
         Other Parameters
         ----------------
-        base: xray.Dataset
+        base: xarray.Dataset
             Default: None. Dataset that serves as the origin of the data
             contained in this DataArray instance. This will be used if you want
             to update the coordinates via the :meth:`update` method. If None,
@@ -486,7 +862,7 @@ class InteractiveArray(xray.DataArray, InteractiveBase):
         self._new_dims = {}
         self.method = None
         InteractiveBase.__init__(self, **ibase_kwargs)
-        xray.DataArray.__init__(self, *args, **kwargs)
+        xarray.DataArray.__init__(self, *args, **kwargs)
 
     @classmethod
     def _new_from_dataset_no_copy(cls, *args, **kwargs):
@@ -495,20 +871,20 @@ class InteractiveArray(xray.DataArray, InteractiveBase):
         obj._new_dims = {}
         obj.method = None
         obj.arr_name = 'arr'
-        obj.auto_update = kwargs.pop('auto_update',
-                                     rcParams['lists.auto_update'])
+        obj.no_auto_update = not bool(kwargs.pop(
+            'auto_update', rcParams['lists.auto_update']))
         obj.replot = False
         return obj
 
     def copy(self, *args, **kwargs):
         arr_name = kwargs.pop('arr_name', self.arr_name)
         obj = super(InteractiveArray, self).copy(*args, **kwargs)
-        obj.auto_update = self.auto_update
+        obj.no_auto_update = bool(self.no_auto_update)
         obj.arr_name = arr_name
         obj.replot = self.replot
         return obj
 
-    copy.__doc__ = xray.DataArray.copy.__doc__ + """
+    copy.__doc__ = xarray.DataArray.copy.__doc__ + """
     Parameters
     ----------
     deep: bool
@@ -518,6 +894,14 @@ class InteractiveArray(xray.DataArray, InteractiveBase):
     arr_name: str
         The array name to use for the new :class:`InteractiveArray` instance
         (default: arr)"""
+
+    @property
+    def iter_base_variables(self):
+        """An iterator over the base variables in the :attr:`base` dataset"""
+        if 'variable' in self.coords:
+            return (self.base.variables[name] for name in self.coords[
+                'variable'].values)
+        return iter([self.base.variables[self.name]])
 
     @property
     def base_variables(self):
@@ -540,11 +924,11 @@ class InteractiveArray(xray.DataArray, InteractiveBase):
         Parameters
         ----------
         method: {'isel', None, 'nearest', ...}
-            Selection method of the xray.Dataset to be used for setting the
+            Selection method of the xarray.Dataset to be used for setting the
             variables from the informations in `dims`.
-            If `method` is 'isel', the :meth:`xray.Dataset.isel` method is
+            If `method` is 'isel', the :meth:`xarray.Dataset.isel` method is
             used. Otherwise it sets the `method` parameter for the
-            :meth:`xray.Dataset.sel` method.
+            :meth:`xarray.Dataset.sel` method.
         %(setup_coords.parameters.dims)s
         %(InteractiveBase._register_update.parameters)s
 
@@ -570,7 +954,7 @@ class InteractiveArray(xray.DataArray, InteractiveBase):
                     item[1] != self.base.attrs[item[0]])
         saved_attrs = list(filter(filter_attrs, six.iteritems(self.attrs)))
         saved_name = self.name
-        self.name = None
+        self.name = 'None'
         if 'name' in dims:
             name = dims.pop('name')
         else:
@@ -578,13 +962,13 @@ class InteractiveArray(xray.DataArray, InteractiveBase):
         if method == 'isel':
             self.idims.update(dims)
             dims = self.idims
-            self._dataset = self.base[name].isel(
-                **dims).to_array().to_dataset()
+            res = self.base[name].isel(**dims).to_array()
         else:
             for key, val in six.iteritems(self.coords):
                 dims.setdefault(key, val)
-            self._dataset = self.base[name].sel(method=method,
-                                                **dims).to_array().to_dataset()
+            res = self.base[name].sel(method=method, **dims).to_array()
+        self._variable = res._variable
+        self._coords = res.coords
         self.name = saved_name
         for key, val in saved_attrs:
             self.attrs[key] = val
@@ -606,25 +990,27 @@ class InteractiveArray(xray.DataArray, InteractiveBase):
         if method == 'isel':
             self.idims.update(dims)
             dims = self.idims
-            self._dataset = self.base[name].isel(**dims).to_dataset()
+            res = self.base[name].isel(**dims)
         else:
             for key, val in six.iteritems(self.coords):
                 dims.setdefault(key, val)
-            self._dataset = self.base[name].sel(method=method,
-                                                **dims).to_dataset()
+            res = self.base[name].sel(method=method, **dims)
+        self._variable = res._variable
+        self._coords = res._coords
         # update to old attributes
         for key, val in saved_attrs:
             self.attrs[key] = val
 
     @docstrings.dedent
-    def start_update(self, draw=True, queues=None):
+    def start_update(self, draw=None, queues=None):
         """
         Conduct the formerly registered updates
 
         This method conducts the updates that have been registered via the
         :meth:`update` method. You can call this method if the
-        :attr:`auto_update` attribute of this instance and the `auto_update`
-        parameter in the :meth:`update` method has been set to False
+        :attr:`no_auto_update` attribute of this instance is True and the
+        `auto_update` parameter in the :meth:`update` method has been set to
+        False
 
         Parameters
         ----------
@@ -636,7 +1022,7 @@ class InteractiveArray(xray.DataArray, InteractiveBase):
 
         See Also
         --------
-        :attr:`auto_update`, update
+        :attr:`no_auto_update`, update
         """
         def filter_attrs(item):
             return (item[0] not in self.base.attrs or
@@ -660,7 +1046,7 @@ class InteractiveArray(xray.DataArray, InteractiveBase):
                               sections=['Parameters', 'Notes'])
     @docstrings.dedent
     def update(self, method='isel', dims={}, fmt={}, replot=False,
-               auto_update=False, draw=True, force=False, todefault=False,
+               auto_update=False, draw=None, force=False, todefault=False,
                **kwargs):
         """
         Update the coordinates and the plot
@@ -685,7 +1071,7 @@ class InteractiveArray(xray.DataArray, InteractiveBase):
         dims = dict(dims)
         fmt = dict(fmt)
         vars_and_coords = set(chain(
-            self.dims, self.coords, ['name', 'x', 'y', 'z', 'z']))
+            self.dims, self.coords, ['name', 'x', 'y', 'z', 't']))
         furtherdims, furtherfmt = sort_kwargs(kwargs, vars_and_coords)
         dims.update(furtherdims)
         fmt.update(furtherfmt)
@@ -693,8 +1079,18 @@ class InteractiveArray(xray.DataArray, InteractiveBase):
         self._register_update(method=method, replot=replot, dims=dims,
                               fmt=fmt, force=force, todefault=todefault)
 
-        if self.auto_update or auto_update:
+        if not self.no_auto_update or auto_update:
             self.start_update(draw=draw)
+
+    def _short_info(self):
+        if 'variable' in self.coords:
+            name = ', '.join(self.coords['variable'].values)
+        else:
+            name = self.name
+        return "%s of %s, %s" % (
+            self.__class__.__name__, name, ", ".join(
+                "%s: %s" % (coord, format_item(val.values))
+                for coord, val in six.iteritems(self.coords) if val.ndim == 0))
 
 
 class ArrayList(list):
@@ -725,16 +1121,34 @@ class ArrayList(list):
         return set(chain(*(arr.coords for arr in self)))
 
     @property
-    def auto_update(self):
-        """:class:`bool`. Boolean controlling whether the :meth:`start_update`
-        method is automatically called by the :meth:`update` method"""
-        return self._auto_update
+    def with_plotter(self):
+        """The arrays in this instance that are visualized with a plotter"""
+        return self.__class__((arr for arr in self if arr.plotter is not None),
+                              auto_update=bool(self.auto_update))
 
-    @auto_update.setter
-    def auto_update(self, value):
+    no_auto_update = property(_no_auto_update_getter,
+                              doc=_no_auto_update_getter.__doc__)
+
+    @no_auto_update.setter
+    def no_auto_update(self, value):
         for arr in self:
-            arr.auto_update = value
-        self._auto_update = value
+            arr.no_auto_update = value
+        self.no_auto_update.value = bool(value)
+
+    @property
+    def logger(self):
+        """:class:`logging.Logger` of this instance"""
+        try:
+            return self._logger
+        except AttributeError:
+            name = '%s.%s' % (self.__module__, self.__class__.__name__)
+            self._logger = logging.getLogger(name)
+            self.logger.debug('Initializing...')
+            return self._logger
+
+    @logger.setter
+    def logger(self, value):
+        self._logger = value
 
     docstrings.keep_params('InteractiveBase.parameters', 'auto_update')
 
@@ -754,7 +1168,7 @@ class ArrayList(list):
         self.attrs = OrderedDict(attrs)
         if auto_update is None:
             auto_update = rcParams['lists.auto_update']
-        self.auto_update = auto_update
+        self.auto_update = not bool(auto_update)
 
     def copy(self, deep=False):
         """Returns a copy of the list
@@ -766,11 +1180,11 @@ class ArrayList(list):
             arrays, otherwise the contained arrays are deep copied"""
         if not deep:
             return self.__class__(self[:], attrs=self.attrs.copy(),
-                                  auto_update=self.auto_update)
+                                  auto_update=not bool(self.no_auto_update))
         else:
             return self.__class__(
                 [arr.copy(deep) for arr in self], attrs=self.attrs.copy(),
-                auto_update=self.auto_update)
+                auto_update=not bool(self.auto_update))
 
     docstrings.keep_params('InteractiveArray.update.parameters', 'method')
 
@@ -780,13 +1194,13 @@ class ArrayList(list):
     @docstrings.dedent
     def from_dataset(cls, base, method='isel', default_slice=None,
                      decoder=None, auto_update=None, prefer_list=False,
-                     **kwargs):
+                     squeeze=True, attrs=None, **kwargs):
         """
         Construct an ArrayDict instance from an existing base dataset
 
         Parameters
         ----------
-        base: xray.Dataset
+        base: xarray.Dataset
             Dataset instance that is used as reference
         %(InteractiveArray.update.parameters.method)s
         %(InteractiveBase.parameters.auto_update)s
@@ -800,6 +1214,13 @@ class ArrayList(list):
             whole slice will be used.
         decoder: CFDecoder
             The decoder that shall be used to decoder the `base` dataset
+        squeeze: bool, optional
+            Default True. If True, and the created arrays have a an axes with
+            length 1, it is removed from the dimension list (e.g. an array
+            with shape (3, 4, 1, 5) will be squeezed to shape (3, 4, 5))
+        attrs: dict, optional
+            Meta attributes that shall be assigned to the selected data arrays
+            (additional to those stored in the `base` dataset)
 
         Other Parameters
         ----------------
@@ -822,6 +1243,14 @@ class ArrayList(list):
                 return sel_method(key, dims, tuple(names))
             else:
                 return sel_method(key, dims, names[0])
+
+        if squeeze:
+            def squeeze_array(arr):
+                return arr.isel(**{dim: 0 for i, dim in enumerate(arr.dims)
+                                   if arr.shape[i] == 1})
+        else:
+            def squeeze_array(arr):
+                return arr
         if method == 'isel':
             def sel_method(key, dims, name=None):
                 if name is None:
@@ -830,7 +1259,7 @@ class ArrayList(list):
                     arr = base[name]
                 else:
                     arr = base[list(name)]
-                if not isinstance(arr, xray.DataArray):
+                if not isinstance(arr, xarray.DataArray):
                     attrs = next(var for key, var in arr.variables.items()
                                  if key not in arr.coords).attrs
                     arr = arr.to_array()
@@ -841,14 +1270,14 @@ class ArrayList(list):
                 dims.update({
                     dim: def_slice for dim in set(arr.dims).difference(
                         dims) if dim != 'variable'})
-                return InteractiveArray(arr.isel(**dims), arr_name=key,
-                                        base=base, idims=dims)
+                return InteractiveArray(squeeze_array(
+                    arr.isel(**dims)), arr_name=key, base=base, idims=dims)
         else:
             def sel_method(key, dims, name=None):
                 if name is None:
                     return recursive_selection(key, dims, dims.pop('name'))
                 arr = base[name]
-                if not isinstance(arr, xray.DataArray):
+                if not isinstance(arr, xarray.DataArray):
                     attrs = next(var for key, var in arr.variables.items()
                                  if key not in arr.coords).attrs
                     arr = arr.to_array()
@@ -860,12 +1289,20 @@ class ArrayList(list):
                     dims.update({
                         key: default_slice for key in set(arr.dims).difference(
                             dims)})
-                return InteractiveArray(
-                    arr.sel(method=method, **dims), arr_name=key, base=base)
+                # the sel method does not work with slice objects
+                return InteractiveArray(squeeze_array(
+                    arr.sel(method=method, **{
+                            key: val for key, val in six.iteritems(dims)
+                            if not isinstance(val, slice)})),
+                    arr_name=key, base=base)
         kwargs.setdefault(
             'name', sorted(
                 key for key in base.variables if key not in base.coords))
         names = setup_coords(**kwargs)
+        # check coordinates
+        possible_keys = ['t', 'x', 'y', 'z', 'name'] + list(base.coords)
+        for key in set(chain(*six.itervalues(names))):
+            check_key(key, possible_keys, name='dimension')
         decoder = decoder or CFDecoder(base)
         instance = cls(starmap(sel_method, six.iteritems(names)),
                        attrs=base.attrs, auto_update=auto_update)
@@ -880,7 +1317,224 @@ class ArrayList(list):
             else:  # put everything into one single interactive list
                 instance = cls([InteractiveList(instance, attrs=base.attrs,
                                                 auto_update=auto_update)])
+        if attrs is not None:
+            for arr in instance:
+                arr.attrs.update(attrs)
         return instance
+
+    @classmethod
+    def _get_dsnames(cls, data, ignore_keys=['attrs', 'plotter', 'ds']):
+        """Recursive method to get all the file names out of a dictionary
+        `data` created with the :meth`array_info` method"""
+        if 'fname' in data:
+            return {(data['fname'], data['store'])}
+        for key in ignore_keys:
+            data.pop(key, None)
+        return set(chain(*map(cls._get_dsnames, six.itervalues(data))))
+
+    def _get_datasets(cls, data, ignore_keys=['attrs', 'plotter', 'ds'],
+                      use_fname=False, nums=None):
+        """Recursive method to get all the file names out of a dictionary
+        `data` created with the :meth`array_info` method with
+        ``use_fname=False``"""
+        if nums is None:
+            nums = count()
+        if 'ds' in data:
+            ds = data['ds']
+            if not hasattr(ds, '_num'):
+                ds._num = next(nums)
+            return [(ds._num, ds if not use_fname else data['fname'])]
+        for key in ignore_keys:
+            data.pop(key, None)
+        return list(unique_everseen(
+            chain(*starmap(cls._get_datasets, zip(
+                six.itervalues(data), *map(repeat,
+                                           [ignore_keys, use_fname, nums])))),
+            lambda t: t[0]))
+
+    @classmethod
+    @docstrings.get_sectionsf('ArrayList.from_dict')
+    def from_dict(cls, d, alternative_paths={}, datasets=None,
+                  pwd=None, ignore_keys=['attrs', 'plotter', 'ds'], **kwargs):
+        """Create a list from the dictionary returned by :meth:`array_info`
+
+        This classmethod creates an :class:`~psyplot.data.ArrayList` instance
+        from a dictionary containing filename, dimension infos and array names
+
+        Parameters
+        ----------
+        d: dict
+            The dictionary holding the data
+        alternative_paths: dict
+            A mapping from original filenames as used in `d` to filenames that
+            shall be used instead. If `alternative_paths` is not None,
+            datasets must be None. Paths must be accessible from the current
+            working directory
+        datasets: dict or None
+            A mapping from original filenames in `d` to the instances of
+            :class:`xarray.Dataset` to use.
+        pwd: str
+            Path to the working directory from where the data can be imported.
+            If None, use the current working directory.
+        ignore_keys: list of str
+            Keys specified in this list are ignored and not seen as array
+            information (note that ``attrs`` are used anyway)
+
+        Other Parameters
+        ----------------
+        ``**kwargs``
+            Any other parameter from the `psyplot.data.open_dataset` function
+        %(open_dataset.parameters)s
+
+        Returns
+        -------
+        psyplot.data.ArrayList
+            The list with the interactive objects
+
+        See Also
+        --------
+        from_dataset, array_info"""
+        pwd = pwd or getcwd()
+        # first open all datasets if not already done
+        if datasets is None:
+            names_and_stores = cls._get_dsnames(deepcopy(d))
+            datasets = {}
+            for fname, (store_mod, store_cls) in names_and_stores:
+                fname_use = fname
+                try:
+                    fname_use = alternative_paths[fname]
+                except KeyError:
+                    if fname is not None:
+                        if is_remote_url(fname):
+                            fname_use = fname
+                        else:
+                            if os.path.isabs(fname):
+                                fname_use = fname
+                            else:
+                                fname_use = os.path.join(pwd, fname)
+                if fname_use is not None:
+                    datasets[fname] = _open_ds_from_store(
+                        fname_use, store_mod, store_cls, **kwargs)
+            if alternative_paths is not None:
+                for fname in set(alternative_paths).difference(datasets):
+                    datasets[fname] = _open_ds_from_store(fname, **kwargs)
+        arrays = [0] * len(set(d) - {'attrs'})
+        for i, (arr_name, info) in enumerate(six.iteritems(d)):
+            if arr_name in ignore_keys:
+                continue
+            if 'fname' not in info:
+                arr = InteractiveList.from_dict(
+                    info, alternative_paths=alternative_paths,
+                    datasets=datasets)
+            else:
+                fname = info['fname']
+                if fname is None:
+                    warn("Could not open array %s because no filename was "
+                         "specified!")
+                    arrays.pop(i)
+                    continue
+                elif fname not in datasets:
+                    warn("Could not open array %s because %s was not in the "
+                         "list of datasets!")
+                    arrays.pop(i)
+                    continue
+                arr = cls.from_dataset(
+                    datasets[fname], dims=info['dims'])[0]
+                for key, val in six.iteritems(info.get('attrs', {})):
+                    arr.attrs.setdefault(key, val)
+            arr.arr_name = arr_name
+            arrays[i] = arr
+        return cls(arrays, attrs=d.get('attrs', {}))
+
+    docstrings.delete_params('get_filename_ds.parameters', 'ds')
+
+    @docstrings.get_sectionsf('ArrayList.array_info')
+    @docstrings.dedent
+    def array_info(self, dump=False, paths=None, attrs=True,
+                   standardize_dims=True, pwd=None, use_rel_paths=True,
+                   alternate_paths={}, use_fname=True, **kwargs):
+        """
+        Get dimension informations on you arrays
+
+        This method returns a dictionary containing informations on the
+        array in this instance
+
+        Parameters
+        ----------
+        %(get_filename_ds.parameters.no_ds)s
+        attrs: bool, optional
+            If True (default), the :attr:`ArrayList.attrs` and
+            :attr:`xarray.DataArray.attrs` attributes are included in the
+            returning dictionary
+        standardize_dims: bool, optional
+            If True (default), the real dimension names in the dataset are
+            replaced by x, y, z and t to be more general.
+        pwd: str
+            Path to the working directory from where the data can be imported.
+            If None, use the current working directory.
+        use_rel_paths: bool, optional
+            If True (default), paths relative to the current working directory
+            are used. Otherwise absolute paths to `pwd` are used
+        use_fname: bool or ``'both'``
+            If True, the file name and and data store class is inserted in the
+            ``'fname'`` and ``'store'`` key, otherwise, if False, the dataset
+            is inserted in key ``'ds'`` key, or, if both, both are inserted.
+
+
+        Other Parameters
+        ----------------
+        %(get_filename_ds.other_parameters)s
+
+        Returns
+        -------
+        OrderedDict
+            An ordered mapping from array names to dimensions and filename
+            corresponding to the array
+
+        See Also
+        --------
+        from_dict"""
+        ret = OrderedDict()
+        if paths is not None:
+            paths = iter(paths)
+        if pwd is None:
+            pwd = getcwd()
+        for arr in self:
+            if isinstance(arr, InteractiveList):
+                ret[arr.arr_name] = arr.array_info(
+                    dump, paths, pwd=pwd, attrs=attrs,
+                    standardize_dims=standardize_dims,
+                    use_rel_paths=use_rel_paths,
+                    alternate_paths=alternate_paths, **kwargs)
+            else:
+                if standardize_dims:
+                    idims = arr.decoder.standardize_dims(
+                        next(arr.iter_base_variables), arr.idims)
+                else:
+                    idims = arr.idims
+                ret[arr.arr_name] = d = {'dims': idims}
+                if use_fname:
+                    fname, store_mod, store_cls = get_filename_ds(
+                        arr.base, dump=dump, paths=paths, **kwargs)
+                    d['store'] = (store_mod, store_cls)
+                    if fname is None or is_remote_url(fname):
+                        d['fname'] = fname
+                    else:
+                        fname = alternate_paths.get(fname, alternate_paths.get(
+                            os.path.abspath(fname), fname))
+                        if fname in alternate_paths:
+                            fname = alternate_paths[fname]
+                        elif use_rel_paths:
+                            fname = os.path.relpath(fname, pwd)
+                        else:
+                            fname = os.path.abspath(fname)
+                        d['fname'] = fname
+                if not use_fname or use_fname == 'both':
+                    d['ds'] = arr.base
+                if attrs:
+                    d['attrs'] = arr.attrs
+        ret['attrs'] = self.attrs
+        return ret
 
     @docstrings.dedent
     def _register_update(self, method='isel', replot=False, dims={}, fmt={},
@@ -899,26 +1553,30 @@ class ArrayList(list):
 
     @docstrings.get_sectionsf('ArrayList.start_update')
     @dedent
-    def start_update(self, draw=True):
+    def start_update(self, draw=None):
         """
         Conduct the registered plot updates
 
         This method starts the updates from what has been registered by the
         :meth:`update` method. You can call this method if you did not set the
-        `auto_update` parameter when calling the :meth:`update` method and when
-        the :attr:`auto_update` attribute is False.
+        `auto_update` parameter when calling the :meth:`update` method to True
+        and when the :attr:`no_auto_update` attribute is True.
 
         Parameters
         ----------
-        draw: bool
+        draw: bool or None
             If True, all the figures of the arrays contained in this list will
-            be drawn at the end.
+            be drawn at the end. If None, it defaults to the `'auto_draw'``
+            parameter in the :attr:`psyplot.rcParams` dictionary
 
         See Also
         --------
-        :attr:`auto_update`, update"""
+        :attr:`no_auto_update`, update"""
         def worker(arr):
             results[arr.arr_name] = arr.start_update(draw=False, queues=queues)
+        if len(self) == 0:
+            return
+
         results = {}
         threads = [Thread(target=worker, args=(arr,),
                           name='update_%s' % arr.arr_name)
@@ -938,10 +1596,13 @@ class ArrayList(list):
                 thread.join()
         except:
             raise
-
+        if draw is None:
+            draw = rcParams['auto_draw']
         if draw:
             self(arr_name=[name for name, adraw in six.iteritems(results)
                            if adraw]).draw()
+            if rcParams['auto_show']:
+                self.show()
 
     docstrings.keep_params('InteractiveArray.update.parameters',
                            'auto_update')
@@ -949,7 +1610,7 @@ class ArrayList(list):
     @docstrings.get_sectionsf('ArrayList.update')
     @docstrings.dedent
     def update(self, method='isel', dims={}, fmt={}, replot=False,
-               auto_update=False, draw=True, force=False, todefault=False,
+               auto_update=False, draw=None, force=False, todefault=False,
                **kwargs):
         """
         Update the coordinates and the plot
@@ -972,7 +1633,7 @@ class ArrayList(list):
 
         See Also
         --------
-        auto_update, start_update"""
+        no_auto_update, start_update"""
         dims = dict(dims)
         fmt = dict(fmt)
         vars_and_coords = set(chain(
@@ -983,17 +1644,19 @@ class ArrayList(list):
 
         self._register_update(method=method, replot=replot, dims=dims, fmt=fmt,
                               force=force, todefault=todefault)
-        if self.auto_update or auto_update:
+        if not self.no_auto_update or auto_update:
             self.start_update(draw)
 
     def draw(self):
         """Draws all the figures in this instance"""
-        for fig in set(chain(*map(lambda arr: arr.plotter.figs2draw, self))):
+        for fig in set(chain(*map(
+                lambda arr: arr.plotter.figs2draw, self.with_plotter))):
             fig.canvas.draw()
         for arr in self:
-            arr.plotter._figs2draw.clear()
+            if arr.plotter is not None:
+                arr.plotter._figs2draw.clear()
 
-    def __call__(self, types=None, **attrs):
+    def __call__(self, types=None, method='isel', arr_name=None, **attrs):
         """Get the arrays specified by their attributes
 
         Parameters
@@ -1002,21 +1665,69 @@ class ArrayList(list):
             Any class that shall be used for an instance check via
             :func:`isinstance`. If not None, the :attr:`plotter` attribute
             of the array is checked against this `types`
+        method: {'isel', 'sel'}
+            Selection method for the dimensions in the arrays to be used.
+            If `method` is 'isel', dimension values in `attrs` must correspond
+            to integer values as they are found in the
+            :attr:`InteractiveArray.idims` attribute.
+            Otherwise the :meth:`xarray.DataArray.coords` attribute is used.
+        arr_name: None, str or list of str
+            If not None, the array name serves as a filter
         ``**attrs``
             Parameters may be any attribute of the arrays in this instance.
             Values may be iterables (e.g. lists) of the attributes to consider.
             If the value is a string, it will be put into a list."""
         def safe_item_list(key, val):
             return key, safe_list(val)
-        attrs = list(starmap(safe_item_list, six.iteritems(attrs)))
+        if not attrs:
+            def filter_by_attrs(arr):
+                return True
+        elif method == 'sel':
+            def filter_by_attrs(arr):
+                if not isinstance(arr, InteractiveList):
+                    tname = arr.decoder.get_tname(
+                        next(six.itervalues(arr.base_variables)))
+
+                    def check_values(attr, vals):
+                        if hasattr(arr, 'decoder') and (
+                                attr.name == tname):
+                            try:
+                                vals = np.asarray(vals, dtype=np.datetime64)
+                            except ValueError:
+                                pass
+                            else:
+                                return attr.values.astype(vals.dtype) in vals
+                        return getattr(attr, 'values', attr) in vals
+
+                return all(
+                    check_values(getattr(arr, key, _NODATA), val)
+                    for key, val in six.iteritems(
+                        attrs if isinstance(arr, InteractiveList) else
+                        arr.decoder.correct_dims(next(six.itervalues(
+                            arr.base_variables)), attrs)))
+        else:
+            def filter_by_attrs(arr):
+                if isinstance(arr, InteractiveList):
+                    return all(
+                        getattr(arr, key, _NODATA) in val
+                        for key, val in six.iteritems(attrs))
+                return all(
+                    getattr(arr, key, _NODATA) if key not in arr.coords else (
+                        arr.idims.get(key, _NODATA)) in val
+                    for key, val in six.iteritems(
+                        arr.decoder.correct_dims(next(six.itervalues(
+                            arr.base_variables)), attrs)))
+        if arr_name is not None and isstring(arr_name):
+            arr_name = [arr_name]
+        attrs = dict(starmap(safe_item_list, six.iteritems(attrs)))
         return self.__class__(
             # iterable
             (arr for arr in self if
              (types is None or isinstance(arr.plotter, types)) and
-             (not attrs or
-              all(getattr(arr, key, _NODATA) in val for key, val in attrs))),
+             (arr_name is None or arr.arr_name in arr_name) and
+             filter_by_attrs(arr)),
             # give itself as base and the auto_update parameter
-            auto_update=self.auto_update)
+            auto_update=bool(self.auto_update))
 
     def __contains__(self, val):
         try:
@@ -1031,9 +1742,7 @@ class ArrayList(list):
 
     def _contains_array(self, val):
         """Checks whether exactly this array is in the list"""
-        if val.arr_name not in self.arr_names:
-            return False
-        arr = [arr for arr in self if arr.arr_name == val.arr_name][0]
+        arr = self(arr_name=val.arr_name)[0]
         is_not_list = any(
             map(lambda a: not isinstance(a, InteractiveList),
                 [arr, val]))
@@ -1044,15 +1753,30 @@ class ArrayList(list):
             return False
         # if both are interactive lists, check the lists
         if is_list:
-            return all(a in arr for a in val)
+            return all(a in arr for a in val) and all(a in val for a in arr)
         # else we check the shapes and values
-        return arr.shape == val.shape and (
-            arr.values == val.values).all()
+        return arr is val
+
+    def __str__(self):
+        if len(self) == 1:
+            return "%s.%s([%s: %s])" % (
+                self.__class__.__module__, self.__class__.__name__,
+                self[0].arr_name,
+                getattr(self[0], '_short_info', self[0].__str__)())
+        return "%s.%s([\n    %s])" % (
+            self.__class__.__module__, self.__class__.__name__,
+            ",\n    ".join(
+                '%s: %s' % (
+                    arr.arr_name, getattr(arr, '_short_info', arr.__str__)())
+                for arr in self))
+
+    def __repr__(self):
+        return self.__str__()
 
     @docstrings.get_sectionsf('ArrayList.rename', sections=[
         'Parameters', 'Raises'])
     @dedent
-    def rename(self, arr, new_name=None):
+    def rename(self, arr, new_name=True):
         """
         Rename an array to find a name that isn't already in the list
 
@@ -1061,13 +1785,13 @@ class ArrayList(list):
         arr: InteractiveBase
             A :class:`InteractiveArray` or :class:`InteractiveList` instance
             whose name shall be checked
-        new_name: str
+        new_name: bool or str
             If False, and the ``arr_name`` attribute of the new array is
             already in the list, a ValueError is raised.
-            If None and the ``arr_name`` attribute of the new array is not
+            If True and the ``arr_name`` attribute of the new array is not
             already in the list, the name is not changed. Otherwise, if the
             array name is already in use, `new_name` is set to 'arr{0}'.
-            If not None, this will be used for renaming (if the array name of
+            If not True, this will be used for renaming (if the array name of
             `arr` is in use or not). ``'{0}'`` is replaced by a counter
 
         Returns
@@ -1085,17 +1809,14 @@ class ArrayList(list):
         ValueError
             If `new_name` is False and the array is already in the list"""
         name_in_me = arr.arr_name in self.arr_names
-        if new_name is not None or name_in_me:
-            in_me = self._contains_array(arr)
-            if new_name is False and name_in_me and not in_me:
+        if not name_in_me:
+            return arr, False
+        elif name_in_me and not self._contains_array(arr):
+            if new_name is False:
                 raise ValueError(
                     "Array name %s is already in use! Set the `new_name` "
                     "parameter to None for renaming!" % arr.arr_name)
-            elif in_me:
-                return arr, None
-            elif new_name is False:
-                return arr, False
-            else:  # rename the array
+            elif new_name is True:
                 new_name = new_name if isstring(new_name) else 'arr{0}'
                 names = self.arr_names
                 try:
@@ -1105,8 +1826,8 @@ class ArrayList(list):
                 except StopIteration:
                     raise ValueError(
                         "{0} already in the list".format(new_name))
-                return arr, False
-        return arr, False
+                return arr, True
+        return arr, None
 
     docstrings.keep_params('ArrayList.rename.parameters', 'new_name')
 
@@ -1133,7 +1854,7 @@ class ArrayList(list):
             super(ArrayList, self).append(value)
 
     @docstrings.dedent
-    def extend(self, iterable, new_name=False, force=False):
+    def extend(self, iterable, new_name=False):
         """
         Add further arrays from an iterable to this list
 
@@ -1142,9 +1863,6 @@ class ArrayList(list):
         iterable
             Any iterable that contains :class:`InteractiveBase` instances
         %(ArrayList.rename.parameters.new_name)s
-        force: bool
-            If True, all objects in `iterable` are extended if they are
-            already in the list or not
 
         Raises
         ------
@@ -1154,13 +1872,9 @@ class ArrayList(list):
         --------
         list.extend, append, rename"""
         # extend those arrays that aren't alredy in the list
-        if not force:
-            super(ArrayList, self).extend(t[0] for t in filter(
-                lambda t: t[1] is not None,
-                (self.rename(arr, new_name) for arr in iterable)))
-        else:
-            super(ArrayList, self).extend(t[0] for t in (
-                self.rename(arr, new_name) for arr in iterable))
+        super(ArrayList, self).extend(t[0] for t in filter(
+            lambda t: t[1] is not None, (
+                self.rename(arr, new_name) for arr in iterable)))
 
     def remove(self, arr):
         """Removes an array from the list
@@ -1175,12 +1889,15 @@ class ArrayList(list):
         ValueError
             If no array with the specified array name is in the list"""
         name = arr if isinstance(arr, six.string_types) else arr.arr_name
+        if arr not in self:
+            raise ValueError(
+                "Array {0} not in the list".format(name))
         for i, arr in enumerate(self):
             if arr.arr_name == name:
                 del self[i]
                 return
         raise ValueError(
-            "Not array found with name {0}".format(name))
+            "No array found with name {0}".format(name))
 
 
 class InteractiveList(ArrayList, InteractiveBase):
@@ -1190,16 +1907,13 @@ class InteractiveList(ArrayList, InteractiveBase):
     through :class:`psyplot.plotter.Plotter` classes. It is mainly used by the
     :mod:`psyplot.plotter.simple` module"""
 
-    @property
-    def auto_update(self):
-        """:class:`bool`. Boolean controlling whether the :meth:`start_update`
-        method is automatically called by the :meth:`update` method"""
-        return self._auto_update
+    no_auto_update = property(_no_auto_update_getter,
+                              doc=_no_auto_update_getter.__doc__)
 
-    @auto_update.setter
-    def auto_update(self, value):
-        ArrayList.auto_update.fset(self, value)
-        InteractiveBase.auto_update.fset(self, value)
+    @no_auto_update.setter
+    def no_auto_update(self, value):
+        ArrayList.no_auto_update.fset(self, value)
+        InteractiveBase.no_auto_update.fset(self, value)
 
     @property
     @docstrings
@@ -1208,6 +1922,8 @@ class InteractiveList(ArrayList, InteractiveBase):
         ret = super(self.__class__, self)._njobs or [0]
         ret[0] += 1
         return ret
+
+    logger = InteractiveBase.logger
 
     docstrings.delete_params('InteractiveBase.parameters', 'auto_update')
 
@@ -1239,14 +1955,15 @@ class InteractiveList(ArrayList, InteractiveBase):
                                          force=force)
 
     @docstrings.dedent
-    def start_update(self, draw=True, queues=None):
+    def start_update(self, draw=None, queues=None):
         """
         Conduct the formerly registered updates
 
         This method conducts the updates that have been registered via the
         :meth:`update` method. You can call this method if the
-        :attr:`auto_update` attribute of this instance and the `auto_update`
-        parameter in the :meth:`update` method has been set to False
+        :attr:`auto_update` attribute of this instance is True and the
+        `auto_update` parameter in the :meth:`update` method has been set to
+        False
 
         Parameters
         ----------
@@ -1258,7 +1975,7 @@ class InteractiveList(ArrayList, InteractiveBase):
 
         See Also
         --------
-        :attr:`auto_update`, update
+        :attr:`no_auto_update`, update
         """
         if queues is not None:
             queues[0].get()
@@ -1266,7 +1983,7 @@ class InteractiveList(ArrayList, InteractiveBase):
             arr.start_update(draw=False)
         if queues is not None:
             queues[0].task_done()
-        return InteractiveBase.start_update(self, draw=draw)
+        return InteractiveBase.start_update(self, draw=draw, queues=queues)
 
     def to_dataframe(self):
         def to_df(arr):
@@ -1340,6 +2057,22 @@ class CFDecoder(object):
     """
     Class that interpretes the coordinates and attributes accordings to
     cf-conventions"""
+
+    @property
+    def logger(self):
+        """:class:`logging.Logger` of this instance"""
+        try:
+            return self._logger
+        except AttributeError:
+            name = '%s.%s' % (self.__module__, self.__class__.__name__)
+            self._logger = logging.getLogger(name)
+            self.logger.debug('Initializing...')
+            return self._logger
+
+    @logger.setter
+    def logger(self, value):
+        self._logger = value
+
     def __init__(self, ds=None, x=None, y=None, z=None, t=None):
         self.ds = ds
         self.x = rcParams['decoder.x'] if x is None else set(x)
@@ -1360,25 +2093,25 @@ class CFDecoder(object):
 
         Parameters
         ----------
-        ds: xray.Dataset
+        ds: xarray.Dataset
             The dataset to decode
         gridfile: str
-            The path to a separate grid file or a xray.Dataset instance which
+            The path to a separate grid file or a xarray.Dataset instance which
             may store the coordinates used in `ds`
         inplace: bool, optional
             If True, `ds` is modified in place
 
         Returns
         -------
-        xray.Dataset
+        xarray.Dataset
             `ds` with additional coordinates"""
         def add_attrs(obj):
             if 'coordinates' in obj.attrs:
                 extra_coords.update(obj.attrs['coordinates'].split())
             if 'bounds' in obj.attrs:
                 extra_coords.add(obj.attrs['bounds'])
-        if gridfile is not None and not isinstance(gridfile, xray.Dataset):
-            gridfile = xray.open_dataset(gridfile)
+        if gridfile is not None and not isinstance(gridfile, xarray.Dataset):
+            gridfile = xarray.open_dataset(gridfile)
         extra_coords = set(ds.coords)
         for k, v in six.iteritems(ds.variables):
             add_attrs(v)
@@ -1403,7 +2136,7 @@ class CFDecoder(object):
 
         Parameters
         ----------
-        var: xray.Variable or xray.DataArray
+        var: xarray.Variable or xarray.DataArray
             The variable to check
 
         Returns
@@ -1416,28 +2149,41 @@ class CFDecoder(object):
     @docstrings.get_sectionsf('CFDecoder._check_triangular_bounds', sections=[
         'Parameters', 'Returns'])
     @dedent
-    def _check_triangular_bounds(self, var, axis='x'):
+    def _check_triangular_bounds(self, var, axis='x', nans=None):
         """
         Checks whether the bounds in the variable attribute are triangular
 
         Parameters
         ----------
-        var: xray.Variable or xray.DataArray
+        var: xarray.Variable or xarray.DataArray
             The variable to check
         axis: {'x', 'y'}
             The spatial axis to check
+        nans: {None, 'skip', 'only'}
+            Determines whether values with nan shall be left (None), skipped
+            (``'skip'``) or shall be the only one returned (``'only'``)
 
         Returns
         -------
         bool or None
             True, if unstructered, None if it could not be determined
-        xray.Coordinate or None
+        xarray.Coordinate or None
             the bounds corrdinate (if existent)"""
         coord = self.get_variable_by_axis(var, axis)
         if coord is not None:
             bounds = coord.attrs.get('bounds')
             if bounds is not None:
                 bounds = self.ds.coords.get(bounds)
+                if nans == 'skip':
+                    bounds = bounds[~np.isnan(var.values)]
+                elif nans == 'only':
+                    bounds = bounds[np.isnan(var.values)]
+                elif nans is None:
+                    pass
+                else:
+                    raise ValueError(
+                        "`nans` must be either None, 'skip', or 'only'! "
+                        "Not {0}!".format(str(nans)))
                 if bounds is not None:
                     return bounds.shape[-1] > 2, bounds
                 else:
@@ -1462,6 +2208,21 @@ class CFDecoder(object):
         Currently this is the same as :meth:`is_triangular` method, but may
         change in the future to support hexagonal grids"""
         return self.is_triangular(*args, **kwargs)
+
+
+    @docstrings.dedent
+    def is_circumpolar(self, var):
+        """
+        Test if a variable is on a circumpolar grid
+
+        Parameters
+        ----------
+        %(CFDecoder.is_triangular.parameters)s
+
+        Returns
+        -------
+        %(CFDecoder.is_triangular.returns)s"""
+        return self.get_x(var).ndim == 2
 
     @docstrings.dedent
     def _check_unstructered_bounds(self, *args, **kwargs):
@@ -1490,7 +2251,7 @@ class CFDecoder(object):
 
         Possible types
         --------------
-        var: xray.Variable
+        var: xarray.Variable
             The variable to get the dimension for
         axis: {'x', 'y', 'z', 't'}
             The axis string that identifies the dimension
@@ -1500,9 +2261,21 @@ class CFDecoder(object):
 
         Returns
         -------
-        xray.Coordinate or None
+        xarray.Coordinate or None
             The coordinate for `var` that matches the given `axis` or None if
             no coordinate with the right `axis` could be found.
+
+        Warning
+        -------
+        If None of the coordinates have an ``'axis'`` attribute, we use the
+        ``'coordinate'`` attribute of `var` (if existent).
+        Since however the CF Conventions do not determine the order on how
+        the coordinates shall be saved, we try to use a pattern matching
+        for latitude (``'lat'``) and longitude (``lon'``). If this patterns
+        do not match, we interpret the  coordinates such that x: -1, y: -2,
+        z: -3. This is all not very safe for awkward dimension names,
+        but works for most cases. If you want to be a hundred percent sure,
+        use the :attr:`x`, :attr:`y`, :attr:`z` and :attr:`t` attribute.
 
         See Also
         --------
@@ -1523,23 +2296,29 @@ class CFDecoder(object):
                     var.dims, coord_names))):
             if coord.attrs.get('axis', '').lower() == axis:
                 return coord
-        #: If the coordinates is specified but the coordinate
-        #: variables themselves have no 'axis' attribute, we interpret the
-        #: coordinates such that x: -1, y: -2, z: -3, t: -4
+        # If the coordinates is specified but the coordinate
+        # variables themselves have no 'axis' attribute, we interpret the
+        # coordinates such that x: -1, y: -2, z: -3
+        # Since however the CF Conventions do not determine the order on how
+        # the coordinates shall be saved, we try to use a pattern matching
+        # for latitude and longitude. This is not very nice, hence it is
+        # better to specify the :attr:`x` and :attr:`y` attribute
+        tname = next(iter(self.t.intersection(coord_names)), None)
         if axis == 'x':
-            return coords.get(coord_names[-2 if len(coord_names) >= 2 else -1])
-        elif axis == 'y':
+            for cname in filter(lambda cname: re.search('lon', cname),
+                                coord_names):
+                return coords[cname]
             return coords.get(coord_names[-1])
-        elif axis == 'z':
-            if len(coord_names) > 2:
-                i = -3
-            elif len(coord_names) > 1:
-                i = -2
-            else:
-                i = -1
-            return coords.get(coord_names[i])
-        elif axis == 't':
-            return coords.get(coord_names[0])
+        elif axis == 'y' and len(coord_names) >= 2:
+            for cname in filter(lambda cname: re.search('lat', cname),
+                    coord_names):
+                return coords[cname]
+            return coords.get(coord_names[-2])
+        elif (axis == 'z' and len(coord_names) >= 3 and
+              coord_names[-3] != tname):
+            return coords.get(coord_names[-3])
+        elif axis == 't' and tname:
+            return coords.get(tname)
 
     def get_x(self, var, coords=None):
         """Get the x-coordinate of a variable
@@ -1552,7 +2331,7 @@ class CFDecoder(object):
 
         Possible types
         --------------
-        var: xray.Variable
+        var: xarray.Variable
             The variable to get the x-coordinate for
         coords: dict
             Coordinates to use. If None, the coordinates of the dataset in the
@@ -1560,7 +2339,7 @@ class CFDecoder(object):
 
         Returns
         -------
-        xray.Coordinate
+        xarray.Coordinate
             The x-coordinate"""
         coords = coords or self.ds.coords
         coord = self.get_variable_by_axis(var, 'x', coords)
@@ -1576,7 +2355,7 @@ class CFDecoder(object):
 
         Parameters
         ----------
-        var: xray.Variables
+        var: xarray.Variables
             The variable to get the dimension for
         coords: dict
             The coordinates to use for checking the axis attribute. If None,
@@ -1616,7 +2395,7 @@ class CFDecoder(object):
 
         Possible types
         --------------
-        var: xray.Variable
+        var: xarray.Variable
             The variable to get the y-coordinate for
         coords: dict
             Coordinates to use. If None, the coordinates of the dataset in the
@@ -1624,7 +2403,7 @@ class CFDecoder(object):
 
         Returns
         -------
-        xray.Coordinate
+        xarray.Coordinate
             The y-coordinate"""
         coords = coords or self.ds.coords
         coord = self.get_variable_by_axis(var, 'y', coords)
@@ -1640,7 +2419,7 @@ class CFDecoder(object):
 
         Parameters
         ----------
-        var: xray.Variables
+        var: xarray.Variables
             The variable to get the dimension for
         coords: dict
             The coordinates to use for checking the axis attribute. If None,
@@ -1683,7 +2462,7 @@ class CFDecoder(object):
 
         Possible types
         --------------
-        var: xray.Variable
+        var: xarray.Variable
             The variable to get the z-coordinate for
         coords: dict
             Coordinates to use. If None, the coordinates of the dataset in the
@@ -1691,13 +2470,16 @@ class CFDecoder(object):
 
         Returns
         -------
-        xray.Coordinate
-            The z-coordinate"""
+        xarray.Coordinate or None
+            The z-coordinate or None if no time coordinate could be found"""
         coords = coords or self.ds.coords
         coord = self.get_variable_by_axis(var, 'z', coords)
         if coord is not None:
             return coord
-        return coords.get(self.get_zname(var))
+        zname = self.get_zname(var)
+        if zname is not None:
+            return coords.get(zname)
+        return None
 
     def get_zname(self, var, coords=None):
         """Get the name of the z-dimension
@@ -1707,7 +2489,7 @@ class CFDecoder(object):
 
         Parameters
         ----------
-        var: xray.Variables
+        var: xarray.Variables
             The variable to get the dimension for
         coords: dict
             The coordinates to use for checking the axis attribute. If None,
@@ -1715,8 +2497,9 @@ class CFDecoder(object):
 
         Returns
         -------
-        str
-            The coordinate name
+        str or None
+            The coordinate name or None if no vertical coordinate could be
+            found
 
         See Also
         --------
@@ -1734,13 +2517,12 @@ class CFDecoder(object):
             return dimlist[0]
         # otherwise we return the coordinate in the third last position
         is_unstructured = self.is_unstructured(var)
-        if var.ndim > 2:
-            i = -3 if not is_unstructured else -2
-        elif var.ndim > 1:
-            i = -2 if not is_unstructured else -1
-        else:
-            i = -1
-        return var.dims[i]
+        icheck = -2 if is_unstructured else -3
+        min_dim = abs(icheck) if 'variable' not in var.dims else abs(icheck-1)
+        if var.ndim >= min_dim and var.dims[icheck] != self.get_tname(
+                var, coords):
+            return var.dims[icheck]
+        return None
 
     def get_t(self, var, coords=None):
         """Get the time coordinate of a variable
@@ -1753,7 +2535,7 @@ class CFDecoder(object):
 
         Possible types
         --------------
-        var: xray.Variable
+        var: xarray.Variable
             The variable to get the time coordinate for
         coords: dict
             Coordinates to use. If None, the coordinates of the dataset in the
@@ -1761,8 +2543,8 @@ class CFDecoder(object):
 
         Returns
         -------
-        xray.Coordinate
-            The time coordinate"""
+        xarray.Coordinate or None
+            The time coordinate or None if no time coordinate could be found"""
         coords = coords or self.ds.coords
         coord = self.get_variable_by_axis(var, 't', coords)
         if coord is not None:
@@ -1775,19 +2557,19 @@ class CFDecoder(object):
                          ', '.join(dimlist), dimlist[0]),
                      PsyPlotRuntimeWarning)
             return coords[dimlist[0]]
-        # otherwise we return the coordinate in the first position
-        return coords.get(self.get_tname(var))
+        tname = self.get_tname(var)
+        if tname is not None:
+            return coords.get(tname)
+        return None
 
     def get_tname(self, var, coords=None):
         """Get the name of the t-dimension
 
-        This method gives the name of the time dimension (which is not
-        necessarily the name of the coordinate if the variable has a coordinate
-        attribute)
+        This method gives the name of the time dimension
 
         Parameters
         ----------
-        var: xray.Variables
+        var: xarray.Variables
             The variable to get the dimension for
         coords: dict
             The coordinates to use for checking the axis attribute. If None,
@@ -1795,8 +2577,8 @@ class CFDecoder(object):
 
         Returns
         -------
-        str
-            The coordinate name
+        str or None
+            The coordinate name or None if no time coordinate could be found
 
         See Also
         --------
@@ -1812,8 +2594,8 @@ class CFDecoder(object):
                      "%s. I use %s" % (', '.join(dimlist), dimlist[0]),
                      PsyPlotRuntimeWarning)
             return dimlist[0]
-        # otherwise we return the coordinate in the first position
-        return var.dims[0]
+        # otherwise we return None
+        return None
 
     def get_idims(self, arr, coords=None):
         """Get the coordinates in the :attr:`ds` dataset as int or slice
@@ -1821,11 +2603,11 @@ class CFDecoder(object):
         This method returns a mapping from the coordinate names of the given
         `arr` to an integer, slice or an array of integer that represent the
         coordinates in the :attr:`ds` dataset and can be used to extract the
-        given `arr` via the :meth:`xray.Dataset.isel` method.
+        given `arr` via the :meth:`xarray.Dataset.isel` method.
 
         Parameters
         ----------
-        arr: xray.DataArray
+        arr: xarray.DataArray
             The data array for which to get the dimensions as integers, slices
             or list of integers from the dataset in the :attr:`base` attribute
 
@@ -1836,7 +2618,7 @@ class CFDecoder(object):
 
         See Also
         --------
-        xray.Dataset.isel, InteractiveArray.idims"""
+        xarray.Dataset.isel, InteractiveArray.idims"""
         if coords is None:
             coord_items = six.iteritems(arr.coords)
         else:
@@ -1858,7 +2640,7 @@ class CFDecoder(object):
 
         Parameters
         ----------
-        coord: xray.Coordinate
+        coord: xarray.Coordinate
             The coordinate to get the bounds for
         kind: str
             The interpolation method (see :func:`scipy.interpolate.interp1d`)
@@ -1896,9 +2678,9 @@ class CFDecoder(object):
 
         Parameters
         ----------
-        coord: xray.Coordinate
+        coord: xarray.Coordinate
             The coordinate to get the bounds for
-        bounds: xray.DataArray
+        bounds: xarray.DataArray
             The bounds as inferred from the attributes of the given `coord`
 
         Returns
@@ -1913,19 +2695,25 @@ class CFDecoder(object):
                 "Cannot interprete bounds with shape {0} for {1} "
                 "coordinate with shape {2}.".format(
                     bounds.shape, coord.name, coord.shape))
-        ret = zeros(tuple(map(lambda i: i+1, coord.shape)))
+        ret = np.zeros(tuple(map(lambda i: i+1, coord.shape)))
         ret[tuple(map(slice, coord.shape))] = bounds[..., 0]
         last_slices = tuple(slice(-1, None) for _ in coord.shape)
         ret[last_slices] = bounds[tuple(chain(last_slices, [1]))]
         return ret
 
+    docstrings.keep_params('CFDecoder._check_triangular_bounds.parameters',
+                           'nans')
+
+    @docstrings.dedent
     def get_triangles(self, var, coords=None, convert_radian=True,
-                      copy=False, src_crs=None, target_crs=None):
-        """Get the triangles for the variable
+                      copy=False, src_crs=None, target_crs=None,
+                      nans=None):
+        """
+        Get the triangles for the variable
 
         Parameters
         ----------
-        var: xray.Variable or xray.DataArray
+        var: xarray.Variable or xarray.DataArray
             The variable to use
         coords: dict
             Alternative coordinates to use. If None, the coordinates of the
@@ -1941,6 +2729,7 @@ class CFDecoder(object):
         target_crs: cartopy.crs.Crs
             The target projection for which the triangles shall be transformed.
             Must only be provided if the `src_crs` is not None.
+        %(CFDecoder._check_triangular_bounds.parameters.nans)s
 
         Returns
         -------
@@ -1954,14 +2743,14 @@ class CFDecoder(object):
         from matplotlib.tri import Triangulation
 
         def get_vertices(axis):
-            bounds = self._check_triangular_bounds(var, axis)[1]
+            bounds = self._check_triangular_bounds(var, axis, nans=nans)[1]
             if coords is not None:
                 bounds = coords.get(bounds.name, bounds)
             vertices = bounds.values.ravel()
             if convert_radian:
                 coord = getattr(self, 'get_' + axis)(var)
                 if coord.attrs.get('units') == 'radian':
-                    vertices = vertices * 180. / pi
+                    vertices = vertices * 180. / np.pi
             return vertices if not copy else vertices.copy()
 
         xvert = get_vertices('x')
@@ -1974,7 +2763,7 @@ class CFDecoder(object):
             arr = target_crs.transform_points(src_crs, xvert, yvert)
             xvert = arr[:, 0]
             yvert = arr[:, 1]
-        triangles = reshape(range(len(xvert)), (len(xvert) / 3, 3))
+        triangles = np.reshape(range(len(xvert)), (len(xvert) / 3, 3))
         return Triangulation(xvert, yvert, triangles)
 
     docstrings.delete_params(
@@ -2001,9 +2790,9 @@ class CFDecoder(object):
         elif coord.ndim == 2:
             from scipy.interpolate import interp2d
             kind = kind or rcParams['decoder.interp_kind']
-            x, y = map(arange, coord.shape)
+            x, y = map(np.arange, coord.shape)
             new_x, new_y = map(_infer_interval_breaks, [x, y])
-            return interp2d(x, y, asarray(coord), kind=kind)(new_x, new_y)
+            return interp2d(x, y, np.asarray(coord), kind=kind)(new_x, new_y)
 
     @staticmethod
     @docstrings.dedent
@@ -2031,8 +2820,10 @@ class CFDecoder(object):
         if decode_times:
             for k, v in six.iteritems(ds.variables):
                 if v.attrs.get('units', '') == 'day as %Y%m%d.%f':
-                    ds = ds.update({k: AbsoluteTimeDecoder(v)},
-                                   inplace=inplace)
+                    decoded = xarray.Variable(
+                        v.dims, AbsoluteTimeDecoder(v), attrs=v.attrs,
+                        encoding=v.encoding)
+                    ds = ds.update({k: decoded}, inplace=inplace)
         return ds
 
     def correct_dims(self, var, dims={}):
@@ -2040,12 +2831,13 @@ class CFDecoder(object):
 
         Parameters
         ----------
-        var: xray.Variable
+        var: xarray.Variable
             The variable to get the data for
         dims: dict
             a mapping from dimension to the slices"""
         method_mapping = {'x': self.get_xname,
                           'z': self.get_zname, 't': self.get_tname}
+        dims = dict(dims)
         if self.is_unstructured(var):  # we assume a one-dimensional grid
             method_mapping['y'] = self.get_xname
         else:
@@ -2056,101 +2848,40 @@ class CFDecoder(object):
                 if dim_name in dims:
                     dims.pop(key)
                 else:
-                    dims[method_mapping[key](var)] = dims.pop(key)
+                    new_name = method_mapping[key](var)
+                    if new_name is not None:
+                        dims[new_name] = dims.pop(key)
+        # now remove the unnecessary dimensions
+        for key in set(dims).difference(var.dims):
+            dims.pop(key)
+            self.logger.debug(
+                "Could not find a dimensions matching %s in variable %s!",
+                key, var)
         return dims
 
+    def standardize_dims(self, var, dims={}):
+        """Replace the coordinate names through x, y, z and t
 
-#: mapping that translates datetime format strings to regex patterns
-t_patterns = {
-        '%Y': '[0-9]{4}',
-        '%m': '[0-9]{1,2}',
-        '%d': '[0-9]{1,2}',
-        '%H': '[0-9]{1,2}',
-        '%M': '[0-9]{1,2}',
-        '%S': '[0-9]{1,2}',
-    }
-
-
-@docstrings.get_sectionsf('get_tdata')
-@dedent
-def get_tdata(t_format, files):
-    """
-    Get the time information from file names
-
-    Parameters
-    ----------
-    t_format: str
-        The string that can be used to get the time information in the files.
-        Any numeric datetime format string (e.g. %Y, %m, %H) can be used, but
-        not non-numeric strings like %b, etc. See [1]_ for the datetime format
-        strings
-    files: list of str
-        The that contain the time informations
-
-    Returns
-    -------
-    pandas.Index
-        The time coordinate
-    list of str
-        The file names as they are sorten in the returned index
-
-    References
-    ----------
-    .. [1] https://docs.python.org/2/library/datetime.html"""
-    def median(arr):
-        return arr.min() + (arr.max() - arr.min())/2
-    import re
-    from numpy import datetime64, array, argsort
-    import datetime as dt
-    from pandas import Index
-    t_pattern = t_format
-    for fmt, patt in t_patterns.items():
-        t_pattern = t_pattern.replace(fmt, patt)
-    t_pattern = re.compile(t_pattern)
-    time = range(len(files))
-    for i, f in enumerate(files):
-        time[i] = median(array(list(map(
-            lambda s: datetime64(dt.datetime.strptime(s, t_format)),
-            t_pattern.findall(f)))))
-    ind = argsort(time)  # sort according to time
-    files = array(files)[ind]
-    time = array(time)[ind]
-    return Index(time, name='time'), files
-
-
-def decode_absolute_time(times):
-    def decode(t):
-        day, sub = re.findall('(\d+)(\.\d+)', t)[0]
-        return datetime64(
-            datetime.strptime(day, "%Y%m%d") + timedelta(days=float(sub)))
-    times = asarray(times, dtype=str)
-    return vectorize(decode, [datetime64])(times)
-
-
-class AbsoluteTimeDecoder(NDArrayMixin):
-
-    def __init__(self, array):
-        self.array = array
-        example_value = first_n_items(array, 1) or 0
-        try:
-            result = decode_absolute_time(example_value)
-        except Exception:
-            logger.error("Could not interprete absolute time values!")
-            raise
-        else:
-            self._dtype = getattr(result, 'dtype', dtype('object'))
-
-    @property
-    def dtype(self):
-        return self._dtype
-
-    def __getitem__(self, key):
-        return decode_absolute_time(self.array[key])
+        Parameters
+        ----------
+        var: xarray.Variable
+            The variable to use the dimensions of
+        dims: dict
+            The dictionary to use for replacing the original dimensions"""
+        dims = dict(dims)
+        name_map = {self.get_xname(var, self.ds.coords): 'x',
+                    self.get_yname(var, self.ds.coords): 'y',
+                    self.get_zname(var, self.ds.coords): 'z',
+                    self.get_tname(var, self.ds.coords): 't'}
+        dims = dict(dims)
+        for dim in set(dims).intersection(name_map):
+            dims[name_map[dim]] = dims.pop(dim)
+        return dims
 
 docstrings.keep_params('CFDecoder.decode_coords.parameters', 'gridfile')
-docstrings.get_sections(dedents(xray.open_dataset.__doc__[
-    xray.open_dataset.__doc__.find('\n') + 1:]), 'xray.open_dataset')
-docstrings.delete_params('xray.open_dataset.parameters', 'engine')
+docstrings.get_sections(dedents(xarray.open_dataset.__doc__.split('\n', 1)[1]),
+                        'xarray.open_dataset')
+docstrings.delete_params('xarray.open_dataset.parameters', 'engine')
 
 
 @docstrings.get_sectionsf('open_dataset')
@@ -2158,16 +2889,16 @@ docstrings.delete_params('xray.open_dataset.parameters', 'engine')
 def open_dataset(filename_or_obj, decode_cf=True, decode_times=True,
                  decode_coords=True, engine=None, gridfile=None, **kwargs):
     """
-    Open an instance of :class:`xray.Dataset`.
+    Open an instance of :class:`xarray.Dataset`.
 
-    This method has the same functionality as the :func:`xray.open_dataset`
+    This method has the same functionality as the :func:`xarray.open_dataset`
     method except that is supports an additional 'gdal' engine to open
     gdal Rasters (e.g. GeoTiffs) and that is supports absolute time units like
     ``'day as %Y%m%d.%f'`` (if `decode_cf` and `decode_times` are True).
 
     Parameters
     ----------
-    %(xray.open_dataset.parameters.no_engine)s
+    %(xarray.open_dataset.parameters.no_engine)s
     engine: {'netcdf4', 'scipy', 'pydap', 'h5netcdf', 'gdal'}, optional
         Engine to use when reading netCDF files. If not provided, the default
         engine is chosen based on available dependencies, with a preference for
@@ -2176,13 +2907,13 @@ def open_dataset(filename_or_obj, decode_cf=True, decode_times=True,
 
     Returns
     -------
-    xray.Dataset
+    xarray.Dataset
         The dataset that contains the variables from `filename_or_obj`"""
     if engine == 'gdal':
         from .gdal_store import GdalStore
         filename_or_obj = GdalStore(filename_or_obj)
         engine = None
-    ds = xray.open_dataset(filename_or_obj, decode_cf=decode_cf,
+    ds = xarray.open_dataset(filename_or_obj, decode_cf=decode_cf,
                            decode_coords=False, engine=engine, **kwargs)
     if decode_cf:
         ds = CFDecoder.decode_ds(
@@ -2191,13 +2922,13 @@ def open_dataset(filename_or_obj, decode_cf=True, decode_times=True,
     return ds
 
 
-docstrings.get_sections(dedents(xray.open_mfdataset.__doc__[
-    xray.open_mfdataset.__doc__.find('\n') + 1:]), 'xray.open_mfdataset')
-docstrings.delete_params('xray.open_mfdataset.parameters', 'engine')
+docstrings.get_sections(dedents(xarray.open_mfdataset.__doc__.split('\n', 1)[1]),
+                        'xarray.open_mfdataset')
+docstrings.delete_params('xarray.open_mfdataset.parameters', 'engine')
 docstrings.keep_params('get_tdata.parameters', 't_format')
 
-docstrings.params['xray.open_mfdataset.parameters.no_engine'] = \
-    docstrings.params['xray.open_mfdataset.parameters.no_engine'].replace(
+docstrings.params['xarray.open_mfdataset.parameters.no_engine'] = \
+    docstrings.params['xarray.open_mfdataset.parameters.no_engine'].replace(
         '**kwargs', '``**kwargs``').replace('"path/to/my/files/*.nc"',
                                             '``"path/to/my/files/*.nc"``')
 
@@ -2212,7 +2943,7 @@ def open_mfdataset(paths, decode_cf=True, decode_times=True,
     """
     Open multiple files as a single dataset.
 
-    This function is essentially the same as the :func:`xray.open_mfdataset`
+    This function is essentially the same as the :func:`xarray.open_mfdataset`
     function but (as the :func:`open_dataset`) supports additional decoding
     and the ``'gdal'`` engine.
     You can further specify the `t_format` parameter to get the time
@@ -2220,14 +2951,14 @@ def open_mfdataset(paths, decode_cf=True, decode_times=True,
 
     Parameters
     ----------
-    %(xray.open_mfdataset.parameters.no_engine)s
+    %(xarray.open_mfdataset.parameters.no_engine)s
     %(open_dataset.parameters.engine)s
     %(get_tdata.parameters.t_format)s
     %(CFDecoder.decode_coords.parameters.gridfile)s
 
     Returns
     -------
-    xray.Dataset
+    xarray.Dataset
         The dataset that contains the variables from `filename_or_obj`"""
     if t_format is not None or engine == 'gdal':
         if isinstance(paths, six.string_types):
@@ -2243,7 +2974,7 @@ def open_mfdataset(paths, decode_cf=True, decode_times=True,
         engine = None
         kwargs['lock'] = False
 
-    ds = xray.open_mfdataset(
+    ds = xarray.open_mfdataset(
         paths, decode_cf=decode_cf, decode_times=decode_times, engine=engine,
         decode_coords=False, **kwargs)
     if decode_cf:
@@ -2251,3 +2982,71 @@ def open_mfdataset(paths, decode_cf=True, decode_times=True,
                                    decode_coords=decode_coords,
                                    decode_times=decode_times)
     return ds
+
+
+def _open_ds_from_store(fname, store_mod=None, store_cls=None, **kwargs):
+    """Open a dataset and return it"""
+    if isinstance(fname, xarray.Dataset):
+        return fname
+    if store_mod is not None and store_cls is not None:
+        fname = getattr(import_module(store_mod), store_cls)(fname)
+    return open_dataset(fname, **kwargs)
+
+
+def decode_absolute_time(times):
+    def decode(t):
+        day, sub = re.findall('(\d+)(\.\d+)', t)[0]
+        return np.datetime64(
+            datetime.strptime(day, "%Y%m%d") + timedelta(days=float(sub)))
+    times = np.asarray(times, dtype=str)
+    return np.vectorize(decode, [np.datetime64])(times)
+
+
+def encode_absolute_time(times):
+    def encode(t):
+        t = to_datetime(t)
+        return float(t.strftime('%Y%m%d')) + (
+            t - datetime(t.year, t.month, t.day)).total_seconds() / 86400.
+    return np.vectorize(encode, [float])(times)
+
+
+class AbsoluteTimeDecoder(NDArrayMixin):
+
+    def __init__(self, array):
+        self.array = array
+        example_value = first_n_items(array, 1) or 0
+        try:
+            result = decode_absolute_time(example_value)
+        except Exception:
+            logger.error("Could not interprete absolute time values!")
+            raise
+        else:
+            self._dtype = getattr(result, 'dtype', np.dtype('object'))
+
+    @property
+    def dtype(self):
+        return self._dtype
+
+    def __getitem__(self, key):
+        return decode_absolute_time(self.array[key])
+
+
+class AbsoluteTimeEncoder(NDArrayMixin):
+
+    def __init__(self, array):
+        self.array = array
+        example_value = first_n_items(array, 1) or 0
+        try:
+            result = encode_absolute_time(example_value)
+        except Exception:
+            logger.error("Could not interprete absolute time values!")
+            raise
+        else:
+            self._dtype = getattr(result, 'dtype', np.dtype('object'))
+
+    @property
+    def dtype(self):
+        return self._dtype
+
+    def __getitem__(self, key):
+        return encode_absolute_time(self.array[key])

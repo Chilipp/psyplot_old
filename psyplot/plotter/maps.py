@@ -1,6 +1,5 @@
 import six
 import re
-import yaml
 from abc import abstractproperty
 from difflib import get_close_matches
 from itertools import starmap, chain, repeat
@@ -8,6 +7,7 @@ import cartopy.crs as ccrs
 from cartopy.mpl.gridliner import Gridliner
 import matplotlib as mpl
 import matplotlib.ticker as ticker
+from matplotlib.colors import BoundaryNorm
 import numpy as np
 from .. import rcParams
 from ..compat.pycompat import map, range
@@ -15,11 +15,12 @@ from ..docstring import docstrings
 from ..warning import warn, PsyPlotRuntimeWarning
 from ..data import InteractiveList
 from . import Formatoption, START, DictFormatoption, END
-from .simpleplotter import (
+from .simple import (
     Base2D, Plot2D, BasePlotter, BaseVectorPlotter, VectorPlot, CombinedBase,
     _infer_interval_breaks, DataTicksCalculator, round_to_05, Density,
     Simple2DBase, DataGrid, VectorColor, get_cmap)
 from .boxes import lonlatboxes
+from .colors import FixedBoundaryNorm
 
 
 @docstrings.get_sectionsf('shiftdata')
@@ -457,16 +458,11 @@ class LonLatBox(BoxBase):
                                   lat_da.values)
         data_shape = data.shape[-2:] if not decoder.is_unstructured(data) \
             else (data.shape[-1], )
+        is_combined = data_shape != data.shape
         if lon.shape == data_shape and lat.shape == data_shape:
-            i = len(data_shape)
-            if i < len(data.shape):
-                comp_data = np.all(~np.isnan(data.values), axis=0)
-                for j in range(1, len(data.shape) - i):
-                    comp_data = np.all(~np.isnan(comp_data), axis=(j - 1))
-            else:
-                comp_data = ~np.isnan(data.values)
-            lon = lon[comp_data]
-            lat = lat[comp_data]
+            vals = data.values[0 if is_combined else slice(None)]
+            lon = np.where(np.isnan(vals), np.nan, lon)
+            lat = np.where(np.isnan(vals), np.nan, lat)
         return lon, lat
 
     def update_array(self, value, data, decoder, base_var=None):
@@ -622,8 +618,12 @@ class MapExtent(BoxBase):
         # are not always correctly set, we test here whether the wished
         # extent (the value) is almost global. If so, we set it to a global
         # value
-        if set_global or ((value[1] - value[0]) / 360. > 0.95 or
-                          (value[3] - value[2]) / 180. > 0.95):
+        with self.ax.hold_limits():
+            self.ax.set_global()
+            x1, x2, y1, y2 = self.ax.get_extent(ccrs.PlateCarree())
+        x_rng = 360. if x1 == x2 else x2 - x1
+        if set_global or ((value[1] - value[0]) / (x_rng) > 0.95 and
+                          (value[3] - value[2]) / (y2 - y1) > 0.95):
             self.logger.debug("Setting to global extent...")
             self.ax.set_global()
         else:
@@ -714,8 +714,11 @@ class GridLabels(Formatoption):
 
     Possible types
     --------------
+    None
+        Grid labels are draw if possible
     bool
-        If True, labels are drawn
+        If True, labels are drawn and if this is not possible, a warning is
+        raised
 
     See Also
     --------
@@ -726,11 +729,18 @@ class GridLabels(Formatoption):
     connections = ['xgrid', 'ygrid']
 
     def update(self, value):
-        try:  # initialize a gridliner to see if we can draw the tick labels
-            Gridliner(self.ax, self.transform.projection, draw_labels=value)
-        except TypeError as e:  # labels cannot be drawn
-            value = False
-            warn(e.message, PsyPlotRuntimeWarning, logger=self.logger)
+        if value is None or value:
+            # initialize a gridliner to see if we can draw the tick labels
+            test_value = True
+            try:
+                Gridliner(
+                    self.ax, self.transform.projection, draw_labels=test_value)
+            except TypeError as e:  # labels cannot be drawn
+                if value:
+                    warn(e.message, PsyPlotRuntimeWarning, logger=self.logger)
+                value = False
+            else:
+                value = True
         for connection in self.connections:
             getattr(self, connection)._kwargs['draw_labels'] = value
 
@@ -955,20 +965,17 @@ class MapPlot2D(Plot2D):
             triangles_wrapped = decoder.get_triangles(
                 self.data, self.data.coords, copy=True,
                 src_crs=self.transform.projection,
-                target_crs=self.ax.projection)
+                target_crs=self.ax.projection, nans='skip')
             triangles_wrapped.set_mask(~flat_mask)
             triangles.set_mask(flat_mask)
         cmap = get_cmap(self.cmap.value, len(self.bounds.bounds) - 1 or None)
-        if self.miss_color and self.miss_color.value is not None:
-            # does not work for tripcolor (for whatever reason)
-            warn('The miss_color formatoption does not work for triangular '
-                 'plots', PsyPlotRuntimeWarning, logger=self.logger)
-#            cmap.set_bad(self.miss_color.value)
         if hasattr(self, '_plot'):
             self._plot.update(dict(cmap=cmap, norm=self.bounds.norm))
         else:
+            arr = self.array
+            arr = arr[~np.isnan(arr)]
             self._plot = self.ax.tripcolor(
-                triangles, self.array, norm=self.bounds.norm, cmap=cmap,
+                triangles, arr, norm=self.bounds.norm, cmap=cmap,
                 rasterized=True, **self._kwargs)
         # draw wrapped collection to fix the issue that the boundaries are
         # masked out when using the min_circle_ration
@@ -978,7 +985,7 @@ class MapPlot2D(Plot2D):
             kwargs.pop('transform', None)
             kwargs.setdefault('snap', False)
             self._wrapped_plot = self.ax.tripcolor(
-                triangles_wrapped, self.array, norm=self.bounds.norm,
+                triangles_wrapped, arr, norm=self.bounds.norm,
                 cmap=cmap, rasterized=True, **kwargs)
         else:
             self._wrapped_plot.update(dict(cmap=cmap, norm=self.bounds.norm))
@@ -1043,6 +1050,9 @@ class MapDensity(Density):
         elif self.raw_data.decoder.is_unstructured(self.raw_data):
             warn("Quiver plot of unstructered data does not support the "
                  "density keyword!", PsyPlotRuntimeWarning, logger=self.logger)
+        elif self.raw_data.decoder.is_circumpolar(self.raw_data):
+            warn("Quiver plot of circumpolar data does not support the "
+                 "density keyword!", PsyPlotRuntimeWarning, logger=self.logger)
         else:
             shape = self.data.shape[-2:]
             value = map(int, [value[0]*shape[0], value[1]*shape[1]])
@@ -1067,6 +1077,17 @@ class MapVectorPlot(VectorPlot):
 
     dependencies = VectorPlot.dependencies + ['lonlatbox', 'transform', 'clon',
                                               'clat']
+
+    def set_value(self, value, *args, **kwargs):
+        # stream plots for circumpolar grids is not supported
+        if (value == 'stream' and self.raw_data is not None and
+                self.raw_data.decoder.is_circumpolar(self.raw_data)):
+            warn('Cannot make stream plots of circumpolar data!',
+                 logger=self.logger)
+            value = 'quiver'
+        super(MapVectorPlot, self).set_value(value, *args, **kwargs)
+
+    set_value.__doc__ = VectorPlot.set_value.__doc__
 
     def _get_data(self):
         data = self.data
@@ -1102,6 +1123,10 @@ class MapVectorPlot(VectorPlot):
         return x, y, u, v
 
     def _stream_plot(self):
+        if self.raw_data.decoder.is_circumpolar(self.raw_data):
+            warn('Cannot make stream plots of circumpolar data!',
+                 logger=self.logger)
+            return
         # update map extent such that it fits to the data limits (necessary
         # because streamplot scales the density based upon it). This however
         # does not work for matplotlib 1.5.0
@@ -1112,7 +1137,13 @@ class MapVectorPlot(VectorPlot):
             self.ax.set_global()
         # Note that this method uses a bug fix through the
         # :class:`psyplot.plotter.colors.FixedColorMap` class
+        # and one through the :class:`psyplot.plotter.colors.FixedBoundaryNorm`
+        # class
         x, y, u, v = self._get_data()
+        norm = self._kwargs.get('norm')
+        if isinstance(norm, BoundaryNorm):
+            self._kwargs['norm'] = FixedBoundaryNorm(
+                norm.boundaries, norm.Ncmap, norm.clip)
         self._plot = self.ax.streamplot(x, y, u, v, **self._kwargs)
 
 
@@ -1129,22 +1160,8 @@ class MapPlotter(Base2D):
     """Base plotter for visualizing data on a map
     """
 
-    @property
-    def ax(self):
-        """Axes instance of the plot"""
-        if self._ax is None:
-            import matplotlib.pyplot as plt
-            plt.figure()
-            self._ax = plt.axes(projection=self.projection.projection)
-        return self._ax
-
-    @ax.setter
-    def ax(self, value):
-        self._ax = value
-
     _rcparams_string = ['plotter.maps.']
 
-    transpose = None
     projection = Projection('projection')
     transform = Transform('transform')
     clon = CenterLon('clon')
@@ -1158,7 +1175,6 @@ class MapPlotter(Base2D):
     xgrid = XGrid('xgrid')
     ygrid = YGrid('ygrid')
     map_extent = MapExtent('map_extent')
-    axiscolor = None  # the axiscolor formatoption does not really work
     datagrid = MapDataGrid('datagrid', index_in_list=0)
 
     @classmethod
@@ -1167,10 +1183,26 @@ class MapPlotter(Base2D):
         can be used when creating a subplot"""
         return ccrs.PlateCarree()
 
+    @property
+    def ax(self):
+        """Axes instance of the plot"""
+        if self._ax is None:
+            import matplotlib.pyplot as plt
+            plt.figure()
+            self._ax = plt.axes(projection=getattr(
+                self.projection, 'projection', self._get_sample_projection()))
+        return self._ax
+
+    @ax.setter
+    def ax(self, value):
+        self._ax = value
+
 
 class FieldPlotter(Simple2DBase, MapPlotter, BasePlotter):
     """Plotter for 2D scalar fields on a map
     """
+
+    _rcparams_string = ['plotter.fieldplotter']
     plot = MapPlot2D('plot')
 
 
@@ -1179,11 +1211,12 @@ class VectorPlotter(MapPlotter, BaseVectorPlotter, BasePlotter):
 
     See Also
     --------
-    psyplot.plotter.simpleplotter.SimpleVectorPlotter:
+    psyplot.plotter.simple.SimpleVectorPlotter:
         for a simple version of drawing vector data
     FieldPlotter: for plotting scaler fields
     CombinedPlotter: for combined scalar and vector fields
     """
+    _rcparams_string = ['plotter.vectorplotter']
     plot = MapVectorPlot('plot')
     density = MapDensity('density')
     color = MapVectorColor('color')
@@ -1194,7 +1227,7 @@ class CombinedPlotter(CombinedBase, FieldPlotter, VectorPlotter):
 
     See Also
     --------
-    psyplot.plotter.simpleplotter.CombinedSimplePlotter:
+    psyplot.plotter.simple.CombinedSimplePlotter:
         for a simple version of this class
     FieldPlotter, VectorPlotter"""
     plot = MapPlot2D('plot', index_in_list=0)

@@ -11,29 +11,143 @@ import os
 import six
 import logging
 from importlib import import_module
-from itertools import chain, repeat, cycle
-from collections import Iterable
+import pickle
+from itertools import chain, repeat, cycle, count
+from collections import Iterable, defaultdict
 from functools import wraps
-import xray
+import xarray
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib.figure as mfig
 import numpy as np
 from . import rcParams
 from .warning import critical
 from .docstring import docstrings, dedent, safe_modulo
-from .data import ArrayList, open_dataset, open_mfdataset, sort_kwargs
+from .data import (
+    ArrayList, open_dataset, open_mfdataset, sort_kwargs, _MissingModule,
+    to_netcdf, is_remote_url)
+from .plotter import unique_everseen
 from .plotter.colors import show_colormaps, get_cmap
-from .compat.pycompat import OrderedDict, range
+from .compat.pycompat import OrderedDict, range, getcwd
+try:
+    from cdo import Cdo as CdoBase
+    with_cdo = True
+except ImportError as e:
+    Cdo = _MissingModule(e)
+    with_cdo = False
+
+if rcParams['project.import_seaborn'] is not False:
+    try:
+        import seaborn as _sns
+    except ImportError:
+        if rcParams['project.import_seaborn']:
+            raise
+        _sns = None
+
 
 _open_projects = []  # list of open projects
 _current_project = None  # current main project
 _current_subproject = None  # current subproject
 
 
+if with_cdo:
+    CDF_MOD_NCREADER = 'xarray'
+
+    class Cdo(CdoBase):
+        """Subclass of the original cdo.Cdo class in the cdo.py module
+
+        Requirements are a working cdo binary and the installed cdo.py python
+        module.
+
+        For a documentation of an operator, use the python help function, for a
+        list of operators, use the builtin dir function.
+        Further documentation on the operators can be found here:
+        https://code.zmaw.de/projects/cdo/wiki/Cdo%7Brbpy%7D
+        and on the usage of the cdo.py module here:
+        https://code.zmaw.de/projects/cdo
+
+        For a demonstration script on how cdos are implemented, see the
+        examples of the psyplot package
+
+        Compared to the original cdo.Cdo class, the following things changed, the
+        default cdf handler is the :func:`psyplot.data.open_dataset` function and
+        the following keywords are implemented for each cdo operator. Each of them
+        determine the output of the specific operator.
+
+        Other Parameters
+        ----------------
+        returnMap: str, list or dict
+            the :attr:`~psyplot.project.ProjectPlotter.mapplot` plotting method
+            is used to visualize a scalar field projected on the globe and a
+            :class:`psyplot.project.Project` instance is returned.
+            If `returnMap` is a string or list of strings, this specifies the
+            variables to plot. A dictionary may contain key-value pairs used for
+            the above visualization method
+        returnLine: str, list or dict
+            the :attr:`~psyplot.project.ProjectPlotter.plot1d` plotting method
+            is used to visualize a simple one-dimensional plot and a
+            :class:`psyplot.project.Project` instance is returned.
+            If `returnLine` is a string or list of strings, this specifies the
+            variables to plot. A dictionary may contain key-value pairs used for
+            the above visualization method
+        returnDA: str or list of str
+            Returns the :class:`xarray.DataArray` of the specified variables"""
+
+        def __init__(self, *args, **kwargs):
+            """Initialization method of nc2map.Cdo class.
+            args and kwargs are the same as for Base Class __init__ with the
+            only exception that cdfMod is set to CDF_MOD_NCREADER by default"""
+            kwargs.setdefault('cdfMod', CDF_MOD_NCREADER)
+            super(Cdo, self).__init__(*args, **kwargs)
+            self.loadCdf()
+
+        def loadCdf(self, *args, **kwargs):
+            """Load data handler as specified by self.cdfMod"""
+            def open_nc(*args, **kwargs):
+                kwargs.pop('mode', None)
+                return open_dataset(*args, **kwargs)
+            if self.cdfMod == CDF_MOD_NCREADER:
+                self.cdf = open_nc
+            else:
+                super(Cdo, self).loadCdf(*args, **kwargs)
+
+        def __getattr__(self, method_name):
+            def my_get(get):
+                """Wrapper for get method of Cdo class to include several plotters
+                """
+                @wraps(get)
+                def wrapper(self, *args, **kwargs):
+                    added_kwargs = {'returnMap', 'returnLine', 'returnDA'}
+                    ret_mode = next(iter(added_kwargs.intersection(kwargs)), None)
+                    if ret_mode:
+                        val = kwargs.pop(ret_mode, None)
+                        kwargs['returnCdf'] = True
+                        ds = get(*args, **kwargs)
+                        if ret_mode in ['returnMap', 'returnLine']:
+                            plot_method = plot.mapplot if ret_mode == 'returnMap' \
+                                else plot.lineplot
+                            try:
+                                return plot_method(ds, **dict(val))
+                            except (TypeError, ValueError):
+                                return plot_method(ds, name=val)
+                        return ds[val]
+                    else:
+                        return get(*args, **kwargs)
+                return wrapper
+            if method_name == 'cdf':
+                # initialize cdf module implicitly
+                self.loadCdf()
+                return self.cdf
+            else:
+                get = my_get(super(Cdo, self).__getattr__(method_name))
+                setattr(self.__class__, method_name, get)
+                return get.__get__(self)
+
+
 @docstrings.get_sectionsf('multiple_subplots')
-def multiple_subplots(rows=1, cols=1, maxplots=None, n=1, delete=True, *args,
-                      **kwargs):
+def multiple_subplots(rows=1, cols=1, maxplots=None, n=1, delete=True,
+                      for_maps=False, *args, **kwargs):
     """
     Function to create subplots.
 
@@ -50,11 +164,17 @@ def multiple_subplots(rows=1, cols=1, maxplots=None, n=1, delete=True, *args,
         The number of subplots per figure (if None, it will be row*cols)
     n: int
         number of subplots to create
+    delete: bool
+        If True, the additional subplots per figure are deleted
+    for_maps: bool
+        If True this is a simple shortcut for setting
+        ``subplot_kw=dict(projection=cartopy.crs.PlateCarree())`` and is
+        useful if you want to use the :attr:`~ProjectPlotter.mapplot`,
+        :attr:`~ProjectPlotter.mapvector` or
+        :attr:`~ProjectPlotter.mapcombined` plotting methods
     ``*args`` and ``**kwargs``
         anything that is passed to the :func:`matplotlib.pyplot.subplots`
         function
-    delete: bool
-        If True, the additional subplots per figure are deleted
 
     Returns
     -------
@@ -64,6 +184,10 @@ def multiple_subplots(rows=1, cols=1, maxplots=None, n=1, delete=True, *args,
     maxplots = maxplots or rows * cols
     kwargs.setdefault('figsize', [
         min(8.*cols, 16), min(6.5*rows, 12)])
+    if for_maps:
+        import cartopy.crs as ccrs
+        subplot_kw = kwargs.setdefault('subplot_kw', {})
+        subplot_kw['projection'] = ccrs.PlateCarree()
     for i in range(0, n, maxplots):
         fig, ax = plt.subplots(rows, cols, *args, **kwargs)
         try:
@@ -144,18 +268,52 @@ class Project(ArrayList):
 
     @property
     def logger(self):
-        """:class:`logging.Logger` of this project"""
+        """:class:`logging.Logger` of this instance"""
         if not self.is_main:
             return self.main.logger
         try:
             return self._logger
         except AttributeError:
-            self.set_logger()
+            name = '%s.%s.%s' % (self.__module__, self.__class__.__name__,
+                                 self.num)
+            self._logger = logging.getLogger(name)
+            self.logger.debug('Initializing...')
             return self._logger
 
     @logger.setter
     def logger(self, value):
         self._logger = value
+
+    def with_plotter(self):
+        ret = super(Project, self).with_plotter
+        ret.main = self.main
+        return ret
+
+    with_plotter = property(with_plotter, doc=ArrayList.with_plotter.__doc__)
+
+    @property
+    def plotters(self):
+        """A list of all the plotters in this instance"""
+        return [arr.plotter for arr in self.with_plotter]
+
+    @property
+    def datasets(self):
+        """A mapping from dataset numbers to datasets in this list"""
+        return dict(self._get_datasets(self.array_info(use_fname=False),
+                                       nums=self.main._ds_counter))
+
+    @property
+    def dsnames_map(self):
+        """A dictionary from the dataset numbers in this list to their
+        filenames"""
+        return dict(self._get_datasets(
+            self.array_info(use_fname='both'), nums=self.main._ds_counter,
+            use_fname=True))
+
+    @property
+    def dsnames(self):
+        """The set of dataset names in this instance"""
+        return {t[0] for t in self._get_dsnames(self.array_info())}
 
     @docstrings.get_sectionsf('Project')
     @docstrings.dedent
@@ -173,29 +331,8 @@ class Project(ArrayList):
         self.main = kwargs.pop('main', None)
         self._plot = ProjectPlotter(self)
         self.num = kwargs.pop('num', None)
+        self._ds_counter = count()
         super(Project, self).__init__(*args, **kwargs)
-
-    @dedent
-    def set_logger(self, name=None, force=False):
-        """
-        Sets the logging.Logger instance of this plotter.
-
-        Parameters
-        ----------
-        name: str
-            name of the Logger. If None and the :attr:`data` attribute is not
-            None, it will be named like <module name>.<arr_name>.<class name>,
-            where <arr_name> is the name of the array in the :attr:`data`
-            attribute
-        force: Bool.
-            If False, do not set it if the instance has already a logger
-            attribute."""
-        if name is None:
-            name = '%s.%s.%s' % (self.__module__, self.__class__.__name__,
-                                 self.num)
-        if not hasattr(self, '_logger') or force:
-            self._logger = logging.getLogger(name)
-            self.logger.debug('Initializing...')
 
     @classmethod
     @docstrings.get_sectionsf('Project._register_plotter')
@@ -288,8 +425,8 @@ class Project(ArrayList):
     @docstrings.get_sectionsf('Project._add_data')
     @docstrings.dedent
     def _add_data(self, plotter_cls, filename_or_obj, fmt={}, make_plot=True,
-                  draw=True, mf_mode=False, ax=None, engine=None, delete=True,
-                  *args, **kwargs):
+                  draw=None, mf_mode=False, ax=None, engine=None, delete=True,
+                  share=False, *args, **kwargs):
         """
         Extract data from a dataset and visualize it with the given plotter
 
@@ -298,15 +435,15 @@ class Project(ArrayList):
         plotter_cls: type
             The subclass of :class:`psyplot.plotter.Plotter` to use for
             visualization
-        filename_or_obj: xray.Dataset or anything for :func:`xray.open_dataset`
+        filename_or_obj: xarray.Dataset or anything for :func:`xarray.open_dataset`
             The object (or file name) to open
         fmt: dict
             Formatoptions that shall be when initializing the plot (you can
             however also specify them as extra keyword arguments)
         make_plot: bool
             If True, the data is plotted at the end. Otherwise you have to
-            call the :meth:`psyplot.plotter.Plotter.initialize_plot` method by
-            yourself
+            call the :meth:`psyplot.plotter.Plotter.initialize_plot` method or
+            the :meth:`psyplot.plotter.Plotter.reinit` method by yourself
         %(InteractiveBase.start_update.parameters.draw)s
         mf_mode: bool
             If True, the :func:`psyplot.open_mfdataset` method is used.
@@ -324,6 +461,10 @@ class Project(ArrayList):
               will be plotted on these subplots
         %(open_dataset.parameters.engine)s
         %(multiple_subplots.parameters.delete)s
+        share: bool, fmt key or list of fmt keys
+            Determines whether the first created plotter shares it's
+            formatoptions with the others. If True, all formatoptions are
+            shared. Strings or list of strings specify the keys to share.
         %(ArrayList.from_dataset.parameters.no_base)s
 
         Other Parameters
@@ -332,37 +473,58 @@ class Project(ArrayList):
         ``**kwargs``
             Any other dimension or formatoption that shall be passed to `dims`
             or `fmt` respectively."""
-        if not isinstance(filename_or_obj, xray.Dataset):
+        if not isinstance(filename_or_obj, xarray.Dataset):
             if mf_mode:
                 filename_or_obj = open_mfdataset(filename_or_obj)
             else:
                 filename_or_obj = open_dataset(filename_or_obj)
         fmt = dict(fmt)
+        possible_fmts = list(plotter_cls._get_formatoptions())
         additional_fmt, kwargs = sort_kwargs(
-            kwargs, plotter_cls._get_formatoptions())
+            kwargs, possible_fmts)
         fmt.update(additional_fmt)
         # create the subproject
         sub_project = self.from_dataset(
             filename_or_obj, **kwargs)
-        self.extend(sub_project, new_name=None, force=True)
+        self.extend(sub_project, new_name=True)
         sub_project.main = self
-        sub_project.auto_update = sub_project.auto_update or self.auto_update
+        sub_project.no_auto_update = not (
+            not sub_project.no_auto_update or not self.no_auto_update)
         scp(sub_project)
         # create the subplots
+        proj = plotter_cls._get_sample_projection()
         if isinstance(ax, tuple):
             axes = iter(multiple_subplots(
-                *ax, n=len(sub_project), subplot_kw={
-                    'projection': plotter_cls._get_sample_projection()}
-                ))
+                *ax, n=len(sub_project), subplot_kw={'projection': proj}))
         elif ax is None or isinstance(ax, mpl.axes.SubplotBase):
             axes = repeat(ax)
         else:
             axes = iter(ax)
+        clear = isinstance(ax, tuple) and proj is not None
         for arr in sub_project:
-            plotter_cls(arr, make_plot=make_plot, draw=False, ax=next(axes),
-                        clear=isinstance(ax, tuple), project=self, **fmt)
+            plotter_cls(arr, make_plot=(not bool(share) and make_plot),
+                        draw=False, ax=next(axes), clear=clear,
+                        project=self, **fmt)
+        if share:
+            if share is True:
+                share = possible_fmts
+            elif isinstance(share, six.string_types):
+                share = [share]
+            else:
+                share = list(share)
+            sub_project[0].plotter.share(
+                [arr.plotter for arr in sub_project[1:]], keys=share,
+                draw=False)
+            if make_plot:
+                for arr in sub_project:
+                    arr.plotter.reinit(
+                        draw=False, clear=clear)
+        if draw is None:
+            draw = rcParams['auto_draw']
         if draw:
             sub_project.draw()
+            if rcParams['auto_show']:
+                self.show()
         return sub_project
 
     def __getitem__(self, key):
@@ -392,7 +554,7 @@ class Project(ArrayList):
             are multiple values for one attribute in the arrays
         enhanced: bool
             If True, the :meth:`psyplot.plotter.Plotter.get_enhanced_attrs`
-            method is used, otherwise the :attr:`xray.DataArray.attrs`
+            method is used, otherwise the :attr:`xarray.DataArray.attrs`
             attribute is used.
 
         Returns
@@ -428,7 +590,7 @@ class Project(ArrayList):
             :class:`matplotlib.backends.backend_pdf.PdfPages` to save the
             figures in it.
             If string (or iterable of strings), attribute names in the
-            xray.DataArray.attrs attribute as well as index dimensions
+            xarray.DataArray.attrs attribute as well as index dimensions
             are replaced by the respective value (see examples below).
             Furthermore a single format string without key (e.g. %i, %s, %d,
             etc.) is replaced by a counter.
@@ -532,6 +694,326 @@ class Project(ArrayList):
             save(fig)
         return close()
 
+    docstrings.delete_params('Plotter.share.parameters', 'plotters')
+
+    @docstrings.dedent
+    def share(self, base=None, keys=None, **kwargs):
+        """
+        Share the formatoptions of one plotter with all the others
+
+        This method shares specified formatoptions from `base` with all the
+        plotters in this instance.
+
+        Parameters
+        ----------
+        base: None, plotter, or :class:`psyplot.data.InteractiveBase`
+            The source of the plotter that shares its formatoptions with the
+            others. It can be None (then the first instance in this project
+            is used), a :class:`~psyplot.plotter.Plotter` or any data object
+            with a *plotter* attribute
+        %(Plotter.share.parameters.no_plotters)s
+
+        See Also
+        --------
+        psyplot.plotter.share"""
+        plotters = [arr.plotter for arr in self.with_plotter]
+        if not plotters:
+            return
+        if base is None:
+            if len(plotters) == 1:
+                return
+            base = plotters[0]
+            plotters = plotters[1:]
+        else:
+            base = getattr(base, 'plotter', base)
+        base.share(plotters, keys=keys, **kwargs)
+
+    @docstrings.dedent
+    def unshare(self, **kwargs):
+        """
+        Unshare the formatoptions of all the plotters in this instance
+
+        This method uses the :meth:`psyplot.plotter.Plotter.unshare_me`
+        method to release the specified formatoptions in `keys`.
+
+        Parameters
+        ----------
+        %(Plotter.unshare_me.parameters)s
+
+        See Also
+        --------
+        psyplot.plotter.Plotter.unshare, psyplot.plotter.Plotter.unshare_me"""
+        for arr in self.with_plotter:
+            arr.plotter.unshare_me(**kwargs)
+
+    docstrings.delete_params('ArrayList.array_info.parameters', 'pwd')
+
+    @docstrings.get_sectionsf('Project.save_project')
+    @docstrings.dedent
+    def save_project(self, fname=None, pwd=None, pack=False, **kwargs):
+        """
+        Save this project to a file
+
+        Parameters
+        ----------
+        fname: str or None
+            If None, the dictionary will be returned. Otherwise the necessary
+            information to load this project via the :meth:`load` method is
+            saved to `fname` using the :mod:`pickle` module
+        pwd: str or None, optional
+            Path to the working directory from where the data can be imported.
+            If None and `fname` is the path to a file, `pwd` is set to the
+            directory of this file. Otherwise the current working directory is
+            used.
+        pack: bool
+            If True, all datasets are packed into the folder of `fname`
+            and will be used if the data is loaded
+        %(ArrayList.array_info.parameters.no_pwd)s"""
+        # store the figure informatoptions and array informations
+        if fname is not None and pwd is None and not pack:
+            pwd = os.path.dirname(fname)
+        if pack and fname is not None:
+            def tmp_it():
+                from tempfile import NamedTemporaryFile
+                while True:
+                    yield NamedTemporaryFile(
+                        dir=os.path.dirname(fname), suffix='.nc').name
+
+            kwargs.setdefault('paths', tmp_it())
+
+        ret = {'figs': dict(map(_ProjectLoader.inspect_figure, self.figs)),
+               'arrays': self.array_info(pwd=pwd, **kwargs)}
+        if pack and fname is not None:
+            # we get the filenames out of the results and copy the datasets
+            # there. After that we check the filenames again and force them
+            # to the desired directory
+            from shutil import copyfile
+            target_dir = os.path.dirname(fname)
+            if not os.path.exists(target_dir):
+                os.makedirs(target_dir)
+            fnames = self._get_dsnames(ret['arrays'])
+            alternate_paths = kwargs.pop('alternate_paths', {})
+            counters = defaultdict(int)
+            if kwargs.get('use_rel_paths', True):
+                get_path = os.path.relpath
+            else:
+                get_path = os.path.abspath
+            for finfo in unique_everseen(chain(alternate_paths, fnames)):
+                ds_fname = finfo[0]
+                if ds_fname is None or is_remote_url(ds_fname):
+                    continue
+                dst_file = alternate_paths.get(
+                    ds_fname, os.path.join(target_dir, os.path.basename(
+                        ds_fname)))
+                if counters[dst_file] and (
+                        not os.path.exists(dst_file) or
+                        not os.path.samefile(ds_fname, dst_file)):
+                    dst_file += '-' + str(counters[dst_file])
+                if (not os.path.exists(dst_file) or
+                        not os.path.samefile(ds_fname, dst_file)):
+                    copyfile(ds_fname, dst_file)
+                    counters[dst_file] += 1
+                alternate_paths.setdefault(ds_fname, get_path(dst_file))
+            ret['arrays'] = self.array_info(
+                pwd=pwd, alternate_paths=alternate_paths, **kwargs)
+        # store the plotter settings
+        for arr, d in zip(self, six.itervalues(ret['arrays'])):
+            if arr.plotter is None:
+                continue
+            plotter = arr.plotter
+            d['plotter'] = {
+                'ax': _ProjectLoader.inspect_axes(plotter.ax),
+                'fmt': dict(plotter),
+                'cls': (plotter.__class__.__module__,
+                        plotter.__class__.__name__),
+                'shared': {}}
+            shared = d['plotter']['shared']
+            for fmto in plotter._fmtos:
+                if fmto.shared:
+                    shared[fmto.key] = [other_fmto.plotter.data.arr_name
+                                        for other_fmto in fmto.shared]
+        if fname is not None:
+            with open(fname, 'wb') as f:
+                pickle.dump(ret, f)
+            return None
+
+        return ret
+
+    docstrings.delete_params('ArrayList.from_dict.parameters', 'd', 'pwd')
+    docstrings.keep_params('Project._add_data.parameters', 'make_plot')
+
+    @classmethod
+    @docstrings.get_sectionsf('Project.load_project')
+    @docstrings.dedent
+    def load_project(cls, fname, auto_update=None, make_plot=True,
+                     draw=None, alternative_axes=None, main=False, **kwargs):
+        """
+        Load a project from a file or dict
+
+        This classmethod allows to load a project that has been stored using
+        the :meth:`save_project` method and reads all the data and creates the
+        figures.
+
+        Since the data is stored in external files when saving a project,
+        make sure that the data is accessible under the relative paths
+        as stored in the file `fname` or from the current working directory
+        if `fname` is a dictionary. Alternatively use the `alternate_paths`
+        parameter or the `pwd` parameter
+
+        Parameters
+        ----------
+        fname: str or dict
+            The string might be the path to a file created with the
+            :meth:`save_project` method, or it might be a dictionary from this
+            method
+        %(InteractiveBase.parameters.auto_update)s
+        %(Project._add_data.parameters.make_plot)s
+        %(InteractiveBase.start_update.parameters.draw)s
+        alternative_axes: dict, None or list
+            alternative axes instances to use
+
+            - If it is None, the axes and figures from the saving point will be
+              reproduced.
+            - a dictionary should map from array names in the created
+              project to matplotlib axes instances
+            - a list should contain axes instances that will be used for
+              iteration
+        main: bool, optional
+            If True, a new main project is created and returned.
+            Otherwise (by default default) the data is added to the current
+            main project.
+        pwd: str or None, optional
+            Path to the working directory from where the data can be imported.
+            If None and `fname` is the path to a file, `pwd` is set to the
+            directory of this file. Otherwise the current working directory is
+            used.
+        %(ArrayList.from_dict.parameters.no_d|pwd)s
+
+        Other Parameters
+        ----------------
+        %(ArrayList.from_dict.other_parameters)s
+
+        Returns
+        -------
+        Project
+            The project in state of the saving point"""
+        pwd = kwargs.pop('pwd', None)
+        if isinstance(fname, six.string_types):
+            with open(fname, 'rb') as f:
+                d = pickle.load(f)
+            pwd = pwd or os.path.dirname(fname)
+        else:
+            d = dict(fname)
+            pwd = pwd or getcwd()
+        if alternative_axes is None:
+            for fig_dict in six.itervalues(d.get('figs', {})):
+                _ProjectLoader.load_figure(fig_dict)
+        elif not isinstance(alternative_axes, dict):
+            alternative_axes = iter(alternative_axes)
+        obj = cls.from_dict(d['arrays'], pwd=pwd, **kwargs)
+        if main:
+            # we create a new project with the project factory to make sure
+            # that everything is handled correctly
+            obj = project(None, obj)
+        else:
+            obj._main = gcp(True)
+        for arr, arr_dict in zip(obj, six.itervalues(d['arrays'])):
+            if not arr_dict.get('plotter'):
+                continue
+            plot_dict = arr_dict['plotter']
+            plotter_cls = getattr(
+                import_module(plot_dict['cls'][0]), plot_dict['cls'][1])
+            ax = None
+            if alternative_axes is not None:
+                if isinstance(alternative_axes, dict):
+                    ax = alternative_axes.get(arr.arr_name)
+                else:
+                    ax = next(alternative_axes, None)
+            if ax is None and 'ax' in plot_dict:
+                ax = _ProjectLoader.load_axes(plot_dict['ax'])
+            plotter_cls(
+                arr, make_plot=False, draw=False, clear=False,
+                ax=ax, project=obj.main, **plot_dict['fmt'])
+        for arr in obj.with_plotter:
+            shared = d['arrays'][arr.arr_name]['plotter'].get('shared', {})
+            for key, arr_names in six.iteritems(shared):
+                arr.plotter.share(obj(arr_name=arr_names).plotters, keys=[key])
+        if make_plot:
+            for plotter in obj.plotters:
+                plotter.reinit(
+                    draw=False,
+                    clear=plotter_cls._get_sample_projection() is not None)
+            if draw is None:
+                draw = rcParams['auto_draw']
+            if draw:
+                obj.draw()
+                if rcParams['auto_show']:
+                    obj.show()
+        obj.no_auto_update = not auto_update
+        if not obj.is_main:
+            obj.main.extend(obj, new_name=True)
+        return obj
+
+
+class _ProjectLoader(object):
+    """Class to inspect a project and reproduce it"""
+
+    @staticmethod
+    def inspect_figure(fig):
+        """Get the parameters (heigth, width, etc.) to create a figure
+
+        This method returns the number of the figure and a dictionary
+        containing the necessary information for the
+        :func:`matplotlib.pyplot.figure` function"""
+        return fig.number, {
+            'num': fig.number,
+            'figsize': (fig.get_figwidth(), fig.get_figheight()),
+            'dpi': fig.get_dpi(),
+            'facecolor': fig.get_facecolor(),
+            'edgecolor': fig.get_edgecolor(),
+            'frameon': fig.get_frameon(),
+            'tight_layout': fig.get_tight_layout(),
+            'subplotpars': vars(fig.subplotpars)}
+
+    @staticmethod
+    def load_figure(d):
+        """Create a figure from what is returned by :meth:`inspect_figure`"""
+        subplotpars = d.pop('subplotpars', None)
+        if subplotpars is not None:
+            subplotpars.pop('validate', None)
+            subplotpars = mfig.SubplotParams(**subplotpars)
+        return plt.figure(subplotpars=subplotpars, **d)
+
+    @staticmethod
+    def inspect_axes(ax):
+        """Inspect an axes or subplot to get the initialization parameters"""
+        ret = {'fig': ax.get_figure().number,
+               'axisbg': ax.get_axis_bgcolor()}
+        proj = getattr(ax, 'projection', None)
+        if proj is not None and not isinstance(proj, six.string_types):
+            proj = (proj.__class__.__module__, proj.__class__.__name__)
+        ret['projection'] = proj
+        if isinstance(ax, mfig.SubplotBase):
+            geo = ax.get_subplotspec().get_topmost_subplotspec().get_geometry()
+            ret['args'] = [geo[0], geo[1], geo[2] + 1]
+            ret['is_subplot'] = True
+        else:
+            ret['args'] = [ax.get_position(True).bounds]
+            ret['is_subplot'] = False
+        return ret
+
+    @staticmethod
+    def load_axes(d):
+        """Create an axes or subplot from what is returned by
+        :meth:`inspect_axes`"""
+        fig = plt.figure(d.pop('fig', None))
+        create_method = fig.add_subplot if d.pop('is_subplot', None) else \
+            fig.add_axes
+        proj = d.pop('projection', None)
+        if proj is not None and not isinstance(proj, six.string_types):
+            proj = getattr(import_module(proj[0]), proj[1])()
+        return create_method(*d.pop('args', []), projection=proj, **d)
+
 
 class _PlotterInterface(object):
     """Base class for visualizing a data array from an predefined plotter"""
@@ -572,8 +1054,9 @@ class _PlotterInterface(object):
 
     def __call__(self, *args, **kwargs):
         return self.project._add_data(
-            self.plotter_cls, *args, prefer_list=self._prefer_list,
-            default_slice=self._default_slice, **dict(chain(
+            self.plotter_cls, *args, **dict(chain(
+                [('prefer_list', self._prefer_list),
+                 ('default_slice', self._default_slice)],
                 six.iteritems(self._default_dims), six.iteritems(kwargs))))
 
     def __getattr__(self, attr):
@@ -776,7 +1259,7 @@ class ProjectPlotter(object):
                 In [4]: syp.plot.%(id)s.docs('plot')
 
                 # or access the documentation via the attribute
-                In [5]: print(syp.plot.%(id)s.plot)""" % {'id': identifier})
+                In [5]: syp.plot.%(id)s.plot""" % {'id': identifier})
             )
 
             _default_slice = default_slice

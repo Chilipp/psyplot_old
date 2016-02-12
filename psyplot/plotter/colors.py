@@ -4,7 +4,7 @@
 This module contains some additional color maps and the show_colormaps
 function to visualize available colormaps."""
 import six
-from matplotlib.colors import Colormap, LinearSegmentedColormap
+from matplotlib.colors import Colormap, LinearSegmentedColormap, BoundaryNorm
 from matplotlib.cm import get_cmap as mpl_get_cmap
 import numpy as np
 from difflib import get_close_matches
@@ -12,6 +12,7 @@ from itertools import chain
 from ..warning import warn
 from ..docstring import docstrings
 from .. import rcParams
+from ..compat.mplcompat import mpl_version
 
 
 _cmapnames = {  # names of self defined colormaps (see get_cmap function below)
@@ -34,6 +35,13 @@ _cmapnames = {  # names of self defined colormaps (see get_cmap function below)
     }
 for key, val in list(_cmapnames.items()):
     _cmapnames[key + '_r'] = val[::-1]
+
+_color_array = np.linspace(0, 1, 256, endpoint=True)
+
+_cmapnames['w_RdBu'] = np.append(
+    [[1., 1., 1., 1.]], mpl_get_cmap('RdBu')(_color_array), axis=0)
+_cmapnames['w_RdBu_r'] = np.append(
+    [[1., 1., 1., 1.]], mpl_get_cmap('RdBu_r')(_color_array), axis=0)
 
 
 docstrings.params['cmap_note'] = """
@@ -87,6 +95,49 @@ class FixedColorMap(LinearSegmentedColormap):
             cmap = LinearSegmentedColormap.from_list(*args, **kwargs)
             return FixedColorMap(cmap.name, cmap._segmentdata, cmap.N,
                                  cmap._gamma)
+
+
+class FixedBoundaryNorm(BoundaryNorm):
+    """Bug fixing Norm with same functionality as matplotlibs BoundaryNorm
+
+    This class fixes a bug in the
+    :meth:`cartopy.mpl.geoaxes.GeoAxes.streamplot` for matplotlib version 1.5
+
+    Notes
+    -----
+    To reproduce the error type::
+
+        >>> import cartopy.crs as ccrs
+        >>> import matplotlib.pyplot as plt
+        >>> import psyplot.project as psy
+        >>> import matplotlib.colors as mcol
+        >>> maps = psy.plot.mapvector(
+        ...     'test-t2m-u-v.nc', name=[['u', 'v']], plot='stream',
+        ...     lonlatbox='Europe', color='absolute')
+        >>> plotter = maps[0].plotter
+        >>> x, y, u, v = plotter.plot._get_data()
+        >>> maps.close(True, True)
+        >>> ax = plt.axes(projection=ccrs.PlateCarree())
+        >>> ax.set_extent(plotter.lonlatbox.lonlatbox, crs=ccrs.PlateCarree())
+        >>> m = ax.streamplot(
+        ...     x, y, u, v, color=plotter.plot._kwargs['color'],
+        ...     norm=mcol.BoundaryNorm(plotter.bounds.norm.boundaries,
+        ...                            plotter.bounds.norm.Ncmap,
+        ...                            plotter.bounds.norm.clip),
+        ...                            density=[1.0, 1.0])
+
+    This raises in matplotlib.colors, line 1316, in
+    :meth:`matplotlib.colors.BoundaryNorm.__call__`::
+
+        ``ret = int(ret[0])  # assume python scalar``
+        MaskError: Cannot convert masked element to a Python int.
+    """
+
+    if mpl_version == 1.5:
+        def __call__(self, value, clip=None):
+            if isinstance(value, np.ma.core.MaskedConstant):
+                return value
+            return super(FixedBoundaryNorm, self).__call__(value, clip=clip)
 
 
 @docstrings.dedent

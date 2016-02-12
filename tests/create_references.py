@@ -1,15 +1,25 @@
-"""Script to create reference pictures for the testing of the psyplot package
+#!/usr/bin/env python
+"""Script to create the reference figures for the psyplot tests
 
-This script may be used from the command line to create the required reference
-figures for testing the psyplot package. For help on the parameters see::
+This script may be used from the command line run all tests from the psyplot
+package. See::
 
     python create_references.py -h
+
+for details.
 """
 
-from _base_testing import RefTestProgram
+import _base_testing as bt
+import os
+import glob
 import sys
+
 argv = list(sys.argv)
-if '-r' not in argv or '--ref' not in argv:
-    argv = argv[:1] + ['-r'] + argv[1:] if len(argv) > 1 else []
-RefTestProgram('test_maps', argv=argv)
-RefTestProgram('test_simpleplotter', argv=argv)
+if '-r' not in argv and '--ref' not in argv:
+    argv += ['-r']
+
+files = glob.glob(os.path.join(bt.test_dir, 'test_*.py'))
+
+for f in files:
+    bt.RefTestProgram(os.path.splitext(os.path.basename(f))[0], exit=False,
+                      argv=tuple(argv))

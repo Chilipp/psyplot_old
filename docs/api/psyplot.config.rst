@@ -3,6 +3,7 @@ psyplot.config package
 
 .. automodule:: psyplot.config
     :members:
+    :undoc-members:
     :show-inheritance:
 
 Submodules

@@ -11,7 +11,7 @@ from ..compat.pycompat import zip, filter
 from . import Plotter, Formatoption, rcParams, DictFormatoption, START
 
 docstrings.params['replace_note'] = dedents("""
-    You can insert any meta key from the :attr:`xray.DataArray.attrs` via a
+    You can insert any meta key from the :attr:`xarray.DataArray.attrs` via a
     string like ``'%%(key)s'``. Furthermore there are some special cases:
 
     - Strings like ``'%%Y'``, ``'%%b'``, etc. will be replaced using the
@@ -120,15 +120,16 @@ class TextBase(object):
             attrs['arr_name'] = data.arr_name
         s = safe_modulo(s, attrs)
         # replace datetime.datetime like time informations
-        if 'time' in data.coords:
-            try:  # get the time dimensions
-                time = data.time
-            except AttributeError:  # assume a list
-                time = data[0].time
+        if isinstance(data, InteractiveList):
+            data = data[0]
+        tname = self.decoder.get_tname(next(self.plotter.iter_base_variables),
+                                       data.coords)
+        if tname is not None and tname in data.coords:
+            time = data.coords[tname]
             if not time.values.ndim:
                 try:  # assume a valid datetime.datetime instance
                     s = pd.to_datetime(str(time.values[()])).strftime(s)
-                except AttributeError:
+                except ValueError:
                     pass
         if six.PY2:
             return s.decode('utf-8')
@@ -675,42 +676,6 @@ class Tight(Formatoption):
             plt.tight_layout()
 
 
-class AxisColor(DictFormatoption):
-    """
-    Color the x- and y-axes
-
-    This formatoption colors the left, right, bottom and top axis bar.
-
-    Possible types
-    --------------
-    dict
-        Keys may be one of {'right', 'left', 'bottom', 'top'},  the values can
-        be any valid color or None.
-
-    Notes
-    -----
-    %(colors)s"""
-
-    group = 'axes'
-
-    def initialize_plot(self, value):
-        positions = ['right', 'left', 'bottom', 'top']
-        #: :class:`dict` storing the default linewidths
-        self.default_lw = dict(zip(positions, map(
-            lambda pos: self.ax.spines[pos].get_linewidth(), positions)))
-        self.update(value)
-
-    def update(self, value):
-        for pos, color in six.iteritems(value):
-            spine = self.ax.spines[pos]
-            spine.set_color(color)
-            if color is not None and spine.get_linewidth() == 0.0:
-                spine.set_linewidth(1.0)
-            elif color is None:
-                spine.set_color(mpl.rcParams['axes.edgecolor'])
-                spine.set_linewidth(self.default_lw[pos])
-
-
 class ValueMaskBase(Formatoption):
     """Base class for masking formatoptions"""
     priority = START
@@ -849,7 +814,6 @@ class BasePlotter(TitlesPlotter):
     _rcparams_string = ['plotter.baseplotter.']
 
     tight = Tight('tight')
-    axiscolor = AxisColor('axiscolor')
     maskless = MaskLess('maskless')
     maskleq = MaskLeq('maskleq')
     maskgreater = MaskGreater('maskgreater')

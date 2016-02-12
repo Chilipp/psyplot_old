@@ -22,7 +22,7 @@ from matplotlib.rcsetup import (
     validate_bool, validate_color, validate_bool_maybe_none, validate_fontsize,
     validate_nseq_float, ValidateInStrings, validate_int, validate_colorlist,
     validate_path_exists, validate_legend_loc)
-from ..docstring import docstrings, dedent, safe_modulo
+from ..docstring import docstrings, dedent, safe_modulo, dedents
 from .logsetup import _get_home
 
 
@@ -604,13 +604,13 @@ See rcParams.keys() for a list of valid parameters.' % (key,))
             s = yaml.dump(d, **kwargs)
             desc = self.descriptions
             i = 2
-            lines = ['\n'.join('# ' + l for l in self.HEADER.split('\n')),
-                     '\nCreated with python\n%s\n\n' % sys.version] + s.split(
-                         '\n')
+            lines = ['\n'.join('# ' + l for l in self.HEADER.splitlines()),
+                     '\nCreated with python\n%s\n\n' % sys.version] + \
+                s.splitlines()
             for l in lines[2:]:
                 key = l.split(':')[0]
                 if key in desc:
-                    lines.insert(i, '# ' + desc[key])
+                    lines.insert(i, '# ' + '\n# '.join(desc[key].splitlines()))
                     i += 1
                 i += 1
             s = '\n'.join(lines)
@@ -1343,7 +1343,7 @@ defaultParams = {
     # BasePlot
     'plotter.baseplotter.tight': [False, validate_bool,
                                   'fmt key for tight layout of the plots'],
-    'plotter.simpleplotter.grid': [
+    'plotter.simple.grid': [
         False, try_and_error(validate_bool_maybe_none, validate_color),
         'fmt key to visualize the grid on simple plots (i.e. without '
         'projection)'],
@@ -1354,10 +1354,10 @@ defaultParams = {
         '', six.text_type, 'fmt key to control the title of the axes'],
     'plotter.baseplotter.text': [
         [], validate_text, 'fmt key to show text anywhere on the plot'],
-    'plotter.simpleplotter.ylabel': [
+    'plotter.simple.ylabel': [
         '', six.text_type, 'fmt key to modify the y-axis label for simple'
         'plot (i.e. plots withouth projection)'],
-    'plotter.simpleplotter.xlabel': [
+    'plotter.simple.xlabel': [
         '', six.text_type, 'fmt key to modify the y-axis label for simple'
         'plot (i.e. plots withouth projection)'],
     'plotter.plot2d.clabel': [
@@ -1369,12 +1369,12 @@ defaultParams = {
         'fmt key for the fontsize of the axes title'],
     'plotter.baseplotter.figtitlesize': [
         12, validate_fontsize, 'fmt key for the fontsize of the figure title'],
-    'plotter.simpleplotter.labelsize': [
+    'plotter.simple.labelsize': [
         'medium', DictValValidator(
             'labelsize', ['x', 'y'], validate_fontsize, None, True),
         'fmt key for the fontsize of the x- and y-l abel of simple plots '
         '(i.e. without projection)'],
-    'plotter.simpleplotter.ticksize': [
+    'plotter.simple.ticksize': [
         'medium', DictValValidator(
             'ticksize', ['major', 'minor'], validate_fontsize, 'major', True),
         'fmt key for the fontsize of the ticklabels of x- and y-axis of '
@@ -1393,12 +1393,12 @@ defaultParams = {
     'plotter.baseplotter.figtitleweight': [
         None, validate_fontweight,
         'fmt key for the fontweight of the figure title'],
-    'plotter.simpleplotter.labelweight': [
+    'plotter.simple.labelweight': [
         None, DictValValidator(
-        'labelweight', ['x', 'y'], validate_fontweight, None, True),
+            'labelweight', ['x', 'y'], validate_fontweight, None, True),
         'fmt key for the fontweight of the x- and y-l abel of simple plots '
         '(i.e. without projection)'],
-    'plotter.simpleplotter.tickweight': [None, DictValValidator(
+    'plotter.simple.tickweight': [None, DictValValidator(
         'tickweight', ['major', 'minor'], validate_fontweight, 'major', True),
         'fmt key for the fontweight of the ticklabels of x- and y-axis of '
         'simple plots (i.e. without projection)'],
@@ -1410,142 +1410,226 @@ defaultParams = {
         None, validate_fontweight,
         'fmt key for the fontweight of the colorbar label'],
     # text properties
-    'plotter.baseplotter.titleprops': [{}, validate_dict],
-    'plotter.baseplotter.figtitleprops': [{}, validate_dict],
-    'plotter.simpleplotter.labelprops': [{}, DictValValidator(
-        'labelprops', ['x', 'y'], validate_dict, None, True)],
-    'plotter.simpleplotter.xtickprops': [
+    'plotter.baseplotter.titleprops': [
+        {}, validate_dict, 'fmt key for the additional properties of the title'
+        ],
+    'plotter.baseplotter.figtitleprops': [
+        {}, validate_dict,
+        'fmt key for the additional properties of the figure title'],
+    'plotter.simple.labelprops': [{}, DictValValidator(
+        'labelprops', ['x', 'y'], validate_dict, None, True),
+        'fmt key for the additional properties of the x- and y-label'],
+    'plotter.simple.xtickprops': [
         {'major': {}, 'minor': {}}, DictValValidator(
-            'xtickprops', ['major', 'minor'], validate_dict, 'major', True)],
-    'plotter.simpleplotter.ytickprops': [
+            'xtickprops', ['major', 'minor'], validate_dict, 'major', True),
+        'fmt key for the additional properties of the ticklabels of x-axis'],
+    'plotter.simple.ytickprops': [
         {'major': {}, 'minor': {}}, DictValValidator(
-            'ytickprops', ['major', 'minor'], validate_dict, 'major', True)],
-    'plotter.plot2d.clabelprops': [{}, validate_dict],
-    'plotter.plot2d.ctickprops': [{}, validate_dict],
+            'ytickprops', ['major', 'minor'], validate_dict, 'major', True),
+        'fmt key for the additional properties of the ticklabels of y-axis'],
+    'plotter.plot2d.clabelprops': [
+        {}, validate_dict,
+        'fmt key for the additional properties of the colorbar label'],
+    'plotter.plot2d.ctickprops': [
+        {}, validate_dict,
+        'fmt key for the additional properties of the colorbar ticklabels'],
     # axis color
-    'plotter.baseplotter.axiscolor': [None, validate_axiscolor],
+    'plotter.simple.axiscolor': [
+        None, validate_axiscolor, 'fmt key to modify the color of the spines'],
 
     # SimplePlot
-    'plotter.simpleplotter.plot': ['line', try_and_error(
-        validate_none, ValidateInStrings(
-            '1d plot', ['line', 'bar', 'violin'], True))],
-    'plotter.simpleplotter.transpose': [False, validate_bool],
-    'plotter.simpleplotter.color': [None, try_and_error(
-        validate_none, validate_cmap, validate_iter)],
-    'plotter.simpleplotter.ylim': ['rounded', validate_limits],
-    'plotter.simpleplotter.xlim': ['rounded', validate_limits],
-    'plotter.simpleplotter.scale': [None, try_and_error(
-        validate_none, validate_scale)],
-    'plotter.simpleplotter.xticks': [
+    'plotter.line.plot': [
+        '-', try_and_error(validate_none, validate_str,
+                           validate_stringlist),
+        'fmt key to modify the line style'],
+    'plotter.bar.plot': [
+        'bar', try_and_error(validate_none, ValidateInStrings(
+            'plot', ['bar', 'stacked'], True)),
+        'fmt key to modify whether bar plots shall be stacked or not'],
+    'plotter.violin.plot': [
+        True, validate_bool_maybe_none,
+        'fmt key to modify whether violin plots shall be drawn'],
+    'plotter.simple.transpose': [
+        False, validate_bool, 'fmt key to switch x- and y-axis'],
+    'plotter.simple.color': [
+        None, try_and_error(validate_none, validate_cmap, validate_iter),
+        'fmt key to modify the color cycle simple plots'],
+    'plotter.simple.ylim': [
+        'rounded', validate_limits, 'fmt key to specify the y-axis limits'],
+    'plotter.simple.xlim': [
+        'rounded', validate_limits, 'fmt key to specify the x-axis limits'],
+    'plotter.simple.xticks': [
         {'major': None, 'minor': None}, DictValValidator(
             'xticks', ['major', 'minor'], TicksValidator(
-                'xticks', tick_strings, True), 'major', True)],
-    'plotter.simpleplotter.yticks': [
+                'xticks', tick_strings, True), 'major', True),
+        'fmt key to modify the x-axis ticks'],
+    'plotter.simple.yticks': [
         {'major': None, 'minor': None}, DictValValidator(
             'yticks', ['major', 'minor'], TicksValidator(
-                'yticks', tick_strings, True), 'major', True)],
-    'plotter.simpleplotter.xticklabels': [None, DictValValidator(
-        'xticklabels', ['major', 'minor'], validate_ticklabels, 'major',
-        True)],
-    'plotter.simpleplotter.yticklabels': [None, DictValValidator(
-        'yticklabels', ['major', 'minor'], validate_ticklabels, 'major',
-        True)],
-    'plotter.simpleplotter.xrotation': [0, validate_float],
-    'plotter.simpleplotter.yrotation': [0, validate_float],
-    'plotter.simpleplotter.legendlabels': ['%(arr_name)s', try_and_error(
-        validate_str, validate_list(str))],
-    'plotter.simpleplotter.legend': [True, try_and_error(
-        validate_bool, validate_int, validate_dict, validate_legend_loc)],
+                'yticks', tick_strings, True), 'major', True),
+        'fmt key to modify the y-axis ticks'],
+    'plotter.simple.xticklabels': [
+        None, DictValValidator('xticklabels', ['major', 'minor'],
+                               validate_ticklabels, 'major', True),
+        'fmt key to modify the x-axis ticklabels'],
+    'plotter.simple.yticklabels': [
+        None, DictValValidator('yticklabels', ['major', 'minor'],
+                               validate_ticklabels, 'major', True),
+        'fmt key to modify the y-axis ticklabels'],
+    'plotter.simple.xrotation': [
+        0, validate_float,
+        'fmt key to modify the rotation of the x-axis ticklabels'],
+    'plotter.simple.yrotation': [
+        0, validate_float,
+        'fmt key to modify the rotation of the x-axis ticklabels'],
+    'plotter.simple.legendlabels': [
+        '%(arr_name)s', try_and_error(validate_str, validate_list(str)),
+        'fmt key to modify the legend labels'],
+    'plotter.simple.legend': [
+        True, try_and_error(
+            validate_bool, validate_int, validate_dict, validate_legend_loc),
+        'fmt key to draw a legend'],
 
     # Plot2D
-    'plotter.plot2d.plot': ['mesh', try_and_error(
-        validate_none, ValidateInStrings('2d plot', ['mesh', 'tri'], True))],
-    'plotter.plot2d.cbar': [['b'], validate_cbarpos],
-    'plotter.plot2d.cbarspacing': ['uniform', validate_str],
-    'plotter.plot2d.miss_color': [None, try_and_error(validate_none,
-                                                      validate_color)],
-    'plotter.plot2d.cmap': ['white_blue_red', validate_cmap],
-    'plotter.plot2d.cticks': [None, try_and_error(
-        validate_none, BoundsValidator(
-            'bounds', ['bounds'] + bound_strings, True, default='bounds'))],
-    'plotter.plot2d.cticklabels': [None, validate_ticklabels],
-    'plotter.plot2d.extend': ['neither', validate_extend],
-    'plotter.plot2d.rasterized': [True, validate_bool],
-    'plotter.plot2d.bounds': ['rounded', BoundsValidator(
-        'bounds', bound_strings, True, inis=mpl.colors.Normalize)],
-    'plotter.plot2d.norm': ['bounds', validate_norm],
-    'plotter.plot2d.opacity': [None, try_and_error(validate_none,
-                                                   validate_opacity)],
-    'plotter.plot2d.datagrid': [None, try_and_error(
-        validate_none, validate_dict, validate_str)],
+    'plotter.plot2d.plot': [
+        'mesh', try_and_error(validate_none, ValidateInStrings(
+            '2d plot', ['mesh', 'tri'], True)),
+        'fmt key to specify the plot type of 2D scalar plots'],
+    'plotter.plot2d.cbar': [
+        ['b'], validate_cbarpos,
+        'fmt key to specify the position of the colorbar'],
+    'plotter.plot2d.cbarspacing': [
+        'uniform', validate_str,
+        'fmt key to specify the spacing of the colorbar'],
+    'plotter.plot2d.miss_color': [
+        None, try_and_error(validate_none, validate_color),
+        'fmt key to specify the color of missing values'],
+    'plotter.plot2d.cmap': [
+        'white_blue_red', validate_cmap, 'fmt key to specify the colormap'],
+    'plotter.plot2d.cticks': [
+        None, try_and_error(validate_none, BoundsValidator(
+            'bounds', ['bounds'] + bound_strings, True, default='bounds')),
+        'fmt key to specify the ticks of the colorbar'],
+    'plotter.plot2d.cticklabels': [
+        None, validate_ticklabels,
+        'fmt key to specify the ticklabels of the colorbar'],
+    'plotter.plot2d.extend': [
+        'neither', validate_extend,
+        'fmt key to specify the style of the colorbar on minimum and maximum'],
+    'plotter.plot2d.bounds': [
+        'rounded', BoundsValidator('bounds', bound_strings, True,
+                                   inis=mpl.colors.Normalize),
+        'fmt key to specify bounds and norm of the colorbar'],
+    # TODO: Implement opacity
+    # 'plotter.plot2d.opacity': [None, try_and_error(validate_none,
+    #                                                validate_opacity)],
+    'plotter.plot2d.datagrid': [
+        None, try_and_error(validate_none, validate_dict, validate_str),
+        'fmt key to plot the lines of the data grid'],
 
     # MapBase
-    'plotter.maps.latlon': [True, validate_bool],
-    'plotter.maps.lonlatbox': [None, try_and_error(
-        validate_none, validate_str, validate_nseq_float(4))],
-    'plotter.maps.map_extent': [None, try_and_error(
-        validate_none, validate_str, validate_nseq_float(4))],
-    'plotter.maps.clon': [None, try_and_error(
-        validate_none, validate_float, validate_str)],
-    'plotter.maps.clat': [None, try_and_error(
-        validate_none, validate_float, validate_str)],
-    'plotter.maps.lineshapes': [None, try_and_error(
-        validate_none, validate_dict, validate_str, validate_stringlist)],
-    'plotter.maps.grid_labels': [True, validate_bool],
-    'plotter.maps.grid_labelsize': [12.0, validate_fontsize],
-    'plotter.maps.grid_color': ['k', try_and_error(validate_none,
-                                                   validate_color)],
-    'plotter.maps.grid_settings': [{}, validate_dict],
-    'plotter.maps.xgrid': [True, try_and_error(
-        validate_bool_maybe_none, BoundsValidator('bounds', bound_strings,
-                                                  True))],
-    'plotter.maps.ygrid': [True, try_and_error(
-        validate_bool_maybe_none, BoundsValidator('bounds', bound_strings,
-                                                  True))],
-    'plotter.maps.projection': ['cyl', ProjectionValidator(
-        'projection', ['northpole', 'ortho', 'southpole', 'moll', 'geo',
-                       'robin', 'cyl'], True)],
-    'plotter.maps.transform': ['cyl', ProjectionValidator(
-        'projection', ['northpole', 'ortho', 'southpole', 'moll', 'geo',
-                       'robin', 'cyl'], True)],
-    'plotter.maps.plot.min_circle_ratio': [0.05, validate_float],
-    'plotter.maps.lsm': [True, try_and_error(validate_bool,
-                                             validate_float)],
-    'plotter.maps.mask': [None, lambda x: x],  # TODO: implement validation
+    'plotter.maps.lonlatbox': [
+        None, try_and_error(validate_none, validate_str,
+                            validate_nseq_float(4)),
+        'fmt key to define the longitude latitude box of the data'],
+    'plotter.maps.map_extent': [
+        None, try_and_error(validate_none, validate_str,
+                            validate_nseq_float(4)),
+        'fmt key to define the extent of the map plot'],
+    'plotter.maps.clon': [
+        None, try_and_error(validate_none, validate_float, validate_str),
+        'fmt key to specify the center longitude of the projection'],
+    'plotter.maps.clat': [
+        None, try_and_error(validate_none, validate_float, validate_str),
+        'fmt key to specify the center latitude of the projection'],
+    # TODO: Implement the drawing of shape files on a map
+    # 'plotter.maps.lineshapes': [None, try_and_error(
+    #     validate_none, validate_dict, validate_str, validate_stringlist)],
+    'plotter.maps.grid_labels': [
+        None, validate_bool_maybe_none,
+        'fmt key to draw labels of the lat-lon-grid'],
+    'plotter.maps.grid_labelsize': [
+        12.0, validate_fontsize,
+        'fmt key to modify the fontsize of the lat-lon-grid labels'],
+    'plotter.maps.grid_color': [
+        'k', try_and_error(validate_none, validate_color),
+        'fmt key to modify the color of the lat-lon-grid'],
+    'plotter.maps.grid_settings': [
+        {}, validate_dict,
+        'fmt key for additional line properties for the lat-lon-grid'],
+    'plotter.maps.xgrid': [
+        True, try_and_error(validate_bool_maybe_none, BoundsValidator(
+            'bounds', bound_strings, True)),
+        'fmt key for drawing meridians on the map'],
+    'plotter.maps.ygrid': [
+        True, try_and_error(validate_bool_maybe_none, BoundsValidator(
+            'bounds', bound_strings, True)),
+        'fmt key for drawing parallels on the map'],
+    'plotter.maps.projection': [
+        'cyl', ProjectionValidator(
+            'projection', ['northpole', 'ortho', 'southpole', 'moll', 'geo',
+                           'robin', 'cyl'], True),
+        'fmt key to define the projection of the plot'],
+    'plotter.maps.transform': [
+        'cyl', ProjectionValidator(
+            'projection', ['northpole', 'ortho', 'southpole', 'moll', 'geo',
+                           'robin', 'cyl'], True),
+        'fmt key to define the native projection of the data'],
+    'plotter.maps.plot.min_circle_ratio': [
+        0.05, validate_float,
+        'fmt key to specify the min_circle_ratio that is used to mask very '
+        ' flat triangles in a triangular plot'],
+    'plotter.maps.lsm': [
+        True, try_and_error(validate_bool, validate_float),
+        'fmt key to draw a land sea mask'],
+    # TODO: Implement mask formatoption
+    # 'plotter.maps.mask': [None, lambda x: x],
+    'plotter.baseplotter.maskleq': [
+        None, try_and_error(validate_none, validate_float),
+        'fmt key to mask values less or equal than a certain threshold'],
+    'plotter.baseplotter.maskless': [
+        None, try_and_error(validate_none, validate_float),
+        'fmt key to mask values less than a certain threshold'],
+    'plotter.baseplotter.maskgreater': [
+        None, try_and_error(validate_none, validate_float),
+        'fmt key to mask values greater than a certain threshold'],
+    'plotter.baseplotter.maskgeq': [
+        None, try_and_error(validate_none, validate_float),
+        'fmt key to mask values greater than or equal to a certain threshold'],
+    'plotter.baseplotter.maskbetween': [
+        None, try_and_error(validate_none, validate_nseq_float(2)),
+        'fmt key to mask values between a certain range'],
 
-    'plotter.baseplotter.maskleq': [None, try_and_error(
-        validate_none, validate_float)],
-    'plotter.baseplotter.maskless': [None, try_and_error(
-        validate_none, validate_float)],
-    'plotter.baseplotter.maskgreater': [None, try_and_error(
-        validate_none, validate_float)],
-    'plotter.baseplotter.maskgeq': [None, try_and_error(
-        validate_none, validate_float)],
-    'plotter.baseplotter.maskbetween': [None, try_and_error(
-        validate_none, validate_nseq_float(2))],
-
-    # WindPlot
-    'plotter.vector.plot': ['quiver', try_and_error(
-        validate_none, ValidateInStrings(
-            '2d plot', ['quiver', 'stream'], True))],
-    'plotter.vector.arrowsize': [None, try_and_error(
-        validate_none, validate_float)],
-    'plotter.vector.arrowstyle': ['-|>', ValidateInStrings(
-        'arrowstyle', ArrowStyle._style_list)],
-    'plotter.vector.density': [1.0, try_and_error(
-        validate_float, validate_list(float))],
-    'plotter.vector.linewidth': [None, LineWidthValidator(
-            'linewidth', ['absolute', 'u', 'v'], True)],
-    'plotter.vector.color': ['k', try_and_error(
-        validate_float, validate_color, ValidateInStrings(
-            'color', ['absolute', 'u', 'v'], True))],
-    'plotter.vector.reduceabove': [None, try_and_error(
-        validate_none, validate_nseq_float(2))],
-    'plotter.vector.lengthscale': ['lin', ValidateInStrings(
-        'lengthscale', ['lin', 'log'], True)],
+    # VectorPlot
+    'plotter.vector.plot': [
+        'quiver', try_and_error(validate_none, ValidateInStrings(
+            '2d plot', ['quiver', 'stream'], True)),
+        'fmt key for the plot type of vector plots'],
+    'plotter.vector.arrowsize': [
+        None, try_and_error(validate_none, validate_float),
+        'fmt key for the size of the arrows on vector plots'],
+    'plotter.vector.arrowstyle': [
+        '-|>', ValidateInStrings('arrowstyle', ArrowStyle._style_list),
+        'fmt key for the style of the arrows on stream plots'],
+    'plotter.vector.density': [
+        1.0, try_and_error(validate_float, validate_list(float)),
+        'fmt key for the density of arrows on a vector plot'],
+    'plotter.vector.linewidth': [
+        None, LineWidthValidator('linewidth', ['absolute', 'u', 'v'], True),
+        'fmt key for the linewidths of the arrows'],
+    'plotter.vector.color': [
+        'k', try_and_error(validate_float, validate_color, ValidateInStrings(
+            'color', ['absolute', 'u', 'v'], True)),
+        'fmt key for the colors of the arrows'],
 
     # user defined plotter keys
-    'plotter.user': [{}, validate_dict_yaml],
+    'plotter.user': [
+        {}, validate_dict_yaml,
+        dedents("""
+        formatoption keys and values that are defined by the user to be used by
+        the specified plotters. For example to modify the title of all
+        :class:`psyplot.plotter.maps.FieldPlotter` instances, set
+        ``{'plotter.fieldplotter.title': 'my title'}``""")],
 
     # decoder
     'decoder.x': [set(), validate_stringset,
@@ -1560,6 +1644,14 @@ defaultParams = {
         'linear', validate_str,
         'interpolation method to calculate 2D-bounds (see the `kind` parameter'
         'in the :meth:`psyplot.data.CFDecoder.get_plotbounds` method)'],
+
+    # specify automatic drawing and showing of figures
+    'auto_draw': [True, validate_bool,
+                  ('Automatically draw the figures if the draw keyword in the '
+                   'update and start_update methods is None')],
+    'auto_show': [False, validate_bool,
+                  ('Automatically show the figures after the update and'
+                   'start_update methods')],
 
     # data
     'datapath': [None, validate_path_exists, 'path for supplementary data'],
@@ -1610,22 +1702,39 @@ defaultParams = {
                             'specified in the project.plotters item will be '
                             'automatically imported when importing the '
                             'psyplot.project module'],
+    'project.import_seaborn': [
+        None, validate_bool_maybe_none,
+        'boolean controlling whether the seaborn module shall be imported '
+        'when importing the project module. If None, it is only tried to '
+        'import the module.'],
     'project.plotters': [{  # these plotters are automatically registered
-        'plot1d': {
-            'module': 'psyplot.plotter.simpleplotter',
-            'plotter_name': 'SimplePlotter',
+        'lineplot': {
+            'module': 'psyplot.plotter.simple',
+            'plotter_name': 'LinePlotter',
             'prefer_list': True,
             'default_slice': None,
-            'summary': 'Make a simple plot of one-dimensional data'},
+            'summary': 'Make a line plot of one-dimensional data'},
+        'barplot': {
+            'module': 'psyplot.plotter.simple',
+            'plotter_name': 'BarPlotter',
+            'prefer_list': True,
+            'default_slice': None,
+            'summary': 'Make a bar plot of one-dimensional data'},
+        'violinplot': {
+            'module': 'psyplot.plotter.simple',
+            'plotter_name': 'ViolinPlotter',
+            'prefer_list': True,
+            'default_slice': None,
+            'summary': 'Make a violin plot of your data'},
         'plot2d': {
-            'module': 'psyplot.plotter.simpleplotter',
+            'module': 'psyplot.plotter.simple',
             'plotter_name': 'Simple2DPlotter',
             'prefer_list': False,
             'default_slice': 0,
             'default_dims': {'x': slice(None), 'y': slice(None)},
             'summary': 'Make a simple plot of a 2D scalar field'},
         'vector': {
-            'module': 'psyplot.plotter.simpleplotter',
+            'module': 'psyplot.plotter.simple',
             'plotter_name': 'SimpleVectorPlotter',
             'prefer_list': False,
             'default_slice': 0,

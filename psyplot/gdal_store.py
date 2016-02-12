@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Gdal Store for reading GeoTIFF files into an :class:`xray.Dataset`
+"""Gdal Store for reading GeoTIFF files into an :class:`xarray.Dataset`
 
 This module contains the definition of the :class:`GdalStore` class that can
-be used to read in a GeoTIFF file into an :class:`xray.Dataset`.
+be used to read in a GeoTIFF file into an :class:`xarray.Dataset`.
 It requires that you have the python gdal module installed.
 
 Examples
@@ -10,7 +10,7 @@ Examples
 to open a GeoTIFF file named ``'my_tiff.tiff'`` you can do::
 
     >>> from psyplot.gdal_store import GdalStore
-    >>> from psyplot import open_dataset
+    >>> from xarray import open_dataset
     >>> ds = open_dataset(GdalStore('my_tiff'))
 
 Or you use the `engine` of the :func:`psyplot.open_dataset` function:
@@ -18,16 +18,32 @@ Or you use the `engine` of the :func:`psyplot.open_dataset` function:
     >>> ds = open_dataset('my_tiff.tiff', engine='gdal')"""
 from gdal import Open, GetDataTypeName
 from numpy import arange, nan, dtype
-from xray import Variable
+from xarray import Variable
 from collections import OrderedDict
-from xray.core.utils import FrozenOrderedDict
-from dask.array import Array
-from xray.backends.common import AbstractDataStore
+from xarray.core.utils import FrozenOrderedDict
+from xarray.backends.common import AbstractDataStore
 from .compat.pycompat import range
+try:
+    from dask.array import Array
+    with_dask = True
+except ImportError:
+    with_dask = False
 
 
 class GdalStore(AbstractDataStore):
+    """Datastore to read raster files suitable for the gdal package
+
+    We recommend to use the :func:`psyplot.open_dataset` function to open
+    a geotiff file::
+
+        >>> ds = psyplot.open_dataset('my_geotiff.tiff', engine='gdal')"""
+
     def __init__(self, filename):
+        """
+        Parameters
+        ----------
+        filename: str
+            The path to the GeoTIFF file"""
         self.ds = Open(filename)
         self._filename = filename
 
@@ -48,9 +64,12 @@ class GdalStore(AbstractDataStore):
         shape = (ds.RasterYSize, ds.RasterXSize)
         variables = OrderedDict()
         for iband in range(1, ds.RasterCount+1):
-            dsk = {('x', 0, 0): (load, iband)}
-            dt = dtype(GetDataTypeName(ds.GetRasterBand(iband).DataType))
-            arr = Array(dsk, 'x', chunks, shape=shape, dtype=dt)
+            if with_dask:
+                dsk = {('x', 0, 0): (load, iband)}
+                dt = dtype(GetDataTypeName(ds.GetRasterBand(iband).DataType))
+                arr = Array(dsk, 'x', chunks, shape=shape, dtype=dt)
+            else:
+                arr = load(iband)
             try:
                 dt.type(nan)
                 attrs = {'_FillValue': nan}
@@ -71,10 +90,16 @@ class GdalStore(AbstractDataStore):
             return arange(ds.RasterYSize)*b[5]+b[3]
         ds = self.ds
         b = self.ds.GetGeoTransform()  # bbox, interval
-        lat = Array({('lat', 0): (load_lat,)}, 'lat', (self.ds.RasterYSize,),
-                    shape=(self.ds.RasterYSize,), dtype=float)
-        lon = Array({('lon', 0): (load_lon,)}, 'lon', (self.ds.RasterXSize,),
-                    shape=(self.ds.RasterXSize,), dtype=float)
+        if with_dask:
+            lat = Array(
+                {('lat', 0): (load_lat,)}, 'lat', (self.ds.RasterYSize,),
+                shape=(self.ds.RasterYSize,), dtype=float)
+            lon = Array(
+                {('lon', 0): (load_lon,)}, 'lon', (self.ds.RasterXSize,),
+                shape=(self.ds.RasterXSize,), dtype=float)
+        else:
+            lat = load_lat()
+            lon = load_lon()
         return Variable(('lat',), lat), Variable(('lon',), lon)
 
     def get_attrs(self):

@@ -3,6 +3,7 @@ psyplot.sphinxext package
 
 .. automodule:: psyplot.sphinxext
     :members:
+    :undoc-members:
     :show-inheritance:
 
 Submodules
@@ -10,6 +11,7 @@ Submodules
 
 .. toctree::
 
+   psyplot.sphinxext.example_gallery
    psyplot.sphinxext.extended_autodoc
    psyplot.sphinxext.extended_napoleon
    psyplot.sphinxext.no_data

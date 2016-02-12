@@ -17,14 +17,21 @@ import os
 import re
 import six
 from itertools import product
-
+import warnings
 import psyplot
 import psyplot.plotter
+
 # automatically import all plotter classes
 psyplot.rcParams['project.auto_import'] = True
 # include links to the formatoptions in the documentation of the
 # :attr:`psyplot.project.ProjectPlotter` methods
 psyplot.plotter._fmt_links = True
+
+warnings.filterwarnings('ignore', message="axes.color_cycle is deprecated")
+warnings.filterwarnings(
+    'ignore', message=(
+        "This has been deprecated in mpl 1.5,"))
+warnings.filterwarnings('ignore', message="invalid value encountered in ")
 
 
 # If extensions (or modules to document with autodoc) are in another directory,
@@ -46,21 +53,27 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx.ext.todo',
     'sphinx.ext.viewcode',
+    'matplotlib.sphinxext.plot_directive',
     'IPython.sphinxext.ipython_console_highlighting',
     'IPython.sphinxext.ipython_directive',
     'psyplot.sphinxext.extended_napoleon',
     'psyplot.sphinxext.no_data',
-    'psyplot.sphinxext.extended_autodoc'
+    'psyplot.sphinxext.extended_autodoc',
+    'psyplot.sphinxext.example_gallery'
 ]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
 
+# boolean controlling wether to calculate the examples or not
+process_examples = True
+
+example_gallery_config = {'dont_preprocess': ['../examples/example_cdo.ipynb']}
+
 napoleon_use_admonition_for_examples = True
 
 # The suffix(es) of source filenames.
 # You can specify multiple suffix as a list of string:
-# source_suffix = ['.rst', '.md']
 source_suffix = '.rst'
 
 # The encoding of source files.
@@ -400,7 +413,7 @@ intersphinx_mapping = {
     'numpy': ('http://docs.scipy.org/doc/numpy/', None),
     'matplotlib': ('http://matplotlib.org/', None),
     'sphinx': ('http://sphinx-doc.org/', None),
-    'xray': ('http://xray.readthedocs.org/en/stable/', None),
+    'xarray': ('http://xarray.pydata.org/en/stable/', None),
     'cartopy': ('http://scitools.org.uk/cartopy/docs/latest/', None),
     'mpl_toolkits': ('http://matplotlib.org/basemap/', None),
 }

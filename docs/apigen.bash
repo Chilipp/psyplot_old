@@ -12,6 +12,4 @@ sed -i '' -e /Subpackages/'i\'$'\n'".. autosummary:: \\
     \\
     " api/psyplot.rst
 
-for f in `ls api/*.rst`; do
-    sed -i '' '/\s*:undoc-members:/d' ${f}
-done
+sphinx-autogen -o generated *.rst */*.rst

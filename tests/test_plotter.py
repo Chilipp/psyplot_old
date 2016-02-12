@@ -1,3 +1,5 @@
+"""Test module of the basic functionality in the :mod:`psyplot.plotter` module
+"""
 import _base_testing as bt
 from psyplot.plotter import Plotter, Formatoption, docstrings
 from psyplot.data import InteractiveArray

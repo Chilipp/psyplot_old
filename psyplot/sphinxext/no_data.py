@@ -34,7 +34,8 @@ class NoSigDataDocumenter(DataDocumenter):
     def __init__(self, *args, **kwargs):
         super(NoSigDataDocumenter, self).__init__(*args, **kwargs)
         fullname = '.'.join(self.name.rsplit('::', 1))
-        if dont_document_obj(self.env.config, fullname):
+        if hasattr(self.env, 'config') and dont_document_obj(
+                self.env.config, fullname):
             self.options = Options(self.options)
             self.options.annotation = ' '
 
@@ -64,7 +65,8 @@ class NoSigAttributeDocumenter(AttributeDocumenter):
     def __init__(self, *args, **kwargs):
         super(NoSigAttributeDocumenter, self).__init__(*args, **kwargs)
         fullname = '.'.join(self.name.rsplit('::', 1))
-        if dont_document_obj(self.env.config, fullname):
+        if hasattr(self.env, 'config') and dont_document_obj(
+                self.env.config, fullname):
             self.options = Options(self.options)
             self.options.annotation = ' '
 

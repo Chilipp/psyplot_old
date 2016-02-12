@@ -3,4 +3,5 @@ psyplot.compat.pycompat module
 
 .. automodule:: psyplot.compat.pycompat
     :members:
+    :undoc-members:
     :show-inheritance:
