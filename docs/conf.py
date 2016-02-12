@@ -58,8 +58,12 @@ extensions = [
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
 
+# on_rtd is whether we are on readthedocs.org, this line of code grabbed from
+# docs.readthedocs.org
+on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
+
 # boolean controlling wether to calculate the examples or not
-process_examples = True
+process_examples = not on_rtd
 
 example_gallery_config = {'dont_preprocess': ['../examples/example_cdo.ipynb']}
 
@@ -147,9 +151,6 @@ todo_include_todos = True
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-# on_rtd is whether we are on readthedocs.org, this line of code grabbed from
-# docs.readthedocs.org
-on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
 
 if not on_rtd:  # only import and set the theme if we're building docs locally
     import sphinx_rtd_theme
