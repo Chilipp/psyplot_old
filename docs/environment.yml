@@ -6,6 +6,7 @@ dependencies:
     - psyplot
     - dask
     - xarray
+    - netCDF4
     - matplotlib
     - cartopy
     - gdal
