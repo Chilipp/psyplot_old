@@ -27,13 +27,6 @@ psyplot.rcParams['project.auto_import'] = True
 # :attr:`psyplot.project.ProjectPlotter` methods
 psyplot.plotter._fmt_links = True
 
-warnings.filterwarnings('ignore', message="axes.color_cycle is deprecated")
-warnings.filterwarnings(
-    'ignore', message=(
-        "This has been deprecated in mpl 1.5,"))
-warnings.filterwarnings('ignore', message="invalid value encountered in ")
-
-
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
