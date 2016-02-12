@@ -11,3 +11,5 @@ dependencies:
     - gdal
     - seaborn
     - ipython
+    - nbconvert
+    - jupyter_client
