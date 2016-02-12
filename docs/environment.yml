@@ -13,3 +13,5 @@ dependencies:
     - ipython
     - nbconvert
     - jupyter_client
+    - ipykernel
+    - nbformat
