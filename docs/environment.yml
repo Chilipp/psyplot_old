@@ -12,4 +12,3 @@ dependencies:
     - seaborn
     - ipython
     - nbconvert
-    - jupyter_client
