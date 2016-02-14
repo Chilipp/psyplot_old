@@ -20,7 +20,8 @@ blue to red.
 
 .. code:: python
 
-    maps = psy.plot.mapplot('icon_grid_demo.nc', name='t2m', projection='robin', cmap='RdBu_r')
+    maps = psy.plot.mapplot('icon_grid_demo.nc', name='t2m', projection='robin', 
+                            cmap='RdBu_r')
 
 
 
@@ -44,8 +45,9 @@ The same works for vector data
 
 .. code:: python
 
-    vectors = psy.plot.mapvector('icon_grid_demo.nc', name=[['u', 'v']] * 2, projection='robin', 
-                                 ax=(1, 2), lonlatbox='Europe')
+    vectors = psy.plot.mapvector(
+        'icon_grid_demo.nc', name=[['u', 'v']] * 2, projection='robin', 
+        ax=(1, 2), lonlatbox='Europe')
     vectors[0].update(arrowsize=100)
     vectors[1].update(plot='stream')
 
@@ -58,8 +60,9 @@ And combined scalar and vector fields
 
 .. code:: python
 
-    combined = psy.plot.mapcombined('icon_grid_demo.nc', name=[['t2m', ['u', 'v']]], projection='robin',
-                                    lonlatbox='Europe', arrowsize=100, cmap='RdBu_r')
+    combined = psy.plot.mapcombined(
+        'icon_grid_demo.nc', name=[['t2m', ['u', 'v']]], projection='robin',
+        lonlatbox='Europe', arrowsize=100, cmap='RdBu_r')
 
 
 

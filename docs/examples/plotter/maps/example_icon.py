@@ -18,7 +18,8 @@ import psyplot.project as psy
 
 # In[ ]:
 
-maps = psy.plot.mapplot('icon_grid_demo.nc', name='t2m', projection='robin', cmap='RdBu_r')
+maps = psy.plot.mapplot('icon_grid_demo.nc', name='t2m', projection='robin', 
+                        cmap='RdBu_r')
 
 
 # To display the data grid, we can use the `datagrid` formatoption. We furthermore restrict ourselves to `Europe` for this visualization.
@@ -33,8 +34,9 @@ maps.show()
 
 # In[ ]:
 
-vectors = psy.plot.mapvector('icon_grid_demo.nc', name=[['u', 'v']] * 2, projection='robin', 
-                             ax=(1, 2), lonlatbox='Europe')
+vectors = psy.plot.mapvector(
+    'icon_grid_demo.nc', name=[['u', 'v']] * 2, projection='robin', 
+    ax=(1, 2), lonlatbox='Europe')
 vectors[0].update(arrowsize=100)
 vectors[1].update(plot='stream')
 
@@ -43,8 +45,9 @@ vectors[1].update(plot='stream')
 
 # In[ ]:
 
-combined = psy.plot.mapcombined('icon_grid_demo.nc', name=[['t2m', ['u', 'v']]], projection='robin',
-                                lonlatbox='Europe', arrowsize=100, cmap='RdBu_r')
+combined = psy.plot.mapcombined(
+    'icon_grid_demo.nc', name=[['t2m', ['u', 'v']]], projection='robin',
+    lonlatbox='Europe', arrowsize=100, cmap='RdBu_r')
 
 
 # In[ ]:

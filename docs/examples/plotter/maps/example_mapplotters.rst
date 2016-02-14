@@ -156,7 +156,8 @@ variable (here ``'u'``) is the wind component in the x- and the second
 
 .. code:: python
 
-    mapvectors = psy.plot.mapvector('demo.nc', name=[['u', 'v']], lonlatbox='Europe', arrowsize=100)
+    mapvectors = psy.plot.mapvector('demo.nc', name=[['u', 'v']], lonlatbox='Europe', 
+                                    arrowsize=100)
 
 
 
@@ -219,7 +220,8 @@ scalar field and two for the wind fields. The calling format is
 
 .. code:: python
 
-    maps = psy.plot.mapcombined('demo.nc', name=[['t2m', ['u', 'v']]], lonlatbox='Europe', arrowsize=100)
+    maps = psy.plot.mapcombined('demo.nc', name=[['t2m', ['u', 'v']]], lonlatbox='Europe', 
+                                arrowsize=100)
 
 
 
@@ -274,12 +276,15 @@ To sum it all up:
     # disable the automatic showing of the figures
     psy.rcParams['auto_show'] = False
     # create plots for the scalar fields
-    maps = psy.plot.mapplot('demo.nc', name='t2m', clabel='{desc}', ax=axes[0], title='scalar field')
+    maps = psy.plot.mapplot('demo.nc', name='t2m', clabel='{desc}', ax=axes[0], 
+                            title='scalar field')
     # create plots for scalar and vector fields
-    combined = psy.plot.mapcombined('demo.nc', name=[['t2m', ['u', 'v']]], clabel='{desc}', 
-                                    arrowsize=100, cmap='RdBu_r', ax=axes[1], title='scalar and vector field')
+    combined = psy.plot.mapcombined(
+        'demo.nc', name=[['t2m', ['u', 'v']]], clabel='{desc}', arrowsize=100, 
+        cmap='RdBu_r', ax=axes[1], title='scalar and vector field')
     # create two plots for vector field
-    mapvectors = psy.plot.mapvector('demo.nc', name=[['u', 'v'], ['u', 'v']], ax=axes[2:])
+    mapvectors = psy.plot.mapvector('demo.nc', name=[['u', 'v'], ['u', 'v']], 
+                                    ax=axes[2:])
     # where one of them shall be a stream plot
     mapvectors[0].update(arrowsize=100, title='quiver plot')
     mapvectors[1].update(plot='stream', title='stream plot')

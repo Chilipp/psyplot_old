@@ -471,7 +471,7 @@ method:
     In [28]: maps.save_project('test.pkl')
 
 This saves the plot-settings into the file ``'test.pkl'``. In order to not get
-to large project files, we do not store the data but only the filenames of the
+too large project files, we do not store the data but only the filenames of the
 datasets. Hence, if you want to load the project again, make sure that the
 datasets are accessible through the path as they are listed in the
 :attr:`~psyplot.project.Project.dsnames` attribute.

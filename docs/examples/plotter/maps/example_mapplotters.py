@@ -74,7 +74,8 @@ maps.close()  # we close the project because we create other figures below
 
 # In[ ]:
 
-mapvectors = psy.plot.mapvector('demo.nc', name=[['u', 'v']], lonlatbox='Europe', arrowsize=100)
+mapvectors = psy.plot.mapvector('demo.nc', name=[['u', 'v']], lonlatbox='Europe', 
+                                arrowsize=100)
 
 
 # The plotter supports all formatoptions that the *mapplot* method supports. The *plot* formatoption furthermore supplies the ```'stream'``` value in order to make a streamplot
@@ -115,7 +116,8 @@ mapvectors.close()
 
 # In[ ]:
 
-maps = psy.plot.mapcombined('demo.nc', name=[['t2m', ['u', 'v']]], lonlatbox='Europe', arrowsize=100)
+maps = psy.plot.mapcombined('demo.nc', name=[['t2m', ['u', 'v']]], lonlatbox='Europe', 
+                            arrowsize=100)
 
 
 # We can also modify the color coding etc. here, but all the formatoptions that affect the vector color coding start with ```'v'``` 
@@ -148,12 +150,15 @@ axes = psy.multiple_subplots(2, 2, n=4, for_maps=True)
 # disable the automatic showing of the figures
 psy.rcParams['auto_show'] = False
 # create plots for the scalar fields
-maps = psy.plot.mapplot('demo.nc', name='t2m', clabel='{desc}', ax=axes[0], title='scalar field')
+maps = psy.plot.mapplot('demo.nc', name='t2m', clabel='{desc}', ax=axes[0], 
+                        title='scalar field')
 # create plots for scalar and vector fields
-combined = psy.plot.mapcombined('demo.nc', name=[['t2m', ['u', 'v']]], clabel='{desc}', 
-                                arrowsize=100, cmap='RdBu_r', ax=axes[1], title='scalar and vector field')
+combined = psy.plot.mapcombined(
+    'demo.nc', name=[['t2m', ['u', 'v']]], clabel='{desc}', arrowsize=100, 
+    cmap='RdBu_r', ax=axes[1], title='scalar and vector field')
 # create two plots for vector field
-mapvectors = psy.plot.mapvector('demo.nc', name=[['u', 'v'], ['u', 'v']], ax=axes[2:])
+mapvectors = psy.plot.mapvector('demo.nc', name=[['u', 'v'], ['u', 'v']], 
+                                ax=axes[2:])
 # where one of them shall be a stream plot
 mapvectors[0].update(arrowsize=100, title='quiver plot')
 mapvectors[1].update(plot='stream', title='stream plot')

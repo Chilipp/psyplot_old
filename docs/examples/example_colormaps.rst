@@ -6,8 +6,8 @@ Available colormaps
 
 This example shows you how you can explore your colormaps
 
-It uses the :func:``~psyplot.plotter.colors.show_colormaps`` function
-and can visualize all, selected, or your own colormaps.
+It uses the ``psyplot.plotter.colors.show_colormaps`` function and can
+visualize all, selected, or your own colormaps.
 
 .. code:: python
 
@@ -29,7 +29,8 @@ display your own ones
 .. code:: python
 
     import matplotlib.colors as mcol
-    cmap = mcol.LinearSegmentedColormap.from_list('my_cmap', [[1, 0, 0], [0, 1, 0], [0, 0, 1]], N=11)
+    cmap = mcol.LinearSegmentedColormap.from_list(
+        'my_cmap', [[1, 0, 0], [0, 1, 0], [0, 0, 1]], N=11)
     psy.show_colormaps(cmap)
 
 
@@ -48,9 +49,8 @@ or all that are avaiable
 .. image:: images/example_colormaps_2.png
 
 
-Those colormaps (or their name) can then be used for the
-:attr:``~psyplot.plotter.maps.FieldPlotter.cmap`` formatoption or the
-:attr:``~psyplot.plotter.simple.LinePlotter.color`` formatoption.
+Those colormaps (or their name) can then be used for the ``cmap``
+formatoption or the ``color`` formatoption.
 
 
 .. only:: html
