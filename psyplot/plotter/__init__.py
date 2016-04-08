@@ -26,24 +26,18 @@ from threading import RLock
 from datetime import datetime, timedelta
 from numpy import datetime64, timedelta64, ndarray
 from xarray.core.formatting import format_timestamp, format_timedelta
-from .. import rcParams
-from ..warning import warn, critical, PsyPlotRuntimeWarning
-from ..compat.pycompat import map, filter, zip, range
-from ..config.rcsetup import defaultParams, SubDict
-from ..docstring import docstrings, dedent
-from ..data import (
+from psyplot import rcParams
+from psyplot.warning import warn, critical, PsyPlotRuntimeWarning
+from psyplot.compat.pycompat import map, filter, zip, range
+from psyplot.config.rcsetup import defaultParams, SubDict
+from psyplot.docstring import docstrings, dedent
+from psyplot.data import (
     InteractiveList, _TempBool, _no_auto_update_getter, check_key,
-    unique_everseen)
+    unique_everseen, _temp_bool_prop)
 
-
-#: if True, include the link in the formatoption table of the
-#: :attr:`Plotter.keys` method (i.e. print
-#: ":attr:`~psyplot.plotter.maps.title`" instead of "title" in the output
-#: string). This is set to True when the doc is built to make the formatoptions
-#: in the plotting methods of the :class:`syplot.project.ProjectPlotter` class
-#: link to the right formatoption. Otherwise it is set to False because it
-#: would be an overkill
-_fmt_links = False
+#: the default function to use when printing formatoption infos (the default is
+#: use print or in the gui, use the help explorer)
+default_print_func = six.print_
 
 
 #: :class:`dict`. Mapping from group to group names
@@ -219,6 +213,10 @@ class Formatoption(object):
     #: int or None. Index that is used in case the plotting data is a
     #: :class:`psyplot.InteractiveList`
     index_in_list = 0
+
+    #: :class:`str`. A bit more verbose name than the formatoption key to be
+    #: included in the gui. If None, the key is used in the gui
+    name = None
 
     @property
     def init_kwargs(self):
@@ -618,9 +616,8 @@ class Plotter(dict):
     #: List of base strings in the :attr:`psyplot.rcParams` dictionary
     _rcparams_string = []
 
-    @property
-    def no_validation(self):
-        """Temporarily disable the validation
+    no_validation = _temp_bool_prop('no_validation', """
+        Temporarily disable the validation
 
         Examples
         --------
@@ -634,16 +631,13 @@ class Plotter(dict):
 
             >>> plotter.no_validation = True
             >>> plotter['ticksize'] = 'x'
-            >>> plotter.no_validation = False  # reenable validation"""
-        try:
-            return self._no_validation
-        except AttributeError:
-            self._no_validation = _TempBool()
-            return self._no_validation
+            >>> plotter.no_validation = False  # reenable validation""")
 
-    @no_validation.setter
-    def no_validation(self, value):
-        self.no_validation.value = bool(value)
+    #: Temporarily include links in the key descriptions from
+    #: :meth:`show_keys`, :meth:`show_docs` and :meth:`show_summaries`.
+    #: Note that this is a class attribute, so each change to the value of this
+    #: attribute will affect all instances and subclasses
+    include_links = _TempBool()
 
     @property
     def ax(self):
@@ -913,6 +907,48 @@ class Plotter(dict):
             key, possible_keys=list(self), raise_error=raise_error,
             name='formatoption keyword', *args, **kwargs)
 
+    @classmethod
+    @docstrings.get_sectionsf('Plotter.check_data', sections=['Parameters',
+                                                              'Returns'])
+    @dedent
+    def check_data(cls, name, dims, is_unstructured):
+        """
+        A validation method for the data shape
+
+        The default method does nothing and should be subclassed to validate
+        the results. If the plotter accepts a :class:`InteractiveList`, it
+        should accept a list for name and dims
+
+        Parameters
+        ----------
+        name: str or list of str
+            The variable name(s) of the data
+        dims: list of str or list of lists of str
+            The dimension name(s) of the data
+        is_unstructured: bool or list of bool
+            True if the corresponding array is unstructured
+
+        Returns
+        -------
+        list of bool or None
+            True, if everything is okay, False in case of a serious error,
+            None if it is intermediate. Each object in this list corresponds to
+            one in the given `name`
+        list of str
+            The message giving more information on the reason. Each object in
+            this list corresponds to one in the given `name`"""
+        if isinstance(name, six.string_types):
+            name = [name]
+            dims = [dims]
+            is_unstructured = [is_unstructured]
+        N = len(name)
+        if len(dims) != N or len(is_unstructured) != N:
+            return [False] * N, [
+                'Number of provided names (%i) and dimensions '
+                '%(i) or unstructured information (%i) are not the same' % (
+                    N, len(dims), len(is_unstructured))] * N
+        return [True] * N, [''] * N
+
     docstrings.keep_params('Plotter.parameters', 'ax', 'make_plot', 'clear')
 
     @docstrings.dedent
@@ -1010,8 +1046,7 @@ class Plotter(dict):
         self._registered_updates.update(fmt)
 
     @docstrings.dedent
-    def start_update(self, draw=None, queues=None, queue2=None,
-                     update_shared=True):
+    def start_update(self, draw=None, queues=None, update_shared=True):
         """
         Conduct the registered plot updates
 
@@ -1167,10 +1202,13 @@ class Plotter(dict):
         Parameters
         ----------
         %(InteractiveBase.start_update.parameters.draw)s
+        clear: bool
+            Whether to clear the axes or not
 
         Warnings
         --------
-        The axes is cleared when calling this method!"""
+        The axes may be cleared when calling this method (even if `clear` is
+        set to False)!"""
         # call the initialize_plot method. Note that clear can be set to
         # False if any fmto has requires_clearing attribute set to True,
         # because this then has been cleared before
@@ -1451,11 +1489,12 @@ class Plotter(dict):
         return keys
 
     @classmethod
-    @docstrings.get_sectionsf('Plotter.show_keys',
-                              sections=['Parameters', 'Returns'])
+    @docstrings.get_sectionsf(
+        'Plotter.show_keys', sections=['Parameters', 'Returns',
+                                       'Other Parameters'])
     @docstrings.dedent
-    def show_keys(cls, keys=None, indent=0, grouped=False, func=six.print_,
-                  *args, **kwargs):
+    def show_keys(cls, keys=None, indent=0, grouped=False, func=None,
+                  include_links=False, *args, **kwargs):
         """
         Classmethod to return a nice looking table with the given formatoptions
 
@@ -1467,9 +1506,17 @@ class Plotter(dict):
         grouped: bool, optional
             If True, the formatoptions are grouped corresponding to the
             :attr:`Formatoption.groupname` attribute
-        func: function
+
+        Other Parameters
+        ----------------
+        func: function or None
             The function the is used for returning (by default it is printed
-            via the :func:`print` function). It must take a string as argument
+            via the :func:`print` function or (when using the gui) in the
+            help explorer). The given function must take a string as argument
+        include_links: bool or None, optional
+            Default False. If True, links (in restructured formats) are
+            included in the description. If None, the behaviour is determined by
+            the :attr:`psyplot.plotter.Plotter.include_links` attribute.
         %(Plotter._enhance_keys.other_parameters)s
 
         Returns
@@ -1484,13 +1531,10 @@ class Plotter(dict):
             bars = str_indent + '*' * len(groupname) + '\n'
             return bars + str_indent + groupname + '\n' + bars
 
-        # we use a local and global boolean here if the links shall be included
-        # (see :attr:`_fmt_links` above) to make sure that the links are only
-        # included if we really want it
-        _this_fmt_links = kwargs.pop('_fmt_links', False)
-
         keys = cls._enhance_keys(keys, *args, **kwargs)
         str_indent = " " * indent
+        func = func or default_print_func
+        # call this function recursively when grouped is True
         if grouped:
             grouped_keys = defaultdict(list)
             for fmto in map(lambda key: getattr(cls, key), keys):
@@ -1498,33 +1542,42 @@ class Plotter(dict):
             text = ""
             for group, keys in six.iteritems(grouped_keys):
                 text += titled_group(group) + cls.show_keys(
-                    keys, indent=indent, grouped=False, func=six.text_type) + \
-                        '\n\n'
+                    keys, indent=indent, grouped=False, func=six.text_type,
+                    include_links=include_links) + '\n\n'
             return func(text.rstrip())
+
         if not keys:
             return
-        ncols = min([4, len(keys)])  # number of columns
-        if _this_fmt_links and _fmt_links:
+        n = len(keys)
+        ncols = min([4, n])  # number of columns
+        # The number of cells in the table is one of the following cases:
+        #     1. The number of columns and equal to the number of keys
+        #     2. The number of keys
+        #     3. The number of keys plus the empty cells in the last column
+        ncells = n + ((ncols - (n % ncols)) if n != ncols else 0)
+        if include_links or (include_links is None and cls.include_links):
             long_keys = list(map(lambda key: ':attr:`~%s.%s.%s`' % (
                 cls.__module__, cls.__name__, key), keys))
         else:
             long_keys = keys
         maxn = max(map(len, long_keys))  # maximal lenght of the keys
-        bars = str_indent + ("="*(maxn) + "  ")*ncols
-        lines = (''.join(key.ljust(maxn + 2) for key in long_keys[i:i+ncols])
-                 for i in range(0, len(keys), ncols))
+        # extend with empty cells
+        long_keys.extend([' ' * maxn] * (ncells - n))
+        bars = (str_indent + '+-' + ("-"*(maxn) + "-+-")*ncols)[:-1]
+        lines = ('| %s |\n%s' % (' | '.join(
+            key.ljust(maxn) for key in long_keys[i:i+ncols]), bars)
+            for i in range(0, n, ncols))
         text = bars + "\n" + str_indent + ("\n" + str_indent).join(
             lines)
         if six.PY2:
-            text = (text + "\n" + bars).encode('utf-8')
-        else:
-            text += "\n" + bars
+            text = text.encode('utf-8')
+
         return func(text)
 
     @classmethod
     @docstrings.dedent
     def _show_doc(cls, fmt_func, keys=None, indent=0, grouped=False,
-                  func=six.print_, *args, **kwargs):
+                  func=None, include_links=False, *args, **kwargs):
         """
         Classmethod to print the formatoptions and their documentation
 
@@ -1534,9 +1587,14 @@ class Plotter(dict):
         Parameters
         ----------
         fmt_func: function
-            A function that takes the documentation of a formatoption as
-            argument and returns what shall be printed
+            A function that takes the key, the key as it is printed, and the
+            documentation of a formatoption as argument and returns what shall
+            be printed
         %(Plotter.show_keys.parameters)s
+
+        Other Parameters
+        ----------------
+        %(Plotter.show_keys.other_parameters)s
 
         Returns
         -------
@@ -1549,6 +1607,8 @@ class Plotter(dict):
             bars = str_indent + '*' * len(groupname) + '\n'
             return bars + str_indent + groupname + '\n' + bars
 
+        func = func or default_print_func
+
         keys = cls._enhance_keys(keys, *args, **kwargs)
         str_indent = " " * indent
         if grouped:
@@ -1558,18 +1618,24 @@ class Plotter(dict):
             text = "\n\n".join(
                 titled_group(group) + cls._show_doc(
                     fmt_func, keys, indent=indent, grouped=False,
-                    func=str) for group, keys in six.iteritems(
-                        grouped_keys))
+                    func=str, include_links=include_links)
+                for group, keys in six.iteritems(grouped_keys))
             return func(text.rstrip())
 
-        text = '\n'.join(str_indent + key + '\n' + fmt_func(
-            getattr(cls, key).__doc__) for key in keys)
+        if include_links or (include_links is None and cls.include_links):
+            long_keys = list(map(lambda key: ':attr:`~%s.%s.%s`' % (
+                cls.__module__, cls.__name__, key), keys))
+        else:
+            long_keys = keys
+
+        text = '\n'.join(str_indent + long_key + '\n' + fmt_func(
+            key, long_key, getattr(cls, key).__doc__) for long_key, key in zip(
+                long_keys, keys))
         return func(text)
 
     @classmethod
     @docstrings.dedent
-    def show_summaries(cls, keys=None, indent=0, grouped=False,
-                       func=six.print_, *args, **kwargs):
+    def show_summaries(cls, keys=None, indent=0, *args, **kwargs):
         """
         Classmethod to print the summaries of the formatoptions
 
@@ -1577,6 +1643,10 @@ class Plotter(dict):
         ----------
         %(Plotter.show_keys.parameters)s
 
+        Other Parameters
+        ----------------
+        %(Plotter.show_keys.other_parameters)s
+
         Returns
         -------
         %(Plotter.show_keys.returns)s
@@ -1584,19 +1654,17 @@ class Plotter(dict):
         See Also
         --------
         show_keys, show_docs"""
-        def find_summary(doc):
+        def find_summary(key, key_txt, doc):
             return '\n'.join(wrapper.wrap(doc[:doc.find('\n\n')]))
         str_indent = " " * indent
         wrapper = TextWrapper(width=80, initial_indent=str_indent + ' ' * 4,
                               subsequent_indent=str_indent + ' ' * 4)
         return cls._show_doc(find_summary, keys=keys, indent=indent,
-                             grouped=grouped, func=func, *args,
-                             **kwargs)
+                             *args, **kwargs)
 
     @classmethod
     @docstrings.dedent
-    def show_docs(cls, keys=None, indent=0, grouped=False, func=six.print_,
-                  *args, **kwargs):
+    def show_docs(cls, keys=None, indent=0, *args, **kwargs):
         """
         Classmethod to print the full documentations of the formatoptions
 
@@ -1604,6 +1672,10 @@ class Plotter(dict):
         ----------
         %(Plotter.show_keys.parameters)s
 
+        Other Parameters
+        ----------------
+        %(Plotter.show_keys.other_parameters)s
+
         Returns
         -------
         %(Plotter.show_keys.returns)s
@@ -1611,12 +1683,10 @@ class Plotter(dict):
         See Also
         --------
         show_keys, show_docs"""
-        def full_doc(doc):
-            return str_indent + ' ' * 4 + ('\n' + str_indent + ' ' * 4).join(
-                doc.split('\n'))
-        str_indent = " " * indent
+        def full_doc(key, key_txt, doc):
+            return ('=' * len(key_txt)) + '\n' + doc + '\n'
         return cls._show_doc(full_doc, keys=keys, indent=indent,
-                             grouped=grouped, func=func, *args, **kwargs)
+                             *args, **kwargs)
 
     @classmethod
     def _get_rc_strings(cls):

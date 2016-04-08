@@ -4,7 +4,7 @@ from matplotlib.docstring import dedent
 from matplotlib.cbook import dedent as dedents
 from re import (compile as re_compile, sub, MULTILINE, findall, finditer,
                 VERBOSE)
-from .warning import warn
+from psyplot.warning import warn
 
 
 def safe_modulo(s, meta, checked='', print_warning=True):
@@ -27,22 +27,17 @@ def safe_modulo(s, meta, checked='', print_warning=True):
 
     Examples
     --------
-    .. ipython::
-        :okexcept:
-        :okwarning:
+    The effects are demonstrated by this example::
 
-        In [1]: from psyplot.docstring import safe_modulo
-
-        In [2]: s = "That's %(one)s string %(with)s missing 'with' and %s key"
-
-        In [3]: s % {'one': 1}
+        >>> from psyplot.docstring import safe_modulo
+        >>> s = "That's %(one)s string %(with)s missing 'with' and %s key"
+        >>> s % {'one': 1}
         # raises KeyError because of missing 'with'
-
-        In [4]: s% {'one': 1, 'with': 2}
+        >>> s% {'one': 1, 'with': 2}
         # raises TypeError because of '%s'
-
-        In [5]: safe_modulo(s, {'one': 1})
-        Out [5]: "That's 1 string %%(with)s missing 'with'"""
+        >>> safe_modulo(s, {'one': 1})
+        "That's 1 string %(with)s missing 'with' and %s key"
+    """
     try:
         return s % meta
     except (ValueError, TypeError, KeyError):
@@ -79,20 +74,73 @@ class DocStringProcessor(object):
 
     Examples
     --------
-    .. ipython::
+    Create docstring processor via::
 
-        In [1]: from psyplot.docstring import DocStringProcessor
+        >>> from psyplot.docstring import DocStringProcessor
+        >>> d = DocStringProcessor(doc_key='My doc string')
 
-        In [2]: d = DocStringProcessor(doc_key='My doc string')
+    And then use it as a decorator to process the docstring::
 
-        In [3]: @d
-           ...: def doc_test():
-           ...:     '''That's %(doc_key)s'''
-           ...:     pass
-           ...:
+        >>> @d
+        ... def doc_test():
+        ...     '''That's %(doc_key)s'''
+        ...     pass
 
-        In [4]: help(doc_test)
-        Out [4]: That's my doc string"""
+        >>> print(doc_test.__doc__)
+        That's my doc string
+
+    Use the :meth:`get_sectionsf` method to extract Parameter sections (or
+    others) form the docstring for later usage (and make sure, that the
+    docstring is dedented)::
+
+        >>> @d.get_sectionsf('docstring_example')
+        ... @d.dedent
+        ... def doc_test(a=1, b=2):
+        ...     '''
+        ...     That's %(doc_key)s
+        ...
+        ...     Parameters
+        ...     ----------
+        ...     a: int, optional
+        ...         A dummy parameter description
+        ...     b: int, optional
+        ...         A second dummy parameter
+        ...
+        ...     Examples
+        ...     --------
+        ...     Some dummy example doc'''
+        ...     print(a)
+
+        >>> @docstrings.dedent
+        ... def second_test(a=1):
+        ...     '''
+        ...     My second function where I want to use the docstring from
+        ...     above
+        ...
+        ...     Parameters
+        ...     ----------
+        ...     %(docstring_example.parameters)s
+        ...
+        ...     Examples
+        ...     --------
+        ...     %(docstring_example.examples)s'''
+        ...     pass
+
+        >>> print(second_test.__doc__)
+        My second function where I want to use the docstring from
+        above
+
+        Parameters
+        ----------
+        a: int, optional
+            A dummy parameter description
+        b: int, optional
+            A second dummy parameter
+
+        Examples
+        --------
+        Some dummy example doc
+    """
 
     #: :class:`dict`. Dictionary containing the compiled patterns to identify
     #: the Parameters, Other Parameters, Warnings and Notes sections in a
@@ -145,7 +193,10 @@ class DocStringProcessor(object):
     def get_sections(self, s, base, sections=['Parameters', 'Possible types',
                                               'Other Parameters']):
         """
-        Method that extracts the specified sections out of the given string
+        Method that extracts the specified sections out of the given string if
+        (and only if) the docstring follows the numpy documentation guidelines
+        [1]_. Note that the section either must appear in the
+        :attr:`param_like_sections` or the :attr:`text_sections` attribute.
 
         Parameters
         ----------
@@ -157,25 +208,40 @@ class DocStringProcessor(object):
             sections to look for. Each section must be followed by a newline
             character ('\\n') and a bar of '-' (following the numpy (napoleon)
             docstring conventions).
+
+        References
+        ----------
+        .. [1] https://github.com/numpy/numpy/blob/master/doc/HOWTO_DOCUMENT.rst.txt
+
+        See Also
+        --------
+        delete_params, keep_params, delete_types, keep_types, delete_kwargs:
+            For manipulating the docstring sections
+        save_docstring:
+            for saving an entire docstring
         """
         params = self.params
-        patterns = self.patterns
         for section in sections:
             key = '%s.%s' % (base, section.lower().replace(' ', '_'))
-            try:
-                params[key] = patterns[section].search(s).group(0).rstrip()
-            except AttributeError:
-                params[key] = ''
+            params[key] = self._get_section(s, section)
         return s
+
+    def _get_section(self, s, section):
+        try:
+            return self.patterns[section].search(s).group(0).rstrip()
+        except AttributeError:
+            return ''
 
     @dedentf
     def get_sectionsf(self, *args, **kwargs):
         """
         Decorator method to extract sections from a function docstring
 
-        ``*args`` and ``**kwargs`` are specified by the :meth:`get_sections`
-        method. Note, that the first argument will be the docstring of the
-        specified function
+        Parameters
+        ----------
+        ``*args`` and ``**kwargs``
+            See the :meth:`get_sections` method. Note, that the first argument
+            will be the docstring of the specified function
 
         Returns
         -------
@@ -316,9 +382,12 @@ class DocStringProcessor(object):
         See Also
         --------
         keep_types"""
+        self.params[base_key + '.' + '|'.join(params)] = self._keep_params(
+            self.params[base_key], params)
+
+    def _keep_params(self, s, params):
         patt = '|'.join(s + ':(?s).+?\n(?=\S+|$)' for s in params)
-        self.params[base_key + '.' + '|'.join(params)] = ''.join(findall(
-            patt, self.params[base_key] + '\n', MULTILINE)).rstrip()
+        return ''.join(findall(patt, s.rstrip() + '\n', MULTILINE)).rstrip()
 
     @dedentf
     def keep_types(self, base_key, out_key, *types):
@@ -344,9 +413,12 @@ class DocStringProcessor(object):
         See Also
         --------
         keep_params"""
+        self.params['%s.%s' % (base_key, out_key)] = self._keep_types(
+            self.params[base_key], types)
+
+    def _keep_types(self, s, types):
         patt = '|'.join(s + '\n(?s).+?\n(?=\S+|$)' for s in types)
-        self.params['%s.%s' % (base_key, out_key)] = ''.join(findall(
-            patt, self.params[base_key] + '\n', MULTILINE)).rstrip()
+        return ''.join(findall(patt, s.rstrip() + '\n', MULTILINE)).rstrip()
 
     @dedentf
     def save_docstring(self, key):
@@ -361,6 +433,22 @@ class DocStringProcessor(object):
         return func
 
 
-#: :class:`DocStringProcessor` that simplifies the reuse of docstrings from
-#: between different python objects.
+def indent(text, num=4):
+    """Indet the given string"""
+    str_indent = ' ' * num
+    return str_indent + ('\n' + str_indent).join(text.splitlines())
+
+
+def append_original_doc(parent, num=0):
+    """Return an iterator that append the docstring of the given `parent`
+    function to the applied function"""
+    def func(func):
+        func.__doc__ = func.__doc__ and func.__doc__ + indent(
+            parent.__doc__, num)
+        return func
+    return func
+
+
+#: :class:`DocStringProcessor` instance that simplifies the reuse of docstrings
+#: from between different python objects.
 docstrings = DocStringProcessor()

@@ -11,7 +11,15 @@ values when included as an extension in the ``conf.py`` script:
 - ``not_document_data``: Default: ``['.*']``. A list containing the regex
   patterns of the data that shall not be shown (by default, all)."""
 import sphinx
-from sphinx.ext.autodoc import DataDocumenter, AttributeDocumenter, Options
+from sphinx.ext.autodoc import Options, AutoDirective
+try:
+    from psyplot.sphinxext.extended_autodoc import (
+        CallableDataDocumenter as DataDocumenter,
+        CallableAttributeDocumenter as AttributeDocumenter)
+    psyplot_documenters = True
+except ImportError:
+    from sphinx.ext.autodoc import DataDocumenter, AttributeDocumenter
+    psyplot_documenters = False
 import re
 
 try:
@@ -26,13 +34,13 @@ def dont_document_obj(config, fullname):
              not any(re.match(p, fullname) for p in config.document_data)))
 
 
-class NoSigDataDocumenter(DataDocumenter):
+class NoDataDataDocumenter(DataDocumenter):
     """DataDocumenter that prevents the displaying of large data"""
     #: slightly higher priority as the one of the DataDocumenter
     priority = DataDocumenter.priority + 0.1
 
     def __init__(self, *args, **kwargs):
-        super(NoSigDataDocumenter, self).__init__(*args, **kwargs)
+        super(NoDataDataDocumenter, self).__init__(*args, **kwargs)
         fullname = '.'.join(self.name.rsplit('::', 1))
         if hasattr(self.env, 'config') and dont_document_obj(
                 self.env.config, fullname):
@@ -40,7 +48,7 @@ class NoSigDataDocumenter(DataDocumenter):
             self.options.annotation = ' '
 
 
-class NoSigAttributeDocumenter(AttributeDocumenter):
+class NoDataAttributeDocumenter(AttributeDocumenter):
     """AttributeDocumenter that prevents the displaying of large data"""
     #: slightly higher priority as the one of the AttributeDocumenter
     priority = AttributeDocumenter.priority + 0.1
@@ -63,7 +71,7 @@ class NoSigAttributeDocumenter(AttributeDocumenter):
                                                            isattr, parent)
 
     def __init__(self, *args, **kwargs):
-        super(NoSigAttributeDocumenter, self).__init__(*args, **kwargs)
+        super(NoDataAttributeDocumenter, self).__init__(*args, **kwargs)
         fullname = '.'.join(self.name.rsplit('::', 1))
         if hasattr(self.env, 'config') and dont_document_obj(
                 self.env.config, fullname):
@@ -73,8 +81,14 @@ class NoSigAttributeDocumenter(AttributeDocumenter):
 
 def setup(app):
     """setup function for using this module as a sphinx extension"""
-    app.add_autodocumenter(NoSigDataDocumenter)
-    app.add_autodocumenter(NoSigAttributeDocumenter)
+    try:
+        app.add_config_value('autodata_content', 'both', True)
+    except sphinx.errors.ExtensionError:  # already registered
+        pass
+    # make sure to allow inheritance when registering new documenters
+    for cls in [NoDataDataDocumenter, NoDataAttributeDocumenter]:
+        if not issubclass(AutoDirective._registry.get(cls.objtype), cls):
+            app.add_autodocumenter(cls)
     app.add_config_value('document_data', [], True)
     app.add_config_value('not_document_data', [re.compile('.*')], True)
     return {'version': sphinx.__display_version__, 'parallel_read_safe': True}

@@ -24,26 +24,23 @@ class DocstringExtension(object):
 
     Examples
     --------
-    .. ipython::
+    The usage is the same as for the NumpyDocstring class, but it supports
+    the `Possible types` section::
 
-        In [1]: from sphinx.ext.napoleon import Config
+        >>> from sphinx.ext.napoleon import Config
 
-        In [2]: from psyplot.sphinxext.extended_napoleon import (
-           ...:     ExtendedNumpyDocstring)
-
-        In [3]: config = Config(napoleon_use_param=True,
-           ...:                 napoleon_use_rtype=True)
-
-        In [4]: docstring = '''
-           ...: Possible types
-           ...: --------------
-           ...: type1
-           ...:     Description of `type1`
-           ...: type2
-           ...:     Description of `type2`'''
-
-        In [5]: print(ExtendedNumpyDocstring(docstring, config))
-
+        >>> from psyplot.sphinxext.extended_napoleon import (
+        ...     ExtendedNumpyDocstring)
+        >>> config = Config(napoleon_use_param=True,
+        ...                 napoleon_use_rtype=True)
+        >>> docstring = '''
+        ... Possible types
+        ... --------------
+        ... type1
+        ...     Description of `type1`
+        ... type2
+        ...     Description of `type2`'''
+        >>> print(ExtendedNumpyDocstring(docstring, config))
         .. rubric:: Possible types
 
         * *type1* --
@@ -84,7 +81,7 @@ class ExtendedGoogleDocstring(GoogleDocstring, DocstringExtension):
         return super(ExtendedGoogleDocstring, self)._parse(*args, **kwargs)
 
 
-def _process_docstring(app, what, name, obj, options, lines):
+def process_docstring(app, what, name, obj, options, lines):
     """Process the docstring for a given python object.
 
     Called when autodoc has read and processed a docstring. `lines` is a list
@@ -122,7 +119,7 @@ def _process_docstring(app, what, name, obj, options, lines):
     Notes
     -----
     This function is (to most parts) taken from the :mod:`sphinx.ext.napoleon`
-    module, sphinx version 1.3.1"""
+    module, sphinx version 1.3.1, and adapted to the classes defined here"""
     result_lines = lines
     if app.config.napoleon_numpy_docstring:
         docstring = ExtendedNumpyDocstring(
@@ -150,11 +147,11 @@ def setup(app):
 
     Notes
     -----
-    This function is taken from the :mod:`sphinx.ext.napoleon` module, sphinx
-    version 1.3.1"""
+    This function uses the setup function of the :mod:`sphinx.ext.napoleon`
+    module"""
     from sphinx.application import Sphinx
     if not isinstance(app, Sphinx):
         return  # probably called by tests
 
-    app.connect('autodoc-process-docstring', _process_docstring)
+    app.connect('autodoc-process-docstring', process_docstring)
     return napoleon_setup(app)

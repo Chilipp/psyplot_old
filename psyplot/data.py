@@ -1,11 +1,13 @@
 import os
 from threading import Thread
+from functools import partial
 from glob import glob
 from importlib import import_module
 import re
 import six
 from copy import deepcopy
-from itertools import chain, product, repeat, starmap, count
+from collections import defaultdict
+from itertools import chain, product, repeat, starmap, count, cycle
 from difflib import get_close_matches
 import xarray
 from xarray.core.utils import NDArrayMixin
@@ -15,11 +17,11 @@ from pandas import to_datetime
 import numpy as np
 from datetime import datetime, timedelta
 import logging
-from .config.rcsetup import rcParams, safe_list
-from .docstring import dedent, docstrings, dedents
-from .compat.pycompat import (
+from psyplot.config.rcsetup import rcParams, safe_list
+from psyplot.docstring import dedent, docstrings, dedents
+from psyplot.compat.pycompat import (
     zip, map, isstring, OrderedDict, filter, range, getcwd, filterfalse)
-from .warning import warn, PsyPlotRuntimeWarning
+from psyplot.warning import warn, PsyPlotRuntimeWarning
 
 if six.PY2:
     from Queue import Queue
@@ -35,13 +37,17 @@ _NODATA = object
 logger = logging.getLogger(__name__)
 
 
+_ds_counter = count(1)
+
+
 class _TempBool(object):
     """Wrapper around a boolean defining an __enter__ and __exit__ method
 
-    Parameters
-    ----------
-    value: bool
-        value of the object"""
+    Notes
+    -----
+    If you want to use this class as an instance property, rather use the
+    :func:`_temp_bool_prop` because this class as a descriptor is ment to be a
+    class descriptor"""
 
     #: default boolean value for the :attr:`value` attribute
     default = False
@@ -76,6 +82,46 @@ class _TempBool(object):
 
     def __str__(self):
         return str(bool(self))
+
+    def __call__(self, value=None):
+        if value is None:
+            self.value = not self.value
+        else:
+            self.value = value
+
+    def __get__(self, instance, owner):
+        return self
+
+    def __set__(self, instance, value):
+        self.value = value
+
+
+def _temp_bool_prop(propname, doc="", default=False):
+    """Creates a property that uses the :class:`_TempBool` class
+
+    Parameters
+    ----------
+    propname: str
+        The attribute name to use. The _TempBool instance will be stored in the
+        ``'_' + propname`` attribute of the corresponding instance
+    doc: str
+        The documentation of the property
+    default: bool
+        The default value of the _TempBool class"""
+    def getx(self):
+        if getattr(self, '_' + propname, None) is not None:
+            return getattr(self, '_' + propname)
+        else:
+            setattr(self, '_' + propname, _TempBool(default))
+        return getattr(self, '_' + propname)
+
+    def setx(self, value):
+        getattr(self, propname).value = bool(value)
+
+    def delx(self):
+        getattr(self, propname).value = default
+
+    return property(getx, setx, delx, doc)
 
 
 def _no_auto_update_getter(self):
@@ -473,6 +519,44 @@ def _get_fname_nio(store):
             return None
 
 
+class Signal(object):
+    """Signal to connect functions to a specific event
+
+    This class behaves almost similar to PyQt's
+    :class:`PyQt4.QtCore.pyqtBoundSignal`
+    """
+
+    def __init__(self, name=None, cls_signal=False):
+        self.name = name
+        self.cls_signal = cls_signal
+        self._connections = []
+
+    def connect(self, func):
+        if func not in self._connections:
+            self._connections.append(func)
+
+    def emit(self, *args, **kwargs):
+        for func in self._connections[:]:
+            func(*args, **kwargs)
+
+    def disconnect(self, func=None):
+        """Disconnect a function call to the signal. If None, all connections
+        are disconnected"""
+        if func is None:
+            self._connections = []
+        else:
+            self._connections.remove(func)
+
+    def __get__(self, instance, owner):
+        if instance is None or self.cls_signal:
+            return self
+        ret = getattr(instance, self.name, None)
+        if ret is None:
+            setattr(instance, self.name, Signal(self.name))
+            ret = getattr(instance, self.name, None)
+        return ret
+
+
 #: functions to use to extract the file name from a data store
 get_fname_funcs = [_get_fname_netCDF4, _get_fname_scipy, _get_fname_nio]
 
@@ -565,1540 +649,12 @@ def get_filename_ds(ds, dump=True, paths=None, **kwargs):
     return fname, store_mod, store_cls
 
 
-class InteractiveBase(object):
-    """Class for the communication of a data object with a suitable plotter
-
-    This class serves as an interface for data objects (in particular as a
-    base for :class:`InteractiveArray` and :class:`InteractiveList`) to
-    communicate with the corresponding :class:`~psyplot.plotter.Plotter` in the
-    :attr:`plotter` attribute"""
-    @property
-    def plotter(self):
-        """:class:`psyplot.plotter.Plotter` instance that makes the interactive
-        plotting of the data"""
-        return self._plotter
-
-    @plotter.setter
-    def plotter(self, value):
-        self._plotter = value
-
-    @plotter.deleter
-    def plotter(self):
-        self._plotter = None
-
-    no_auto_update = property(_no_auto_update_getter,
-                              doc=_no_auto_update_getter.__doc__)
-
-    @no_auto_update.setter
-    def no_auto_update(self, value):
-        if self.plotter is not None:
-            self.plotter.no_auto_update = value
-        self.no_auto_update.value = bool(value)
-
-    @property
-    def logger(self):
-        """:class:`logging.Logger` of this instance"""
-        try:
-            return self._logger
-        except AttributeError:
-            name = '%s.%s.%s' % (self.__module__, self.__class__.__name__,
-                                 self.arr_name)
-            self._logger = logging.getLogger(name)
-            self.logger.debug('Initializing...')
-            return self._logger
-
-    @logger.setter
-    def logger(self, value):
-        self._logger = value
-
-    @property
-    def ax(self):
-        """The matplotlib axes the plotter of this data object plots on"""
-        return None if self.plotter is None else self.plotter.ax
-
-    @ax.setter
-    def ax(self, value):
-        if self.plotter is None:
-            raise ValueError(
-                'Cannot set the axes because the plotter attribute is None!')
-        self.plotter.ax = value
-
-    _plotter = None
-
-    @property
-    @docstrings.save_docstring('InteractiveBase._njobs')
-    @dedent
-    def _njobs(self):
-        """
-        The number of jobs taken from the queue during an update process
-
-        Returns
-        -------
-        list of int
-            The length of the list determines the number of neccessary queues,
-            the numbers in the list determines the number of tasks per queue
-            this instance fullfills during the update process"""
-        return self.plotter._njobs if self.plotter is not None else []
-
-    #: :class:`str`. The internal name of the :class:`InteractiveBase` instance
-    arr_name = None
-
-    _no_auto_update = None
-
-    @docstrings.get_sectionsf('InteractiveBase')
-    @dedent
-    def __init__(self, plotter=None, arr_name='data', auto_update=None):
-        """
-        Parameters
-        ----------
-        plotter: Plotter
-            Default: None. Interactive plotter that makes the plot via
-            formatoption keywords.
-        arr_name: str
-            Default: ``'data'``. unique string of the array
-        auto_update: bool
-            Default: None. A boolean indicating whether this list shall
-            automatically update the contained arrays when calling the
-            :meth:`update` method or not. See also the :attr:`no_auto_update`
-            attribute. If None, the value from the ``'lists.auto_update'``
-            key in the :attr:`psyplot.rcParams` dictionary is used."""
-        self.plotter = plotter
-        self.arr_name = arr_name
-        if auto_update is None:
-            auto_update = rcParams['lists.auto_update']
-        self.auto_update = not bool(auto_update)
-        self.replot = False
-
-    def interactive_plot(self, plotter=None):
-        """Makes the interactive plot
-
-        Parameters
-        ----------
-        plotter: Plotter
-            Interactive plotter that makes the plot via formatoption keywords.
-            If None, whatever is found in the :attr:`plotter` attribute is
-            used.
-        """
-        self.plotter = plotter or self.plotter
-        if self.plotter is None:
-            raise ValueError(
-                "Found no plotter in the InteractiveArray instance!")
-        self.plotter.initialize_plot(self)
-
-    @docstrings.get_sectionsf('InteractiveBase._register_update')
-    @dedent
-    def _register_update(self, replot=False, fmt={}, force=False,
-                         todefault=False):
-        """
-        Register new formatoptions for updating
-
-        Parameters
-        ----------
-        replot: bool
-            Boolean that determines whether the data specific formatoptions
-            shall be updated in any case or not. Note, if `dims` is not empty
-            or any coordinate keyword is in ``**kwargs``, this will be set to
-            True automatically
-        fmt: dict
-            Keys may be any valid formatoption of the formatoptions in the
-            :attr:`plotter`
-        force: str, list of str or bool
-            If formatoption key (i.e. string) or list of formatoption keys,
-            thery are definitely updated whether they changed or not.
-            If True, all the given formatoptions in this call of the are
-            :meth:`update` method are updated
-        todefault: bool
-            If True, all changed formatoptions (except the registered ones)
-            are updated to their default value as stored in the
-            :attr:`~psyplot.plotter.Plotter.rc` attribute
-
-        See Also
-        --------
-        start_update"""
-        self.replot = self.replot or replot
-        if self.plotter is not None:
-            self.plotter._register_update(replot=self.replot, fmt=fmt,
-                                          force=force, todefault=todefault)
-
-    @docstrings.get_sectionsf('InteractiveBase.start_update',
-                              sections=['Parameters', 'Returns'])
-    @dedent
-    def start_update(self, draw=None, queues=None):
-        """
-        Conduct the formerly registered updates
-
-        This method conducts the updates that have been registered via the
-        :meth:`update` method. You can call this method if the
-        :attr:`no_auto_update` attribute of this instance and the `auto_update`
-        parameter in the :meth:`update` method has been set to False
-
-        Parameters
-        ----------
-        draw: bool or None
-            Boolean to control whether the figure of this array shall be drawn
-            at the end. If None, it defaults to the `'auto_draw'`` parameter
-            in the :attr:`psyplot.rcParams` dictionary
-        queues: list of :class:`Queue.Queue` instances
-            The queues that are passed to the
-            :meth:`psyplot.plotter.Plotter.start_update` method to ensure a
-            thread-safe update. It can be None if only one single plotter is
-            updated at the same time. The number of jobs that are taken from
-            the queue is determined by the :meth:`_njobs` attribute. Note that
-            there this parameter is automatically configured when updating
-            from a :class:`~psyplot.project.Project`.
-
-        Returns
-        -------
-        bool
-            A boolean indicating whether a redrawing is necessary or not
-
-        See Also
-        --------
-        :attr:`no_auto_update`, update
-        """
-        if self.plotter is not None:
-            return self.plotter.start_update(draw=draw, queues=queues)
-
-    docstrings.keep_params('InteractiveBase.start_update.parameters', 'draw')
-
-    @docstrings.get_sectionsf('InteractiveBase.update',
-                              sections=['Parameters', 'Notes'])
-    @docstrings.dedent
-    def update(self, fmt={}, replot=False, draw=None, auto_update=False,
-               force=False, todefault=False, **kwargs):
-        """
-        Update the coordinates and the plot
-
-        This method updates all arrays in this list with the given coordinate
-        values and formatoptions.
-
-        Parameters
-        ----------
-        %(InteractiveBase._register_update.parameters)s
-        auto_update: bool
-            Boolean determining whether or not the :meth:`start_update` method
-            is called at the end. This parameter has no effect if the
-            :attr:`no_auto_update` attribute is set to ``True``.
-        %(InteractiveBase.start_update.parameters.draw)s
-        ``**kwargs``
-            Any other formatoption that shall be updated (additionally to those
-            in `fmt`)
-
-        Notes
-        -----
-        If the :attr:`no_auto_update` attribute is True and the given
-        `auto_update` parameter are is False, the update of the plots are
-        registered and conducted at the next call of the :meth:`start_update`
-        method or the next call of this method (if the `auto_update` parameter
-        is then True).
-        """
-        fmt = dict(fmt)
-        fmt.update(kwargs)
-
-        self._register_update(replot=replot, fmt=fmt, force=force,
-                              todefault=todefault)
-
-        if not self.no_auto_update or auto_update:
-            self.start_update(draw=draw)
-
-
-class InteractiveArray(xarray.DataArray, InteractiveBase):
-    """Interactive version of the :class:`xarray.DataArray`
-
-    This class keeps reference to the base :class:`xarray.Dataset` where it
-    originates from and enables to switch between the coordinates in this
-    array. Furthermore it has a :attr:`plotter` attribute to enable interactive
-    plotting via an :class:`psyplot.plotter.Plotter` instance."""
-
-    @property
-    def base(self):
-        """Base dataset this instance gets its data from"""
-        if self._base is None:
-            if 'variable' in self.dims:
-                def to_dataset(i):
-                    return self.isel(variable=i).to_dataset(
-                        name=self.coords['variable'].values[i])
-                ds = to_dataset(0)
-                if len(self.coords['variable']) > 1:
-                    for i in range(1, len(self.coords['variable'])):
-                        ds.merge(to_dataset(i), inplace=True)
-                self._base = ds
-            else:
-                self._base = self.to_dataset()
-        return self._base
-
-    @base.setter
-    def base(self, value):
-        self._base = value
-
-    @property
-    def decoder(self):
-        """The decoder of this array"""
-        return getattr(self, '_decoder', CFDecoder(self.base))
-
-    @decoder.setter
-    def decoder(self, value):
-        self._decoder = value
-
-    @property
-    def idims(self):
-        """Coordinates in the :attr:`base` dataset as int or slice
-
-        This attribute holds a mapping from the coordinate names of this
-        array to an integer, slice or an array of integer that represent the
-        coordinates in the :attr:`base` dataset"""
-        if self._idims is None:
-            self._idims = self.decoder.get_idims(self)
-        return self._idims
-
-    @idims.setter
-    def idims(self, value):
-        self._idims = value
-
-    @property
-    @docstrings
-    def _njobs(self):
-        """%(InteractiveBase._njobs)s"""
-        ret = super(self.__class__, self)._njobs or [0]
-        ret[0] += 1
-        return ret
-
-    logger = InteractiveBase.logger
-    _idims = None
-    _base = None
-
-    @docstrings.dedent
-    def __init__(self, *args, **kwargs):
-        """
-        The ``*args`` and ``**kwargs`` are essentially the same as for the
-        :class:`xarray.DataArray` method, additional ``**kwargs`` are
-        described below.
-
-        Other Parameters
-        ----------------
-        base: xarray.Dataset
-            Default: None. Dataset that serves as the origin of the data
-            contained in this DataArray instance. This will be used if you want
-            to update the coordinates via the :meth:`update` method. If None,
-            this instance will serve as a base as soon as it is needed.
-        decoder: psyplot.CFDecoder
-            The decoder that decodes the `base` dataset and is used to get
-            bounds. If not given, a new :class:`CFDecoder` is created
-        idims: dict
-            Default: None. dictionary with integer values and/or slices in the
-            `base` dictionary. If not given, they are determined automatically
-        %(InteractiveBase.parameters)s
-        """
-        base = kwargs.pop('base', None)
-        if base is not None:
-            self.base = base
-        self.idims = kwargs.pop('idims', None)
-        decoder = kwargs.pop('decoder', None)
-        if decoder is not None:
-            self.decoder = decoder
-
-        ibase_kwargs, array_kwargs = sort_kwargs(
-            kwargs, ['plotter', 'arr_name', 'auto_update'])
-        self._registered_updates = {}
-        self._new_dims = {}
-        self.method = None
-        InteractiveBase.__init__(self, **ibase_kwargs)
-        xarray.DataArray.__init__(self, *args, **kwargs)
-
-    @classmethod
-    def _new_from_dataset_no_copy(cls, *args, **kwargs):
-        obj = super(cls, cls)._new_from_dataset_no_copy(*args, **kwargs)
-        obj._registered_updates = {}
-        obj._new_dims = {}
-        obj.method = None
-        obj.arr_name = 'arr'
-        obj.no_auto_update = not bool(kwargs.pop(
-            'auto_update', rcParams['lists.auto_update']))
-        obj.replot = False
-        return obj
-
-    def copy(self, *args, **kwargs):
-        arr_name = kwargs.pop('arr_name', self.arr_name)
-        obj = super(InteractiveArray, self).copy(*args, **kwargs)
-        obj.no_auto_update = bool(self.no_auto_update)
-        obj.arr_name = arr_name
-        obj.replot = self.replot
-        return obj
-
-    copy.__doc__ = xarray.DataArray.copy.__doc__ + """
-    Parameters
-    ----------
-    deep: bool
-        If True, a deep copy is made of all variables in the underlying
-        dataset. Otherwise, a shallow copy is made, so each variable in the new
-        array's dataset is also a variable in this array's dataset.
-    arr_name: str
-        The array name to use for the new :class:`InteractiveArray` instance
-        (default: arr)"""
-
-    @property
-    def iter_base_variables(self):
-        """An iterator over the base variables in the :attr:`base` dataset"""
-        if 'variable' in self.coords:
-            return (self.base.variables[name] for name in self.coords[
-                'variable'].values)
-        return iter([self.base.variables[self.name]])
-
-    @property
-    def base_variables(self):
-        """A mapping from the variable name to the variablein the :attr:`base`
-        dataset."""
-        if 'variable' in self.coords:
-            return OrderedDict([(name, self.base.variables[name])
-                                for name in self.coords['variable'].values])
-        return {self.name: self.base.variables[self.name]}
-
-    docstrings.keep_params('setup_coords.parameters', 'dims')
-
-    @docstrings.get_sectionsf('InteractiveArray._register_update')
-    @docstrings.dedent
-    def _register_update(self, method='isel', replot=False, dims={}, fmt={},
-                         force=False, todefault=False):
-        """
-        Register new dimensions and formatoptions for updating
-
-        Parameters
-        ----------
-        method: {'isel', None, 'nearest', ...}
-            Selection method of the xarray.Dataset to be used for setting the
-            variables from the informations in `dims`.
-            If `method` is 'isel', the :meth:`xarray.Dataset.isel` method is
-            used. Otherwise it sets the `method` parameter for the
-            :meth:`xarray.Dataset.sel` method.
-        %(setup_coords.parameters.dims)s
-        %(InteractiveBase._register_update.parameters)s
-
-        See Also
-        --------
-        start_update"""
-        if self._new_dims and self.method != method:
-            raise ValueError(
-                "New dimensions were already specified for with the %s method!"
-                " I can not choose a new method %s" % (self.method, method))
-        else:
-            self.method = method
-        self._new_dims.update(self.decoder.correct_dims(
-            next(six.itervalues(self.base_variables)), dims))
-        InteractiveBase._register_update(self, fmt=fmt, replot=replot or dims,
-                                         force=force, todefault=todefault)
-
-    def _update_concatenated(self, dims, method):
-        """Updates a concatenated array to new dimensions"""
-        def filter_attrs(item):
-            """Checks whether the attribute is from the :attr:`base` dataset"""
-            return (item[0] not in self.base.attrs or
-                    item[1] != self.base.attrs[item[0]])
-        saved_attrs = list(filter(filter_attrs, six.iteritems(self.attrs)))
-        saved_name = self.name
-        self.name = 'None'
-        if 'name' in dims:
-            name = dims.pop('name')
-        else:
-            name = list(self.coords['variable'].values)
-        if method == 'isel':
-            self.idims.update(dims)
-            dims = self.idims
-            res = self.base[name].isel(**dims).to_array()
-        else:
-            for key, val in six.iteritems(self.coords):
-                dims.setdefault(key, val)
-            res = self.base[name].sel(method=method, **dims).to_array()
-        self._variable = res._variable
-        self._coords = res.coords
-        self.name = saved_name
-        for key, val in saved_attrs:
-            self.attrs[key] = val
-
-    def _update_array(self, dims, method):
-        """Updates the array to the new dims from then :attr:`base` dataset"""
-        def filter_attrs(item):
-            """Checks whether the attribute is from the base variable"""
-            return ((item[0] not in base_var.attrs or
-                     item[1] != base_var.attrs[item[0]]))
-        base_var = self.base.variables[self.name]
-        if 'name' in dims:
-            name = dims.pop('name')
-            self.name = name
-        else:
-            name = self.name
-        # save attributes that have been changed by the user
-        saved_attrs = list(filter(filter_attrs, six.iteritems(self.attrs)))
-        if method == 'isel':
-            self.idims.update(dims)
-            dims = self.idims
-            res = self.base[name].isel(**dims)
-        else:
-            for key, val in six.iteritems(self.coords):
-                dims.setdefault(key, val)
-            res = self.base[name].sel(method=method, **dims)
-        self._variable = res._variable
-        self._coords = res._coords
-        # update to old attributes
-        for key, val in saved_attrs:
-            self.attrs[key] = val
-
-    @docstrings.dedent
-    def start_update(self, draw=None, queues=None):
-        """
-        Conduct the formerly registered updates
-
-        This method conducts the updates that have been registered via the
-        :meth:`update` method. You can call this method if the
-        :attr:`no_auto_update` attribute of this instance is True and the
-        `auto_update` parameter in the :meth:`update` method has been set to
-        False
-
-        Parameters
-        ----------
-        %(InteractiveBase.start_update.parameters)s
-
-        Returns
-        -------
-        %(InteractiveBase.start_update.returns)s
-
-        See Also
-        --------
-        :attr:`no_auto_update`, update
-        """
-        def filter_attrs(item):
-            return (item[0] not in self.base.attrs or
-                    item[1] != self.base.attrs[item[0]])
-        if queues is not None:
-            # make sure that no plot is updated during gathering the data
-            queues[0].get()
-        dims = self._new_dims
-        method = self.method
-        if dims:
-            if 'variable' in self.coords:
-                self._update_concatenated(dims, method)
-            else:
-                self._update_array(dims, method)
-        if queues is not None:
-            queues[0].task_done()
-        self._new_dims = {}
-        return InteractiveBase.start_update(self, draw=draw, queues=queues)
-
-    @docstrings.get_sectionsf('InteractiveArray.update',
-                              sections=['Parameters', 'Notes'])
-    @docstrings.dedent
-    def update(self, method='isel', dims={}, fmt={}, replot=False,
-               auto_update=False, draw=None, force=False, todefault=False,
-               **kwargs):
-        """
-        Update the coordinates and the plot
-
-        This method updates all arrays in this list with the given coordinate
-        values and formatoptions.
-
-        Parameters
-        ----------
-        %(InteractiveArray._register_update.parameters)s
-        auto_update: bool
-            Boolean determining whether or not the :meth:`start_update` method
-            is called after the end.
-        %(InteractiveBase.start_update.parameters)s
-        ``**kwargs``
-            Any other formatoption or dimension that shall be updated
-            (additionally to those in `fmt` and `dims`)
-
-        Notes
-        -----
-        %(InteractiveBase.update.notes)s"""
-        dims = dict(dims)
-        fmt = dict(fmt)
-        vars_and_coords = set(chain(
-            self.dims, self.coords, ['name', 'x', 'y', 'z', 't']))
-        furtherdims, furtherfmt = sort_kwargs(kwargs, vars_and_coords)
-        dims.update(furtherdims)
-        fmt.update(furtherfmt)
-
-        self._register_update(method=method, replot=replot, dims=dims,
-                              fmt=fmt, force=force, todefault=todefault)
-
-        if not self.no_auto_update or auto_update:
-            self.start_update(draw=draw)
-
-    def _short_info(self):
-        if 'variable' in self.coords:
-            name = ', '.join(self.coords['variable'].values)
-        else:
-            name = self.name
-        return "%s of %s, %s" % (
-            self.__class__.__name__, name, ", ".join(
-                "%s: %s" % (coord, format_item(val.values))
-                for coord, val in six.iteritems(self.coords) if val.ndim == 0))
-
-
-class ArrayList(list):
-    """Base class for creating a list of interactive arrays from a dataset
-
-    This list contains and manages :class:`InteractiveArray` instances"""
-
-    docstrings.keep_params('InteractiveBase.parameters', 'auto_update')
-
-    @property
-    def dims(self):
-        """Dimensions of the arrays in this list"""
-        return set(chain(*(arr.dims for arr in self)))
-
-    @property
-    def arr_names(self):
-        """Names of the arrays (!not of the variables!) in this list"""
-        return list(arr.arr_name for arr in self)
-
-    @property
-    def names(self):
-        """Set of the variable in this list"""
-        return set(arr.name for arr in self)
-
-    @property
-    def coords(self):
-        """Names of the coordinates of the arrays in this list"""
-        return set(chain(*(arr.coords for arr in self)))
-
-    @property
-    def with_plotter(self):
-        """The arrays in this instance that are visualized with a plotter"""
-        return self.__class__((arr for arr in self if arr.plotter is not None),
-                              auto_update=bool(self.auto_update))
-
-    no_auto_update = property(_no_auto_update_getter,
-                              doc=_no_auto_update_getter.__doc__)
-
-    @no_auto_update.setter
-    def no_auto_update(self, value):
-        for arr in self:
-            arr.no_auto_update = value
-        self.no_auto_update.value = bool(value)
-
-    @property
-    def logger(self):
-        """:class:`logging.Logger` of this instance"""
-        try:
-            return self._logger
-        except AttributeError:
-            name = '%s.%s' % (self.__module__, self.__class__.__name__)
-            self._logger = logging.getLogger(name)
-            self.logger.debug('Initializing...')
-            return self._logger
-
-    @logger.setter
-    def logger(self, value):
-        self._logger = value
-
-    docstrings.keep_params('InteractiveBase.parameters', 'auto_update')
-
-    @docstrings.get_sectionsf('ArrayList')
-    @docstrings.dedent
-    def __init__(self, iterable=[], attrs={}, auto_update=None):
-        """
-        Parameters
-        ----------
-        iterable: iterable
-            The iterable (e.g. another list) defining this list
-        attrs: dict-like or iterable, optional
-            Global attributes of this list
-        %(InteractiveBase.parameters.auto_update)s"""
-        super(ArrayList, self).__init__((arr for arr in iterable
-                                         if isinstance(arr, InteractiveBase)))
-        self.attrs = OrderedDict(attrs)
-        if auto_update is None:
-            auto_update = rcParams['lists.auto_update']
-        self.auto_update = not bool(auto_update)
-
-    def copy(self, deep=False):
-        """Returns a copy of the list
-
-        Parameters
-        ----------
-        deep: bool
-            If False (default), only the list is copied and not the contained
-            arrays, otherwise the contained arrays are deep copied"""
-        if not deep:
-            return self.__class__(self[:], attrs=self.attrs.copy(),
-                                  auto_update=not bool(self.no_auto_update))
-        else:
-            return self.__class__(
-                [arr.copy(deep) for arr in self], attrs=self.attrs.copy(),
-                auto_update=not bool(self.auto_update))
-
-    docstrings.keep_params('InteractiveArray.update.parameters', 'method')
-
-    @classmethod
-    @docstrings.get_sectionsf('ArrayList.from_dataset', sections=[
-        'Parameters', 'Other Parameters', 'Returns'])
-    @docstrings.dedent
-    def from_dataset(cls, base, method='isel', default_slice=None,
-                     decoder=None, auto_update=None, prefer_list=False,
-                     squeeze=True, attrs=None, **kwargs):
-        """
-        Construct an ArrayDict instance from an existing base dataset
-
-        Parameters
-        ----------
-        base: xarray.Dataset
-            Dataset instance that is used as reference
-        %(InteractiveArray.update.parameters.method)s
-        %(InteractiveBase.parameters.auto_update)s
-        prefer_list: bool
-            If True and multiple variable names per array are found, the
-            :class:`InteractiveList` class is used. Otherwise the arrays are
-            put together into one :class:`InteractiveArray`.
-        default_slice: indexer
-            Index (e.g. 0 if `method` is 'isel') that shall be used for
-            dimensions not covered by `dims` and `furtherdims`. If None, the
-            whole slice will be used.
-        decoder: CFDecoder
-            The decoder that shall be used to decoder the `base` dataset
-        squeeze: bool, optional
-            Default True. If True, and the created arrays have a an axes with
-            length 1, it is removed from the dimension list (e.g. an array
-            with shape (3, 4, 1, 5) will be squeezed to shape (3, 4, 5))
-        attrs: dict, optional
-            Meta attributes that shall be assigned to the selected data arrays
-            (additional to those stored in the `base` dataset)
-
-        Other Parameters
-        ----------------
-        %(setup_coords.parameters)s
-
-        Returns
-        -------
-        ArrayList
-            The list with the specified :class:`InteractiveArray` instances
-            that hold a reference to the given `base`"""
-        def recursive_selection(key, dims, names):
-            names = safe_list(names)
-            if len(names) > 1 and prefer_list:
-                keys = ('-'.join(vlst) for vlst in map(
-                    safe_list, names))
-                return InteractiveList(starmap(
-                    sel_method, zip(keys, repeat(dims), names)),
-                    auto_update=auto_update, arr_name=key)
-            elif len(names) > 1:
-                return sel_method(key, dims, tuple(names))
-            else:
-                return sel_method(key, dims, names[0])
-
-        if squeeze:
-            def squeeze_array(arr):
-                return arr.isel(**{dim: 0 for i, dim in enumerate(arr.dims)
-                                   if arr.shape[i] == 1})
-        else:
-            def squeeze_array(arr):
-                return arr
-        if method == 'isel':
-            def sel_method(key, dims, name=None):
-                if name is None:
-                    return recursive_selection(key, dims, dims.pop('name'))
-                elif isinstance(name, six.string_types):
-                    arr = base[name]
-                else:
-                    arr = base[list(name)]
-                if not isinstance(arr, xarray.DataArray):
-                    attrs = next(var for key, var in arr.variables.items()
-                                 if key not in arr.coords).attrs
-                    arr = arr.to_array()
-                    arr.attrs.update(attrs)
-                def_slice = slice(None) if default_slice is None else \
-                    default_slice
-                dims = decoder.correct_dims(arr, dims)
-                dims.update({
-                    dim: def_slice for dim in set(arr.dims).difference(
-                        dims) if dim != 'variable'})
-                return InteractiveArray(squeeze_array(
-                    arr.isel(**dims)), arr_name=key, base=base, idims=dims)
-        else:
-            def sel_method(key, dims, name=None):
-                if name is None:
-                    return recursive_selection(key, dims, dims.pop('name'))
-                arr = base[name]
-                if not isinstance(arr, xarray.DataArray):
-                    attrs = next(var for key, var in arr.variables.items()
-                                 if key not in arr.coords).attrs
-                    arr = arr.to_array()
-                    arr.attrs.update(attrs)
-                # idims will be calculated by the array (maybe not the most
-                # efficient way...)
-                dims = decoder.correct_dims(arr, dims)
-                if default_slice is not None:
-                    dims.update({
-                        key: default_slice for key in set(arr.dims).difference(
-                            dims)})
-                # the sel method does not work with slice objects
-                return InteractiveArray(squeeze_array(
-                    arr.sel(method=method, **{
-                            key: val for key, val in six.iteritems(dims)
-                            if not isinstance(val, slice)})),
-                    arr_name=key, base=base)
-        kwargs.setdefault(
-            'name', sorted(
-                key for key in base.variables if key not in base.coords))
-        names = setup_coords(**kwargs)
-        # check coordinates
-        possible_keys = ['t', 'x', 'y', 'z', 'name'] + list(base.coords)
-        for key in set(chain(*six.itervalues(names))):
-            check_key(key, possible_keys, name='dimension')
-        decoder = decoder or CFDecoder(base)
-        instance = cls(starmap(sel_method, six.iteritems(names)),
-                       attrs=base.attrs, auto_update=auto_update)
-        # convert to interactive lists if an instance is not
-        if prefer_list and any(
-                not isinstance(arr, InteractiveList) for arr in instance):
-            # if any instance is an interactive list, than convert the others
-            if any(isinstance(arr, InteractiveList) for arr in instance):
-                for i, arr in enumerate(instance):
-                    if not isinstance(arr, InteractiveList):
-                        instance[i] = InteractiveList([arr])
-            else:  # put everything into one single interactive list
-                instance = cls([InteractiveList(instance, attrs=base.attrs,
-                                                auto_update=auto_update)])
-        if attrs is not None:
-            for arr in instance:
-                arr.attrs.update(attrs)
-        return instance
-
-    @classmethod
-    def _get_dsnames(cls, data, ignore_keys=['attrs', 'plotter', 'ds']):
-        """Recursive method to get all the file names out of a dictionary
-        `data` created with the :meth`array_info` method"""
-        if 'fname' in data:
-            return {(data['fname'], data['store'])}
-        for key in ignore_keys:
-            data.pop(key, None)
-        return set(chain(*map(cls._get_dsnames, six.itervalues(data))))
-
-    def _get_datasets(cls, data, ignore_keys=['attrs', 'plotter', 'ds'],
-                      use_fname=False, nums=None):
-        """Recursive method to get all the file names out of a dictionary
-        `data` created with the :meth`array_info` method with
-        ``use_fname=False``"""
-        if nums is None:
-            nums = count()
-        if 'ds' in data:
-            ds = data['ds']
-            if PSYPLOT_ATTR not in ds.attrs:
-                ds.attrs[PSYPLOT_ATTR] = next(nums)
-            return [(ds.attrs[PSYPLOT_ATTR],
-                     ds if not use_fname else data['fname'])]
-        for key in ignore_keys:
-            data.pop(key, None)
-        return list(unique_everseen(
-            chain(*starmap(cls._get_datasets, zip(
-                six.itervalues(data), *map(repeat,
-                                           [ignore_keys, use_fname, nums])))),
-            lambda t: t[0]))
-
-    @classmethod
-    @docstrings.get_sectionsf('ArrayList.from_dict')
-    def from_dict(cls, d, alternative_paths={}, datasets=None,
-                  pwd=None, ignore_keys=['attrs', 'plotter', 'ds'], **kwargs):
-        """Create a list from the dictionary returned by :meth:`array_info`
-
-        This classmethod creates an :class:`~psyplot.data.ArrayList` instance
-        from a dictionary containing filename, dimension infos and array names
-
-        Parameters
-        ----------
-        d: dict
-            The dictionary holding the data
-        alternative_paths: dict
-            A mapping from original filenames as used in `d` to filenames that
-            shall be used instead. If `alternative_paths` is not None,
-            datasets must be None. Paths must be accessible from the current
-            working directory
-        datasets: dict or None
-            A mapping from original filenames in `d` to the instances of
-            :class:`xarray.Dataset` to use.
-        pwd: str
-            Path to the working directory from where the data can be imported.
-            If None, use the current working directory.
-        ignore_keys: list of str
-            Keys specified in this list are ignored and not seen as array
-            information (note that ``attrs`` are used anyway)
-
-        Other Parameters
-        ----------------
-        ``**kwargs``
-            Any other parameter from the `psyplot.data.open_dataset` function
-        %(open_dataset.parameters)s
-
-        Returns
-        -------
-        psyplot.data.ArrayList
-            The list with the interactive objects
-
-        See Also
-        --------
-        from_dataset, array_info"""
-        pwd = pwd or getcwd()
-        # first open all datasets if not already done
-        if datasets is None:
-            names_and_stores = cls._get_dsnames(deepcopy(d))
-            datasets = {}
-            for fname, (store_mod, store_cls) in names_and_stores:
-                fname_use = fname
-                try:
-                    fname_use = alternative_paths[fname]
-                except KeyError:
-                    if fname is not None:
-                        if is_remote_url(fname):
-                            fname_use = fname
-                        else:
-                            if os.path.isabs(fname):
-                                fname_use = fname
-                            else:
-                                fname_use = os.path.join(pwd, fname)
-                if fname_use is not None:
-                    datasets[fname] = _open_ds_from_store(
-                        fname_use, store_mod, store_cls, **kwargs)
-            if alternative_paths is not None:
-                for fname in set(alternative_paths).difference(datasets):
-                    datasets[fname] = _open_ds_from_store(fname, **kwargs)
-        arrays = [0] * len(set(d) - {'attrs'})
-        for i, (arr_name, info) in enumerate(six.iteritems(d)):
-            if arr_name in ignore_keys:
-                continue
-            if 'fname' not in info:
-                arr = InteractiveList.from_dict(
-                    info, alternative_paths=alternative_paths,
-                    datasets=datasets)
-            else:
-                fname = info['fname']
-                if fname is None:
-                    warn("Could not open array %s because no filename was "
-                         "specified!" % arr_name)
-                    arrays.pop(i)
-                    continue
-                elif fname not in datasets:
-                    warn("Could not open array %s because %s was not in the "
-                         "list of datasets!")
-                    arrays.pop(i)
-                    continue
-                arr = cls.from_dataset(
-                    datasets[fname], dims=info['dims'])[0]
-                for key, val in six.iteritems(info.get('attrs', {})):
-                    arr.attrs.setdefault(key, val)
-            arr.arr_name = arr_name
-            arrays[i] = arr
-        return cls(arrays, attrs=d.get('attrs', {}))
-
-    docstrings.delete_params('get_filename_ds.parameters', 'ds')
-
-    @docstrings.get_sectionsf('ArrayList.array_info')
-    @docstrings.dedent
-    def array_info(self, dump=False, paths=None, attrs=True,
-                   standardize_dims=True, pwd=None, use_rel_paths=True,
-                   alternate_paths={}, use_fname=True, **kwargs):
-        """
-        Get dimension informations on you arrays
-
-        This method returns a dictionary containing informations on the
-        array in this instance
-
-        Parameters
-        ----------
-        %(get_filename_ds.parameters.no_ds)s
-        attrs: bool, optional
-            If True (default), the :attr:`ArrayList.attrs` and
-            :attr:`xarray.DataArray.attrs` attributes are included in the
-            returning dictionary
-        standardize_dims: bool, optional
-            If True (default), the real dimension names in the dataset are
-            replaced by x, y, z and t to be more general.
-        pwd: str
-            Path to the working directory from where the data can be imported.
-            If None, use the current working directory.
-        use_rel_paths: bool, optional
-            If True (default), paths relative to the current working directory
-            are used. Otherwise absolute paths to `pwd` are used
-        use_fname: bool or ``'both'``
-            If True, the file name and and data store class is inserted in the
-            ``'fname'`` and ``'store'`` key, otherwise, if False, the dataset
-            is inserted in key ``'ds'`` key, or, if both, both are inserted.
-
-
-        Other Parameters
-        ----------------
-        %(get_filename_ds.other_parameters)s
-
-        Returns
-        -------
-        OrderedDict
-            An ordered mapping from array names to dimensions and filename
-            corresponding to the array
-
-        See Also
-        --------
-        from_dict"""
-        ret = OrderedDict()
-        if paths is not None:
-            paths = iter(paths)
-        if pwd is None:
-            pwd = getcwd()
-        for arr in self:
-            if isinstance(arr, InteractiveList):
-                ret[arr.arr_name] = arr.array_info(
-                    dump, paths, pwd=pwd, attrs=attrs,
-                    standardize_dims=standardize_dims,
-                    use_rel_paths=use_rel_paths,
-                    alternate_paths=alternate_paths, **kwargs)
-            else:
-                if standardize_dims:
-                    idims = arr.decoder.standardize_dims(
-                        next(arr.iter_base_variables), arr.idims)
-                else:
-                    idims = arr.idims
-                ret[arr.arr_name] = d = {'dims': idims}
-                if use_fname:
-                    fname, store_mod, store_cls = get_filename_ds(
-                        arr.base, dump=dump, paths=paths, **kwargs)
-                    d['store'] = (store_mod, store_cls)
-                    if fname is None or is_remote_url(fname):
-                        d['fname'] = fname
-                    else:
-                        fname = alternate_paths.get(fname, alternate_paths.get(
-                            os.path.abspath(fname), fname))
-                        if fname in alternate_paths:
-                            fname = alternate_paths[fname]
-                        elif use_rel_paths:
-                            fname = os.path.relpath(fname, pwd)
-                        else:
-                            fname = os.path.abspath(fname)
-                        d['fname'] = fname
-                if not use_fname or use_fname == 'both':
-                    d['ds'] = arr.base
-                if attrs:
-                    d['attrs'] = arr.attrs
-        ret['attrs'] = self.attrs
-        return ret
-
-    @docstrings.dedent
-    def _register_update(self, method='isel', replot=False, dims={}, fmt={},
-                         force=False, todefault=False):
-        """
-        Register new dimensions and formatoptions for updating. The keywords
-        are the same as for each single array
-
-        Parameters
-        ----------
-        %(InteractiveArray._register_update.parameters)s"""
-
-        for arr in self:
-            arr._register_update(method=method, replot=replot, dims=dims,
-                                 fmt=fmt, force=force, todefault=todefault)
-
-    @docstrings.get_sectionsf('ArrayList.start_update')
-    @dedent
-    def start_update(self, draw=None):
-        """
-        Conduct the registered plot updates
-
-        This method starts the updates from what has been registered by the
-        :meth:`update` method. You can call this method if you did not set the
-        `auto_update` parameter when calling the :meth:`update` method to True
-        and when the :attr:`no_auto_update` attribute is True.
-
-        Parameters
-        ----------
-        draw: bool or None
-            If True, all the figures of the arrays contained in this list will
-            be drawn at the end. If None, it defaults to the `'auto_draw'``
-            parameter in the :attr:`psyplot.rcParams` dictionary
-
-        See Also
-        --------
-        :attr:`no_auto_update`, update"""
-        def worker(arr):
-            results[arr.arr_name] = arr.start_update(draw=False, queues=queues)
-        if len(self) == 0:
-            return
-
-        results = {}
-        threads = [Thread(target=worker, args=(arr,),
-                          name='update_%s' % arr.arr_name)
-                   for arr in self]
-        jobs = [arr._njobs for arr in self]
-        queues = [Queue() for _ in range(max(map(len, jobs)))]
-        # populate the queues
-        for i, arr in enumerate(self):
-            for j, n in enumerate(jobs[i]):
-                for k in range(n):
-                    queues[j].put(arr.arr_name)
-        try:
-            for thread in threads:
-                thread.setDaemon(True)
-                thread.start()
-            for thread in threads:
-                thread.join()
-        except:
-            raise
-        if draw is None:
-            draw = rcParams['auto_draw']
-        if draw:
-            self(arr_name=[name for name, adraw in six.iteritems(results)
-                           if adraw]).draw()
-            if rcParams['auto_show']:
-                self.show()
-
-    docstrings.keep_params('InteractiveArray.update.parameters',
-                           'auto_update')
-
-    @docstrings.get_sectionsf('ArrayList.update')
-    @docstrings.dedent
-    def update(self, method='isel', dims={}, fmt={}, replot=False,
-               auto_update=False, draw=None, force=False, todefault=False,
-               **kwargs):
-        """
-        Update the coordinates and the plot
-
-        This method updates all arrays in this list with the given coordinate
-        values and formatoptions.
-
-        Parameters
-        ----------
-        %(InteractiveArray._register_update.parameters)s
-        %(InteractiveArray.update.parameters.auto_update)s
-        %(ArrayList.start_update.parameters)s
-        ``**kwargs``
-            Any other formatoption or dimension that shall be updated
-            (additionally to those in `fmt` and `dims`)
-
-        Notes
-        -----
-        %(InteractiveArray.update.notes)s
-
-        See Also
-        --------
-        no_auto_update, start_update"""
-        dims = dict(dims)
-        fmt = dict(fmt)
-        vars_and_coords = set(chain(
-            self.dims, self.coords, ['name', 'x', 'y', 'z', 't']))
-        furtherdims, furtherfmt = sort_kwargs(kwargs, vars_and_coords)
-        dims.update(furtherdims)
-        fmt.update(furtherfmt)
-
-        self._register_update(method=method, replot=replot, dims=dims, fmt=fmt,
-                              force=force, todefault=todefault)
-        if not self.no_auto_update or auto_update:
-            self.start_update(draw)
-
-    def draw(self):
-        """Draws all the figures in this instance"""
-        for fig in set(chain(*map(
-                lambda arr: arr.plotter.figs2draw, self.with_plotter))):
-            fig.canvas.draw()
-        for arr in self:
-            if arr.plotter is not None:
-                arr.plotter._figs2draw.clear()
-
-    def __call__(self, types=None, method='isel', arr_name=None, **attrs):
-        """Get the arrays specified by their attributes
-
-        Parameters
-        ----------
-        types: type or tuple of types
-            Any class that shall be used for an instance check via
-            :func:`isinstance`. If not None, the :attr:`plotter` attribute
-            of the array is checked against this `types`
-        method: {'isel', 'sel'}
-            Selection method for the dimensions in the arrays to be used.
-            If `method` is 'isel', dimension values in `attrs` must correspond
-            to integer values as they are found in the
-            :attr:`InteractiveArray.idims` attribute.
-            Otherwise the :meth:`xarray.DataArray.coords` attribute is used.
-        arr_name: None, str or list of str
-            If not None, the array name serves as a filter
-        ``**attrs``
-            Parameters may be any attribute of the arrays in this instance.
-            Values may be iterables (e.g. lists) of the attributes to consider.
-            If the value is a string, it will be put into a list."""
-        def safe_item_list(key, val):
-            return key, safe_list(val)
-        if not attrs:
-            def filter_by_attrs(arr):
-                return True
-        elif method == 'sel':
-            def filter_by_attrs(arr):
-                if not isinstance(arr, InteractiveList):
-                    tname = arr.decoder.get_tname(
-                        next(six.itervalues(arr.base_variables)))
-
-                    def check_values(attr, vals):
-                        if hasattr(arr, 'decoder') and (
-                                attr.name == tname):
-                            try:
-                                vals = np.asarray(vals, dtype=np.datetime64)
-                            except ValueError:
-                                pass
-                            else:
-                                return attr.values.astype(vals.dtype) in vals
-                        return getattr(attr, 'values', attr) in vals
-
-                return all(
-                    check_values(getattr(arr, key, _NODATA), val)
-                    for key, val in six.iteritems(
-                        attrs if isinstance(arr, InteractiveList) else
-                        arr.decoder.correct_dims(next(six.itervalues(
-                            arr.base_variables)), attrs)))
-        else:
-            def filter_by_attrs(arr):
-                if isinstance(arr, InteractiveList):
-                    return all(
-                        getattr(arr, key, _NODATA) in val
-                        for key, val in six.iteritems(attrs))
-                return all(
-                    getattr(arr, key, _NODATA) if key not in arr.coords else (
-                        arr.idims.get(key, _NODATA)) in val
-                    for key, val in six.iteritems(
-                        arr.decoder.correct_dims(next(six.itervalues(
-                            arr.base_variables)), attrs)))
-        if arr_name is not None and isstring(arr_name):
-            arr_name = [arr_name]
-        attrs = dict(starmap(safe_item_list, six.iteritems(attrs)))
-        return self.__class__(
-            # iterable
-            (arr for arr in self if
-             (types is None or isinstance(arr.plotter, types)) and
-             (arr_name is None or arr.arr_name in arr_name) and
-             filter_by_attrs(arr)),
-            # give itself as base and the auto_update parameter
-            auto_update=bool(self.auto_update))
-
-    def __contains__(self, val):
-        try:
-            name = val if isstring(val) else val.arr_name
-        except AttributeError:
-            raise ValueError(
-                "Only interactive arrays can be inserted in the %s" % (
-                    self.__class__.__name__))
-        else:
-            return name in self.arr_names and (
-                isstring(val) or self._contains_array(val))
-
-    def _contains_array(self, val):
-        """Checks whether exactly this array is in the list"""
-        arr = self(arr_name=val.arr_name)[0]
-        is_not_list = any(
-            map(lambda a: not isinstance(a, InteractiveList),
-                [arr, val]))
-        is_list = any(map(lambda a: isinstance(a, InteractiveList),
-                          [arr, val]))
-        # if one is an InteractiveList and the other not, they differ
-        if is_list and is_not_list:
-            return False
-        # if both are interactive lists, check the lists
-        if is_list:
-            return all(a in arr for a in val) and all(a in val for a in arr)
-        # else we check the shapes and values
-        return arr is val
-
-    def __str__(self):
-        if len(self) == 1:
-            return "%s.%s([%s: %s])" % (
-                self.__class__.__module__, self.__class__.__name__,
-                self[0].arr_name,
-                getattr(self[0], '_short_info', self[0].__str__)())
-        return "%s.%s([\n    %s])" % (
-            self.__class__.__module__, self.__class__.__name__,
-            ",\n    ".join(
-                '%s: %s' % (
-                    arr.arr_name, getattr(arr, '_short_info', arr.__str__)())
-                for arr in self))
-
-    def __repr__(self):
-        return self.__str__()
-
-    @docstrings.get_sectionsf('ArrayList.rename', sections=[
-        'Parameters', 'Raises'])
-    @dedent
-    def rename(self, arr, new_name=True):
-        """
-        Rename an array to find a name that isn't already in the list
-
-        Parameters
-        ----------
-        arr: InteractiveBase
-            A :class:`InteractiveArray` or :class:`InteractiveList` instance
-            whose name shall be checked
-        new_name: bool or str
-            If False, and the ``arr_name`` attribute of the new array is
-            already in the list, a ValueError is raised.
-            If True and the ``arr_name`` attribute of the new array is not
-            already in the list, the name is not changed. Otherwise, if the
-            array name is already in use, `new_name` is set to 'arr{0}'.
-            If not True, this will be used for renaming (if the array name of
-            `arr` is in use or not). ``'{0}'`` is replaced by a counter
-
-        Returns
-        -------
-        InteractiveBase
-            `arr` with changed ``arr_name`` attribute
-        bool or None
-            True, if the array has been renamed, False if not and None if the
-            array is already in the list
-
-        Raises
-        ------
-        ValueError
-            If it was impossible to find a name that isn't already  in the list
-        ValueError
-            If `new_name` is False and the array is already in the list"""
-        name_in_me = arr.arr_name in self.arr_names
-        if not name_in_me:
-            return arr, False
-        elif name_in_me and not self._contains_array(arr):
-            if new_name is False:
-                raise ValueError(
-                    "Array name %s is already in use! Set the `new_name` "
-                    "parameter to None for renaming!" % arr.arr_name)
-            elif new_name is True:
-                new_name = new_name if isstring(new_name) else 'arr{0}'
-                names = self.arr_names
-                try:
-                    arr.arr_name = next(
-                        filter(lambda n: n not in names,
-                               map(new_name.format, range(100))))
-                except StopIteration:
-                    raise ValueError(
-                        "{0} already in the list".format(new_name))
-                return arr, True
-        return arr, None
-
-    docstrings.keep_params('ArrayList.rename.parameters', 'new_name')
-
-    @docstrings.dedent
-    def append(self, value, new_name=False):
-        """
-        Append a new array to the list
-
-        Parameters
-        ----------
-        value: InteractiveBase
-            The data object to append to this list
-        %(ArrayList.rename.parameters.new_name)s
-
-        Raises
-        ------
-        %(ArrayList.rename.raises)s
-
-        See Also
-        --------
-        list.append, extend, rename"""
-        arr, renamed = self.rename(value, new_name)
-        if renamed is not None:
-            super(ArrayList, self).append(value)
-
-    @docstrings.dedent
-    def extend(self, iterable, new_name=False):
-        """
-        Add further arrays from an iterable to this list
-
-        Parameters
-        ----------
-        iterable
-            Any iterable that contains :class:`InteractiveBase` instances
-        %(ArrayList.rename.parameters.new_name)s
-
-        Raises
-        ------
-        %(ArrayList.rename.raises)s
-
-        See Also
-        --------
-        list.extend, append, rename"""
-        # extend those arrays that aren't alredy in the list
-        super(ArrayList, self).extend(t[0] for t in filter(
-            lambda t: t[1] is not None, (
-                self.rename(arr, new_name) for arr in iterable)))
-
-    def remove(self, arr):
-        """Removes an array from the list
-
-        Parameters
-        ----------
-        arr: str or :class:`InteractiveBase`
-            The array name or the data object in this list to remove
-
-        Raises
-        ------
-        ValueError
-            If no array with the specified array name is in the list"""
-        name = arr if isinstance(arr, six.string_types) else arr.arr_name
-        if arr not in self:
-            raise ValueError(
-                "Array {0} not in the list".format(name))
-        for i, arr in enumerate(self):
-            if arr.arr_name == name:
-                del self[i]
-                return
-        raise ValueError(
-            "No array found with name {0}".format(name))
-
-
-class InteractiveList(ArrayList, InteractiveBase):
-    """List of :class:`InteractiveArray` instances that can be plotted itself
-
-    This class combines the :class:`ArrayList` and the interactive plotting
-    through :class:`psyplot.plotter.Plotter` classes. It is mainly used by the
-    :mod:`psyplot.plotter.simple` module"""
-
-    no_auto_update = property(_no_auto_update_getter,
-                              doc=_no_auto_update_getter.__doc__)
-
-    @no_auto_update.setter
-    def no_auto_update(self, value):
-        ArrayList.no_auto_update.fset(self, value)
-        InteractiveBase.no_auto_update.fset(self, value)
-
-    @property
-    @docstrings
-    def _njobs(self):
-        """%(InteractiveBase._njobs)s"""
-        ret = super(self.__class__, self)._njobs or [0]
-        ret[0] += 1
-        return ret
-
-    logger = InteractiveBase.logger
-
-    docstrings.delete_params('InteractiveBase.parameters', 'auto_update')
-
-    @docstrings.dedent
-    def __init__(self, *args, **kwargs):
-        """
-        Parameters
-        ----------
-        %(ArrayList.parameters)s
-        %(InteractiveBase.parameters.no_auto_update)s"""
-        ibase_kwargs, array_kwargs = sort_kwargs(
-            kwargs, ['plotter', 'arr_name'])
-        self._registered_updates = {}
-        InteractiveBase.__init__(self, **ibase_kwargs)
-        ArrayList.__init__(self, *args, **kwargs)
-
-    @docstrings.dedent
-    def _register_update(self, method='isel', replot=False, dims={}, fmt={},
-                         force=False, todefault=False):
-        """
-        Register new dimensions and formatoptions for updating
-
-        Parameters
-        ----------
-        %(InteractiveArray._register_update.parameters)s"""
-        ArrayList._register_update(self, method=method, dims=dims)
-        InteractiveBase._register_update(self, fmt=fmt, todefault=todefault,
-                                         replot=bool(dims) or replot,
-                                         force=force)
-
-    @docstrings.dedent
-    def start_update(self, draw=None, queues=None):
-        """
-        Conduct the formerly registered updates
-
-        This method conducts the updates that have been registered via the
-        :meth:`update` method. You can call this method if the
-        :attr:`auto_update` attribute of this instance is True and the
-        `auto_update` parameter in the :meth:`update` method has been set to
-        False
-
-        Parameters
-        ----------
-        %(InteractiveBase.start_update.parameters)s
-
-        Returns
-        -------
-        %(InteractiveBase.start_update.returns)s
-
-        See Also
-        --------
-        :attr:`no_auto_update`, update
-        """
-        if queues is not None:
-            queues[0].get()
-        for arr in self:
-            arr.start_update(draw=False)
-        if queues is not None:
-            queues[0].task_done()
-        return InteractiveBase.start_update(self, draw=draw, queues=queues)
-
-    def to_dataframe(self):
-        def to_df(arr):
-            df = arr.to_pandas()
-            if hasattr(df, 'to_frame'):
-                df = df.to_frame()
-            return df.rename(columns={df.keys()[0]: arr.arr_name})
-        if len(self) == 1:
-            return self[0].to_pandas().to_frame()
-        else:
-            df = to_df(self[0])
-            for arr in self[1:]:
-                df = df.merge(to_df(arr), left_index=True, right_index=True)
-            return df
-
-    docstrings.delete_params('ArrayList.from_dataset.parameters', 'plotter')
-    docstrings.delete_kwargs('ArrayList.from_dataset.other_parameters',
-                             None, 'kwargs')
-
-    @classmethod
-    @docstrings.dedent
-    def from_dataset(cls, *args, **kwargs):
-        """
-        Create an InteractiveList instance from the given base dataset
-
-        Parameters
-        ----------
-        %(ArrayList.from_dataset.parameters.no_plotter)s
-        plotter: psyplot.plotter.Plotter
-            The plotter instance that is used to visualize the data in this
-            list
-
-        Other Parameters
-        ----------------
-        %(ArrayList.from_dataset.other_parameters.no_args_kwargs)s
-        ``**kwargs``
-            Further keyword arguments may point to any of the dimensions of the
-            data (see `dims`)
-
-        Returns
-        -------
-        %(ArrayList.from_dataset.returns)s"""
-        plotter = kwargs.pop('plotter', None)
-        plot = kwargs.pop('plot', True)
-        instance = super(InteractiveList, cls).from_dataset(*args, **kwargs)
-        if plotter is not None:
-            plotter.initialize_plot(instance, plot=plot)
-        return instance
-
-
-class _MissingModule(object):
-    """Class that can be used if an optional module is not avaible.
-
-    This class raises an error if any attribute is accessed or it is called"""
-    def __init__(self, error):
-        """
-        Parameters
-        ----------
-        error: ImportError
-            The error that has been raised when tried to import the module"""
-        self.error = error
-
-    def __getattr__(self, attr):
-        raise self.error.__class__(self.error.message)
-
-    def __call__(self, *args, **kwargs):
-        raise self.error.__class__(self.error.message)
-
-
 class CFDecoder(object):
     """
     Class that interpretes the coordinates and attributes accordings to
     cf-conventions"""
+
+    _registry = []
 
     @property
     def logger(self):
@@ -2121,6 +677,69 @@ class CFDecoder(object):
         self.y = rcParams['decoder.y'] if x is None else set(y)
         self.z = rcParams['decoder.z'] if x is None else set(z)
         self.t = rcParams['decoder.t'] if x is None else set(t)
+
+    @staticmethod
+    def register_decoder(decoder_class, pos=0):
+        """Register a new decoder
+
+        This function registeres a decoder class to use
+
+        Parameters
+        ----------
+        decoder_class: type
+            The class inherited from the :class:`CFDecoder`
+        pos: int
+            The position where to register the decoder (by default: the first
+            position"""
+        CFDecoder._registry.insert(pos, decoder_class)
+
+    @classmethod
+    @docstrings.get_sectionsf('CFDecoder.can_decode')
+    def can_decode(cls, ds, var):
+        """
+        Class method to determine whether the object can be decoded by this
+        decoder class.
+
+        Parameters
+        ----------
+        ds: xarray.Dataset
+            The dataset that contains the given `var`
+        var: xarray.Variable or xarray.DataArray
+            The array to decode
+
+        Results
+        -------
+        bool
+            True if the decoder can decode the given array `var`. Otherwise
+            False
+
+        Notes
+        -----
+        The default implementation returns True for any argument. Subclass this
+        method to be specific on what type of data your decoder can decode
+        """
+        return True
+
+    @classmethod
+    @docstrings.dedent
+    def get_decoder(cls, ds, var):
+        """
+        Class method to get the right decoder class that can decode the
+        given dataset and variable
+
+        Parameters
+        ----------
+        %(CFDecoder.can_decode.parameters)s
+
+        Returns
+        -------
+        CFDecoder
+            The decoder for the given dataset that can decode the variable
+            `var`"""
+        for decoder_cls in cls._registry:
+            if decoder_cls.can_decode(ds, var):
+                return decoder_cls(ds)
+        return CFDecoder(ds)
 
     @staticmethod
     @docstrings.get_sectionsf('CFDecoder.decode_coords')
@@ -2251,7 +870,6 @@ class CFDecoder(object):
         change in the future to support hexagonal grids"""
         return self.is_triangular(*args, **kwargs)
 
-
     @docstrings.dedent
     def is_circumpolar(self, var):
         """
@@ -2353,7 +971,7 @@ class CFDecoder(object):
             return coords.get(coord_names[-1])
         elif axis == 'y' and len(coord_names) >= 2:
             for cname in filter(lambda cname: re.search('lat', cname),
-                    coord_names):
+                                coord_names):
                 return coords[cname]
             return coords.get(coord_names[-2])
         elif (axis == 'z' and len(coord_names) >= 3 and
@@ -2951,6 +1569,9 @@ def open_dataset(filename_or_obj, decode_cf=True, decode_times=True,
     -------
     xarray.Dataset
         The dataset that contains the variables from `filename_or_obj`"""
+    # use the absolute path name (is saver when saving the project)
+    if isstring(filename_or_obj) and os.path.exists(filename_or_obj):
+        filename_or_obj = os.path.abspath(filename_or_obj)
     if engine == 'gdal':
         from .gdal_store import GdalStore
         filename_or_obj = GdalStore(filename_or_obj)
@@ -3025,6 +1646,1697 @@ def open_mfdataset(paths, decode_cf=True, decode_times=True,
                                    decode_coords=decode_coords,
                                    decode_times=decode_times)
     return ds
+
+
+class InteractiveBase(object):
+    """Class for the communication of a data object with a suitable plotter
+
+    This class serves as an interface for data objects (in particular as a
+    base for :class:`InteractiveArray` and :class:`InteractiveList`) to
+    communicate with the corresponding :class:`~psyplot.plotter.Plotter` in the
+    :attr:`plotter` attribute"""
+    @property
+    def plotter(self):
+        """:class:`psyplot.plotter.Plotter` instance that makes the interactive
+        plotting of the data"""
+        return self._plotter
+
+    @plotter.setter
+    def plotter(self, value):
+        self._plotter = value
+
+    @plotter.deleter
+    def plotter(self):
+        self._plotter = None
+
+    no_auto_update = property(_no_auto_update_getter,
+                              doc=_no_auto_update_getter.__doc__)
+
+    @no_auto_update.setter
+    def no_auto_update(self, value):
+        if self.plotter is not None:
+            self.plotter.no_auto_update = value
+        self.no_auto_update.value = bool(value)
+
+    @property
+    def logger(self):
+        """:class:`logging.Logger` of this instance"""
+        try:
+            return self._logger
+        except AttributeError:
+            name = '%s.%s.%s' % (self.__module__, self.__class__.__name__,
+                                 self.arr_name)
+            self._logger = logging.getLogger(name)
+            self.logger.debug('Initializing...')
+            return self._logger
+
+    @logger.setter
+    def logger(self, value):
+        self._logger = value
+
+    @property
+    def ax(self):
+        """The matplotlib axes the plotter of this data object plots on"""
+        return None if self.plotter is None else self.plotter.ax
+
+    @ax.setter
+    def ax(self, value):
+        if self.plotter is None:
+            raise ValueError(
+                'Cannot set the axes because the plotter attribute is None!')
+        self.plotter.ax = value
+
+    # -------------------------------------------------------------------------
+    # -------------------------------- SIGNALS --------------------------------
+    # -------------------------------------------------------------------------
+
+    #: :class:`Signal` to be emitted when the object has been updated
+    onupdate = Signal('_onupdate')
+    _onupdate = None
+
+    _plotter = None
+
+    @property
+    @docstrings.save_docstring('InteractiveBase._njobs')
+    @dedent
+    def _njobs(self):
+        """
+        The number of jobs taken from the queue during an update process
+
+        Returns
+        -------
+        list of int
+            The length of the list determines the number of neccessary queues,
+            the numbers in the list determines the number of tasks per queue
+            this instance fullfills during the update process"""
+        return self.plotter._njobs if self.plotter is not None else []
+
+    #: :class:`str`. The internal name of the :class:`InteractiveBase` instance
+    arr_name = None
+
+    _no_auto_update = None
+
+    @docstrings.get_sectionsf('InteractiveBase')
+    @dedent
+    def __init__(self, plotter=None, arr_name='data', auto_update=None):
+        """
+        Parameters
+        ----------
+        plotter: Plotter
+            Default: None. Interactive plotter that makes the plot via
+            formatoption keywords.
+        arr_name: str
+            Default: ``'data'``. unique string of the array
+        auto_update: bool
+            Default: None. A boolean indicating whether this list shall
+            automatically update the contained arrays when calling the
+            :meth:`update` method or not. See also the :attr:`no_auto_update`
+            attribute. If None, the value from the ``'lists.auto_update'``
+            key in the :attr:`psyplot.rcParams` dictionary is used."""
+        self.plotter = plotter
+        self.arr_name = arr_name
+        if auto_update is None:
+            auto_update = rcParams['lists.auto_update']
+        self.auto_update = not bool(auto_update)
+        self.replot = False
+
+    def _finish_all(self, queues):
+        for n, queue in zip(self._njobs, queues):
+            for i in xrange(n):
+                queue.task_done()
+
+    def interactive_plot(self, plotter=None):
+        """Makes the interactive plot
+
+        Parameters
+        ----------
+        plotter: Plotter
+            Interactive plotter that makes the plot via formatoption keywords.
+            If None, whatever is found in the :attr:`plotter` attribute is
+            used.
+        """
+        self.plotter = plotter or self.plotter
+        if self.plotter is None:
+            raise ValueError(
+                "Found no plotter in the InteractiveArray instance!")
+        self.plotter.initialize_plot(self)
+
+    @docstrings.get_sectionsf('InteractiveBase._register_update')
+    @dedent
+    def _register_update(self, replot=False, fmt={}, force=False,
+                         todefault=False):
+        """
+        Register new formatoptions for updating
+
+        Parameters
+        ----------
+        replot: bool
+            Boolean that determines whether the data specific formatoptions
+            shall be updated in any case or not. Note, if `dims` is not empty
+            or any coordinate keyword is in ``**kwargs``, this will be set to
+            True automatically
+        fmt: dict
+            Keys may be any valid formatoption of the formatoptions in the
+            :attr:`plotter`
+        force: str, list of str or bool
+            If formatoption key (i.e. string) or list of formatoption keys,
+            thery are definitely updated whether they changed or not.
+            If True, all the given formatoptions in this call of the are
+            :meth:`update` method are updated
+        todefault: bool
+            If True, all changed formatoptions (except the registered ones)
+            are updated to their default value as stored in the
+            :attr:`~psyplot.plotter.Plotter.rc` attribute
+
+        See Also
+        --------
+        start_update"""
+        self.replot = self.replot or replot
+        if self.plotter is not None:
+            self.plotter._register_update(replot=self.replot, fmt=fmt,
+                                          force=force, todefault=todefault)
+
+    @docstrings.get_sectionsf('InteractiveBase.start_update',
+                              sections=['Parameters', 'Returns'])
+    @dedent
+    def start_update(self, draw=None, queues=None):
+        """
+        Conduct the formerly registered updates
+
+        This method conducts the updates that have been registered via the
+        :meth:`update` method. You can call this method if the
+        :attr:`no_auto_update` attribute of this instance and the `auto_update`
+        parameter in the :meth:`update` method has been set to False
+
+        Parameters
+        ----------
+        draw: bool or None
+            Boolean to control whether the figure of this array shall be drawn
+            at the end. If None, it defaults to the `'auto_draw'`` parameter
+            in the :attr:`psyplot.rcParams` dictionary
+        queues: list of :class:`Queue.Queue` instances
+            The queues that are passed to the
+            :meth:`psyplot.plotter.Plotter.start_update` method to ensure a
+            thread-safe update. It can be None if only one single plotter is
+            updated at the same time. The number of jobs that are taken from
+            the queue is determined by the :meth:`_njobs` attribute. Note that
+            there this parameter is automatically configured when updating
+            from a :class:`~psyplot.project.Project`.
+
+        Returns
+        -------
+        bool
+            A boolean indicating whether a redrawing is necessary or not
+
+        See Also
+        --------
+        :attr:`no_auto_update`, update
+        """
+        if self.plotter is not None:
+            return self.plotter.start_update(draw=draw, queues=queues)
+
+    docstrings.keep_params('InteractiveBase.start_update.parameters', 'draw')
+
+    @docstrings.get_sectionsf('InteractiveBase.update',
+                              sections=['Parameters', 'Notes'])
+    @docstrings.dedent
+    def update(self, fmt={}, replot=False, draw=None, auto_update=False,
+               force=False, todefault=False, **kwargs):
+        """
+        Update the coordinates and the plot
+
+        This method updates all arrays in this list with the given coordinate
+        values and formatoptions.
+
+        Parameters
+        ----------
+        %(InteractiveBase._register_update.parameters)s
+        auto_update: bool
+            Boolean determining whether or not the :meth:`start_update` method
+            is called at the end. This parameter has no effect if the
+            :attr:`no_auto_update` attribute is set to ``True``.
+        %(InteractiveBase.start_update.parameters.draw)s
+        ``**kwargs``
+            Any other formatoption that shall be updated (additionally to those
+            in `fmt`)
+
+        Notes
+        -----
+        If the :attr:`no_auto_update` attribute is True and the given
+        `auto_update` parameter are is False, the update of the plots are
+        registered and conducted at the next call of the :meth:`start_update`
+        method or the next call of this method (if the `auto_update` parameter
+        is then True).
+        """
+        fmt = dict(fmt)
+        fmt.update(kwargs)
+
+        self._register_update(replot=replot, fmt=fmt, force=force,
+                              todefault=todefault)
+
+        if not self.no_auto_update or auto_update:
+            self.start_update(draw=draw)
+
+
+class InteractiveArray(xarray.DataArray, InteractiveBase):
+    """Interactive version of the :class:`xarray.DataArray`
+
+    This class keeps reference to the base :class:`xarray.Dataset` where it
+    originates from and enables to switch between the coordinates in this
+    array. Furthermore it has a :attr:`plotter` attribute to enable interactive
+    plotting via an :class:`psyplot.plotter.Plotter` instance."""
+
+    @property
+    def base(self):
+        """Base dataset this instance gets its data from"""
+        if self._base is None:
+            if 'variable' in self.dims:
+                def to_dataset(i):
+                    return self.isel(variable=i).to_dataset(
+                        name=self.coords['variable'].values[i])
+                ds = to_dataset(0)
+                if len(self.coords['variable']) > 1:
+                    for i in range(1, len(self.coords['variable'])):
+                        ds.merge(to_dataset(i), inplace=True)
+                self.base = ds
+            else:
+                self._base = self.to_dataset()
+            self.onbasechange.emit()
+        return self._base
+
+    @base.setter
+    def base(self, value):
+        self._base = value
+        self.onbasechange.emit()
+
+    @property
+    def decoder(self):
+        """The decoder of this array"""
+        return getattr(self, '_decoder', CFDecoder.get_decoder(
+            self.base, self))
+
+    @decoder.setter
+    def decoder(self, value):
+        self._decoder = value
+
+    @property
+    def idims(self):
+        """Coordinates in the :attr:`base` dataset as int or slice
+
+        This attribute holds a mapping from the coordinate names of this
+        array to an integer, slice or an array of integer that represent the
+        coordinates in the :attr:`base` dataset"""
+        if self._idims is None:
+            self._idims = self.decoder.get_idims(self)
+        return self._idims
+
+    @idims.setter
+    def idims(self, value):
+        self._idims = value
+
+    @property
+    @docstrings
+    def _njobs(self):
+        """%(InteractiveBase._njobs)s"""
+        ret = super(self.__class__, self)._njobs or [0]
+        ret[0] += 1
+        return ret
+
+    logger = InteractiveBase.logger
+    _idims = None
+    _base = None
+
+    # -------------------------------------------------------------------------
+    # -------------------------------- SIGNALS --------------------------------
+    # -------------------------------------------------------------------------
+    #: :class:`Signal` to be emiited when the base of the object changes
+    onbasechange = Signal('_onbasechange')
+    _onbasechange = None
+
+    @docstrings.dedent
+    def __init__(self, *args, **kwargs):
+        """
+        The ``*args`` and ``**kwargs`` are essentially the same as for the
+        :class:`xarray.DataArray` method, additional ``**kwargs`` are
+        described below.
+
+        Other Parameters
+        ----------------
+        base: xarray.Dataset
+            Default: None. Dataset that serves as the origin of the data
+            contained in this DataArray instance. This will be used if you want
+            to update the coordinates via the :meth:`update` method. If None,
+            this instance will serve as a base as soon as it is needed.
+        decoder: psyplot.CFDecoder
+            The decoder that decodes the `base` dataset and is used to get
+            bounds. If not given, a new :class:`CFDecoder` is created
+        idims: dict
+            Default: None. dictionary with integer values and/or slices in the
+            `base` dictionary. If not given, they are determined automatically
+        %(InteractiveBase.parameters)s
+        """
+        base = kwargs.pop('base', None)
+        if base is not None:
+            self.base = base
+        self.idims = kwargs.pop('idims', None)
+        decoder = kwargs.pop('decoder', None)
+        if decoder is not None:
+            self.decoder = decoder
+
+        ibase_kwargs, array_kwargs = sort_kwargs(
+            kwargs, ['plotter', 'arr_name', 'auto_update'])
+        self._registered_updates = {}
+        self._new_dims = {}
+        self.method = None
+        InteractiveBase.__init__(self, **ibase_kwargs)
+        xarray.DataArray.__init__(self, *args, **kwargs)
+
+    @classmethod
+    def _new_from_dataset_no_copy(cls, *args, **kwargs):
+        obj = super(cls, cls)._new_from_dataset_no_copy(*args, **kwargs)
+        obj._registered_updates = {}
+        obj._new_dims = {}
+        obj.method = None
+        obj.arr_name = 'arr'
+        obj.no_auto_update = not bool(kwargs.pop(
+            'auto_update', rcParams['lists.auto_update']))
+        obj.replot = False
+        return obj
+
+    def copy(self, *args, **kwargs):
+        arr_name = kwargs.pop('arr_name', self.arr_name)
+        obj = super(InteractiveArray, self).copy(*args, **kwargs)
+        obj.no_auto_update = bool(self.no_auto_update)
+        obj.arr_name = arr_name
+        obj.replot = self.replot
+        return obj
+
+    copy.__doc__ = xarray.DataArray.copy.__doc__ + """
+    Parameters
+    ----------
+    deep: bool
+        If True, a deep copy is made of all variables in the underlying
+        dataset. Otherwise, a shallow copy is made, so each variable in the new
+        array's dataset is also a variable in this array's dataset.
+    arr_name: str
+        The array name to use for the new :class:`InteractiveArray` instance
+        (default: arr)"""
+
+    @property
+    def iter_base_variables(self):
+        """An iterator over the base variables in the :attr:`base` dataset"""
+        if 'variable' in self.coords:
+            return (self.base.variables[name] for name in self.coords[
+                'variable'].values)
+        return iter([self.base.variables[self.name]])
+
+    @property
+    def base_variables(self):
+        """A mapping from the variable name to the variablein the :attr:`base`
+        dataset."""
+        if 'variable' in self.coords:
+            return OrderedDict([(name, self.base.variables[name])
+                                for name in self.coords['variable'].values])
+        return {self.name: self.base.variables[self.name]}
+
+    docstrings.keep_params('setup_coords.parameters', 'dims')
+
+    @docstrings.get_sectionsf('InteractiveArray._register_update')
+    @docstrings.dedent
+    def _register_update(self, method='isel', replot=False, dims={}, fmt={},
+                         force=False, todefault=False):
+        """
+        Register new dimensions and formatoptions for updating
+
+        Parameters
+        ----------
+        method: {'isel', None, 'nearest', ...}
+            Selection method of the xarray.Dataset to be used for setting the
+            variables from the informations in `dims`.
+            If `method` is 'isel', the :meth:`xarray.Dataset.isel` method is
+            used. Otherwise it sets the `method` parameter for the
+            :meth:`xarray.Dataset.sel` method.
+        %(setup_coords.parameters.dims)s
+        %(InteractiveBase._register_update.parameters)s
+
+        See Also
+        --------
+        start_update"""
+        if self._new_dims and self.method != method:
+            raise ValueError(
+                "New dimensions were already specified for with the %s method!"
+                " I can not choose a new method %s" % (self.method, method))
+        else:
+            self.method = method
+        self._new_dims.update(self.decoder.correct_dims(
+            next(six.itervalues(self.base_variables)), dims))
+        InteractiveBase._register_update(self, fmt=fmt, replot=replot or dims,
+                                         force=force, todefault=todefault)
+
+    def _update_concatenated(self, dims, method):
+        """Updates a concatenated array to new dimensions"""
+        def filter_attrs(item):
+            """Checks whether the attribute is from the :attr:`base` dataset"""
+            return (item[0] not in self.base.attrs or
+                    item[1] != self.base.attrs[item[0]])
+        saved_attrs = list(filter(filter_attrs, six.iteritems(self.attrs)))
+        saved_name = self.name
+        self.name = 'None'
+        if 'name' in dims:
+            name = dims.pop('name')
+        else:
+            name = list(self.coords['variable'].values)
+        if method == 'isel':
+            self.idims.update(dims)
+            dims = self.idims
+            res = self.base[name].isel(**dims).to_array()
+        else:
+            for key, val in six.iteritems(self.coords):
+                dims.setdefault(key, val)
+            res = self.base[name].sel(method=method, **dims).to_array()
+        self._variable = res._variable
+        self._coords = res.coords
+        self.name = saved_name
+        for key, val in saved_attrs:
+            self.attrs[key] = val
+
+    def _update_array(self, dims, method):
+        """Updates the array to the new dims from then :attr:`base` dataset"""
+        def filter_attrs(item):
+            """Checks whether the attribute is from the base variable"""
+            return ((item[0] not in base_var.attrs or
+                     item[1] != base_var.attrs[item[0]]))
+        base_var = self.base.variables[self.name]
+        if 'name' in dims:
+            name = dims.pop('name')
+            self.name = name
+        else:
+            name = self.name
+        # save attributes that have been changed by the user
+        saved_attrs = list(filter(filter_attrs, six.iteritems(self.attrs)))
+        if method == 'isel':
+            self.idims.update(dims)
+            dims = self.idims
+            res = self.base[name].isel(**dims)
+        else:
+            for key, val in six.iteritems(self.coords):
+                dims.setdefault(key, val)
+            res = self.base[name].sel(method=method, **dims)
+        self._variable = res._variable
+        self._coords = res._coords
+        # update to old attributes
+        for key, val in saved_attrs:
+            self.attrs[key] = val
+
+    @docstrings.dedent
+    def start_update(self, draw=None, queues=None):
+        """
+        Conduct the formerly registered updates
+
+        This method conducts the updates that have been registered via the
+        :meth:`update` method. You can call this method if the
+        :attr:`no_auto_update` attribute of this instance is True and the
+        `auto_update` parameter in the :meth:`update` method has been set to
+        False
+
+        Parameters
+        ----------
+        %(InteractiveBase.start_update.parameters)s
+
+        Returns
+        -------
+        %(InteractiveBase.start_update.returns)s
+
+        See Also
+        --------
+        :attr:`no_auto_update`, update
+        """
+        def filter_attrs(item):
+            return (item[0] not in self.base.attrs or
+                    item[1] != self.base.attrs[item[0]])
+        if queues is not None:
+            # make sure that no plot is updated during gathering the data
+            queues[0].get()
+        try:
+            dims = self._new_dims
+            method = self.method
+            if dims:
+                if 'variable' in self.coords:
+                    self._update_concatenated(dims, method)
+                else:
+                    self._update_array(dims, method)
+            if queues is not None:
+                queues[0].task_done()
+            self._new_dims = {}
+            self.onupdate.emit()
+        except:
+            self._finish_all(queues)
+            raise
+        return InteractiveBase.start_update(self, draw=draw, queues=queues)
+
+    @docstrings.get_sectionsf('InteractiveArray.update',
+                              sections=['Parameters', 'Notes'])
+    @docstrings.dedent
+    def update(self, method='isel', dims={}, fmt={}, replot=False,
+               auto_update=False, draw=None, force=False, todefault=False,
+               **kwargs):
+        """
+        Update the coordinates and the plot
+
+        This method updates all arrays in this list with the given coordinate
+        values and formatoptions.
+
+        Parameters
+        ----------
+        %(InteractiveArray._register_update.parameters)s
+        auto_update: bool
+            Boolean determining whether or not the :meth:`start_update` method
+            is called after the end.
+        %(InteractiveBase.start_update.parameters)s
+        ``**kwargs``
+            Any other formatoption or dimension that shall be updated
+            (additionally to those in `fmt` and `dims`)
+
+        Notes
+        -----
+        %(InteractiveBase.update.notes)s"""
+        dims = dict(dims)
+        fmt = dict(fmt)
+        vars_and_coords = set(chain(
+            self.dims, self.coords, ['name', 'x', 'y', 'z', 't']))
+        furtherdims, furtherfmt = sort_kwargs(kwargs, vars_and_coords)
+        dims.update(furtherdims)
+        fmt.update(furtherfmt)
+
+        self._register_update(method=method, replot=replot, dims=dims,
+                              fmt=fmt, force=force, todefault=todefault)
+
+        if not self.no_auto_update or auto_update:
+            self.start_update(draw=draw)
+
+    def _short_info(self, intend=0, maybe=False):
+        str_intend = ' ' * intend
+        if 'variable' in self.coords:
+            name = ', '.join(self.coords['variable'].values)
+        else:
+            name = self.name
+        return str_intend + "%s: %s of %s, %s" % (
+            self.arr_name, self.__class__.__name__, name, ", ".join(
+                "%s: %s" % (coord, format_item(val.values))
+                for coord, val in six.iteritems(self.coords) if val.ndim == 0))
+
+
+class ArrayList(list):
+    """Base class for creating a list of interactive arrays from a dataset
+
+    This list contains and manages :class:`InteractiveArray` instances"""
+
+    docstrings.keep_params('InteractiveBase.parameters', 'auto_update')
+
+    @property
+    def dims(self):
+        """Dimensions of the arrays in this list"""
+        return set(chain(*(arr.dims for arr in self)))
+
+    @property
+    def dims_intersect(self):
+        """Dimensions of the arrays in this list that are used in all arrays
+        """
+        return set.intersection(*map(
+            set, (getattr(arr, 'dims_intersect', arr.dims) for arr in self)))
+
+    @property
+    def arr_names(self):
+        """Names of the arrays (!not of the variables!) in this list"""
+        return list(arr.arr_name for arr in self)
+
+    @property
+    def names(self):
+        """Set of the variable in this list"""
+        return set(arr.name for arr in self)
+
+    @property
+    def coords(self):
+        """Names of the coordinates of the arrays in this list"""
+        return set(chain(*(arr.coords for arr in self)))
+
+    @property
+    def coords_intersect(self):
+        """Coordinates of the arrays in this list that are used in all arrays
+        """
+        return set.intersection(*map(
+            set, (getattr(arr, 'coords_intersect', arr.coords) for arr in self)
+            ))
+
+    @property
+    def with_plotter(self):
+        """The arrays in this instance that are visualized with a plotter"""
+        return self.__class__((arr for arr in self if arr.plotter is not None),
+                              auto_update=bool(self.auto_update))
+
+    no_auto_update = property(_no_auto_update_getter,
+                              doc=_no_auto_update_getter.__doc__)
+
+    @no_auto_update.setter
+    def no_auto_update(self, value):
+        for arr in self:
+            arr.no_auto_update = value
+        self.no_auto_update.value = bool(value)
+
+    @property
+    def logger(self):
+        """:class:`logging.Logger` of this instance"""
+        try:
+            return self._logger
+        except AttributeError:
+            name = '%s.%s' % (self.__module__, self.__class__.__name__)
+            self._logger = logging.getLogger(name)
+            self.logger.debug('Initializing...')
+            return self._logger
+
+    @logger.setter
+    def logger(self, value):
+        self._logger = value
+
+    @property
+    def arrays(self):
+        """An iterator over all the data arrays instances in this list"""
+        return ArrayList(chain(
+            *[[arr] if not isinstance(arr, InteractiveList) else arr.arrays
+              for arr in self]))
+
+    docstrings.keep_params('InteractiveBase.parameters', 'auto_update')
+
+    @docstrings.get_sectionsf('ArrayList')
+    @docstrings.dedent
+    def __init__(self, iterable=[], attrs={}, auto_update=None):
+        """
+        Parameters
+        ----------
+        iterable: iterable
+            The iterable (e.g. another list) defining this list
+        attrs: dict-like or iterable, optional
+            Global attributes of this list
+        %(InteractiveBase.parameters.auto_update)s"""
+        super(ArrayList, self).__init__((arr for arr in iterable
+                                         if isinstance(arr, InteractiveBase)))
+        self.attrs = OrderedDict(attrs)
+        if auto_update is None:
+            auto_update = rcParams['lists.auto_update']
+        self.auto_update = not bool(auto_update)
+
+    def copy(self, deep=False):
+        """Returns a copy of the list
+
+        Parameters
+        ----------
+        deep: bool
+            If False (default), only the list is copied and not the contained
+            arrays, otherwise the contained arrays are deep copied"""
+        if not deep:
+            return self.__class__(self[:], attrs=self.attrs.copy(),
+                                  auto_update=not bool(self.no_auto_update))
+        else:
+            return self.__class__(
+                [arr.copy(deep) for arr in self], attrs=self.attrs.copy(),
+                auto_update=not bool(self.auto_update))
+
+    docstrings.keep_params('InteractiveArray.update.parameters', 'method')
+
+    @classmethod
+    @docstrings.get_sectionsf('ArrayList.from_dataset', sections=[
+        'Parameters', 'Other Parameters', 'Returns'])
+    @docstrings.dedent
+    def from_dataset(cls, base, method='isel', default_slice=None,
+                     decoder=None, auto_update=None, prefer_list=False,
+                     squeeze=True, attrs=None, **kwargs):
+        """
+        Construct an ArrayDict instance from an existing base dataset
+
+        Parameters
+        ----------
+        base: xarray.Dataset
+            Dataset instance that is used as reference
+        %(InteractiveArray.update.parameters.method)s
+        %(InteractiveBase.parameters.auto_update)s
+        prefer_list: bool
+            If True and multiple variable names per array are found, the
+            :class:`InteractiveList` class is used. Otherwise the arrays are
+            put together into one :class:`InteractiveArray`.
+        default_slice: indexer
+            Index (e.g. 0 if `method` is 'isel') that shall be used for
+            dimensions not covered by `dims` and `furtherdims`. If None, the
+            whole slice will be used.
+        decoder: CFDecoder
+            The decoder that shall be used to decoder the `base` dataset
+        squeeze: bool, optional
+            Default True. If True, and the created arrays have a an axes with
+            length 1, it is removed from the dimension list (e.g. an array
+            with shape (3, 4, 1, 5) will be squeezed to shape (3, 4, 5))
+        attrs: dict, optional
+            Meta attributes that shall be assigned to the selected data arrays
+            (additional to those stored in the `base` dataset)
+
+        Other Parameters
+        ----------------
+        %(setup_coords.parameters)s
+
+        Returns
+        -------
+        ArrayList
+            The list with the specified :class:`InteractiveArray` instances
+            that hold a reference to the given `base`"""
+        def iter_dims(dims):
+            """Split the given dictionary into multiples and iterate over it"""
+            dims = OrderedDict(dims)
+            keys = dims.keys()
+            for vals in zip(*map(cycle, map(safe_list, dims.values()))):
+                yield dict(zip(keys, vals))
+
+        def recursive_selection(key, dims, names):
+            names = safe_list(names)
+            if len(names) > 1 and prefer_list:
+                keys = ('arr%i' % i for i in range(len(names)))
+                return InteractiveList(starmap(
+                    sel_method, zip(keys, iter_dims(dims), names)),
+                    auto_update=auto_update, arr_name=key)
+            elif len(names) > 1:
+                return sel_method(key, dims, tuple(names))
+            else:
+                return sel_method(key, dims, names[0])
+
+        if decoder is not None:
+            def get_decoder(arr):
+                return decoder
+        else:
+            def get_decoder(arr):
+                return CFDecoder.get_decoder(base, arr)
+
+        if squeeze:
+            def squeeze_array(arr):
+                return arr.isel(**{dim: 0 for i, dim in enumerate(arr.dims)
+                                   if arr.shape[i] == 1})
+        else:
+            def squeeze_array(arr):
+                return arr
+        if method == 'isel':
+            def sel_method(key, dims, name=None):
+                if name is None:
+                    return recursive_selection(key, dims, dims.pop('name'))
+                elif isinstance(name, six.string_types):
+                    arr = base[name]
+                else:
+                    arr = base[list(name)]
+                if not isinstance(arr, xarray.DataArray):
+                    attrs = next(var for key, var in arr.variables.items()
+                                 if key not in arr.coords).attrs
+                    arr = arr.to_array()
+                    arr.attrs.update(attrs)
+                def_slice = slice(None) if default_slice is None else \
+                    default_slice
+                decoder = get_decoder(arr)
+                dims = decoder.correct_dims(arr, dims)
+                dims.update({
+                    dim: def_slice for dim in set(arr.dims).difference(
+                        dims) if dim != 'variable'})
+                return InteractiveArray(squeeze_array(
+                    arr.isel(**dims)), arr_name=key, base=base, idims=dims)
+        else:
+            def sel_method(key, dims, name=None):
+                if name is None:
+                    return recursive_selection(key, dims, dims.pop('name'))
+                arr = base[name]
+                if not isinstance(arr, xarray.DataArray):
+                    attrs = next(var for key, var in arr.variables.items()
+                                 if key not in arr.coords).attrs
+                    arr = arr.to_array()
+                    arr.attrs.update(attrs)
+                # idims will be calculated by the array (maybe not the most
+                # efficient way...)
+                decoder = get_decoder(arr)
+                dims = decoder.correct_dims(arr, dims)
+                if default_slice is not None:
+                    dims.update({
+                        key: default_slice for key in set(arr.dims).difference(
+                            dims)})
+                # the sel method does not work with slice objects
+                return InteractiveArray(squeeze_array(
+                    arr.sel(method=method, **{
+                            key: val for key, val in six.iteritems(dims)
+                            if not isinstance(val, slice)})),
+                    arr_name=key, base=base)
+        kwargs.setdefault(
+            'name', sorted(
+                key for key in base.variables if key not in base.coords))
+        names = setup_coords(**kwargs)
+        # check coordinates
+        possible_keys = ['t', 'x', 'y', 'z', 'name'] + list(base.coords)
+        for key in set(chain(*six.itervalues(names))):
+            check_key(key, possible_keys, name='dimension')
+        instance = cls(starmap(sel_method, six.iteritems(names)),
+                       attrs=base.attrs, auto_update=auto_update)
+        # convert to interactive lists if an instance is not
+        if prefer_list and any(
+                not isinstance(arr, InteractiveList) for arr in instance):
+            # if any instance is an interactive list, than convert the others
+            if any(isinstance(arr, InteractiveList) for arr in instance):
+                for i, arr in enumerate(instance):
+                    if not isinstance(arr, InteractiveList):
+                        instance[i] = InteractiveList([arr])
+            else:  # put everything into one single interactive list
+                instance = cls([InteractiveList(instance, attrs=base.attrs,
+                                                auto_update=auto_update)])
+        if attrs is not None:
+            for arr in instance:
+                arr.attrs.update(attrs)
+        return instance
+
+    @classmethod
+    def _get_dsnames(cls, data, ignore_keys=['attrs', 'plotter', 'ds']):
+        """Recursive method to get all the file names out of a dictionary
+        `data` created with the :meth`array_info` method"""
+        if 'fname' in data:
+            return {(data['fname'], data['store'])}
+        for key in ignore_keys:
+            data.pop(key, None)
+        return set(chain(*map(cls._get_dsnames, six.itervalues(data))))
+
+    @classmethod
+    def _get_ds_descriptions(
+            cls, data, ds_description={'ds', 'fname', 'arr'}, **kwargs):
+        def new_dict():
+            return defaultdict(list)
+        ret = defaultdict(new_dict)
+        ds_description = set(ds_description)
+        for d in cls._get_ds_descriptions_unsorted(data, **kwargs):
+            try:
+                num = d.get('num') or cls._get_psyplot_num(d['ds'])
+            except KeyError:
+                raise ValueError(
+                    'Could not find either the dataset number nor the dataset '
+                    'in the data! However one must be provided.')
+            d_ret = ret[num]
+            for key, val in six.iteritems(d):
+                if key == 'arr':
+                    d_ret['arr'].append(d['arr'])
+                else:
+                    d_ret[key] = val
+        return ret
+
+    @classmethod
+    def _get_ds_descriptions_unsorted(
+            cls, data, ignore_keys=['attrs', 'plotter'], nums=None):
+        """Recursive method to get all the file names or datasets out of a
+        dictionary `data` created with the :meth`array_info` method"""
+        ds_description = {'ds', 'fname', 'num', 'arr', 'store'}
+        if 'ds' in data:
+            # make sure that the data set has a number assigned to it
+            cls._get_psyplot_num(data['ds'])
+        keys_in_data = ds_description.intersection(data)
+        if keys_in_data:
+            return {key: data[key] for key in keys_in_data}
+        for key in ignore_keys:
+            data.pop(key, None)
+        func = partial(cls._get_ds_descriptions_unsorted,
+                       ignore_keys=ignore_keys, nums=nums)
+        return chain(*map(lambda d: [d] if isinstance(d, dict) else d,
+                          map(func, six.itervalues(data))))
+
+    @classmethod
+    @docstrings.get_sectionsf('ArrayList.from_dict')
+    @docstrings.dedent
+    def from_dict(cls, d, alternative_paths={}, datasets=None,
+                  pwd=None, ignore_keys=['attrs', 'plotter', 'ds'], **kwargs):
+        """
+        Create a list from the dictionary returned by :meth:`array_info`
+
+        This classmethod creates an :class:`~psyplot.data.ArrayList` instance
+        from a dictionary containing filename, dimension infos and array names
+
+        Parameters
+        ----------
+        d: dict
+            The dictionary holding the data
+        alternative_paths: dict or list or str
+            A mapping from original filenames as used in `d` to filenames that
+            shall be used instead. If `alternative_paths` is not None,
+            datasets must be None. Paths must be accessible from the current
+            working directory.
+            If `alternative_paths` is a list (or any other iterable) is
+            provided, the file names will be replaced as they appear in `d`
+            (note that this is very unsafe if `d` is not and OrderedDict)
+        datasets: dict or None
+            A mapping from original filenames in `d` to the instances of
+            :class:`xarray.Dataset` to use.
+        pwd: str
+            Path to the working directory from where the data can be imported.
+            If None, use the current working directory.
+        ignore_keys: list of str
+            Keys specified in this list are ignored and not seen as array
+            information (note that ``attrs`` are used anyway)
+
+        Other Parameters
+        ----------------
+        ``**kwargs``
+            Any other parameter from the `psyplot.data.open_dataset` function
+        %(open_dataset.parameters)s
+
+        Returns
+        -------
+        psyplot.data.ArrayList
+            The list with the interactive objects
+
+        See Also
+        --------
+        from_dataset, array_info"""
+        pwd = pwd or getcwd()
+        if not isinstance(alternative_paths, dict):
+            it = iter(alternative_paths)
+            alternative_paths = defaultdict(partial(it.next, None))
+        # first open all datasets if not already done
+        if datasets is None:
+            names_and_stores = cls._get_dsnames(deepcopy(d))
+            datasets = {}
+            for fname, (store_mod, store_cls) in names_and_stores:
+                fname_use = fname
+                got = True
+                try:
+                    fname_use = alternative_paths[fname]
+                except KeyError:
+                    got = False
+                if not got or not fname_use:
+                    if fname is not None:
+                        if is_remote_url(fname):
+                            fname_use = fname
+                        else:
+                            if os.path.isabs(fname):
+                                fname_use = fname
+                            else:
+                                fname_use = os.path.join(pwd, fname)
+                if fname_use is not None:
+                    datasets[fname] = _open_ds_from_store(
+                        fname_use, store_mod, store_cls, **kwargs)
+            if alternative_paths is not None:
+                for fname in set(alternative_paths).difference(datasets):
+                    datasets[fname] = _open_ds_from_store(fname, **kwargs)
+        arrays = [0] * len(set(d) - {'attrs'})
+        for i, (arr_name, info) in enumerate(six.iteritems(d)):
+            if arr_name in ignore_keys:
+                continue
+            if 'fname' not in info:
+                arr = InteractiveList.from_dict(
+                    info, alternative_paths=alternative_paths,
+                    datasets=datasets)
+            else:
+                fname = info['fname']
+                if fname is None:
+                    warn("Could not open array %s because no filename was "
+                         "specified!" % arr_name)
+                    arrays.pop(i)
+                    continue
+                elif fname not in datasets:
+                    warn("Could not open array %s because %s was not in the "
+                         "list of datasets!")
+                    arrays.pop(i)
+                    continue
+                arr = cls.from_dataset(
+                    datasets[fname], dims=info['dims'], name=info['name'])[0]
+                for key, val in six.iteritems(info.get('attrs', {})):
+                    arr.attrs.setdefault(key, val)
+            arr.arr_name = arr_name
+            arrays[i] = arr
+        return cls(arrays, attrs=d.get('attrs', {}))
+
+    docstrings.delete_params('get_filename_ds.parameters', 'ds')
+
+    @docstrings.get_sectionsf('ArrayList.array_info')
+    @docstrings.dedent
+    def array_info(self, dump=False, paths=None, attrs=True,
+                   standardize_dims=True, pwd=None, use_rel_paths=True,
+                   alternate_paths={}, ds_description={'fname', 'store'},
+                   **kwargs):
+        """
+        Get dimension informations on you arrays
+
+        This method returns a dictionary containing informations on the
+        array in this instance
+
+        Parameters
+        ----------
+        %(get_filename_ds.parameters.no_ds)s
+        attrs: bool, optional
+            If True (default), the :attr:`ArrayList.attrs` and
+            :attr:`xarray.DataArray.attrs` attributes are included in the
+            returning dictionary
+        standardize_dims: bool, optional
+            If True (default), the real dimension names in the dataset are
+            replaced by x, y, z and t to be more general.
+        pwd: str
+            Path to the working directory from where the data can be imported.
+            If None, use the current working directory.
+        use_rel_paths: bool, optional
+            If True (default), paths relative to the current working directory
+            are used. Otherwise absolute paths to `pwd` are used
+        ds_description: 'all' or set of {'fname', 'ds', 'num', 'arr', 'store'}
+            Keys to describe the datasets of the arrays. If all, all keys
+            are used. The key descriptions are
+
+            fname
+                the file name is inserted in the ``'fname'`` key
+            store
+                the data store class and module is inserted in the ``'store'``
+                key
+            ds
+                the dataset is inserted in the ``'ds'`` key
+            num
+                The unique number assigned to the dataset is inserted in the
+                ``'num'`` key
+            arr
+                The array itself is inserted in the ``'arr'`` key
+
+
+        Other Parameters
+        ----------------
+        %(get_filename_ds.other_parameters)s
+
+        Returns
+        -------
+        OrderedDict
+            An ordered mapping from array names to dimensions and filename
+            corresponding to the array
+
+        See Also
+        --------
+        from_dict"""
+        ret = OrderedDict()
+        if ds_description == 'all':
+            ds_description = {'fname', 'ds', 'num', 'arr', 'store'}
+        if paths is not None:
+            paths = iter(paths)
+        if pwd is None:
+            pwd = getcwd()
+        for arr in self:
+            if isinstance(arr, InteractiveList):
+                ret[arr.arr_name] = arr.array_info(
+                    dump, paths, pwd=pwd, attrs=attrs,
+                    standardize_dims=standardize_dims,
+                    use_rel_paths=use_rel_paths, ds_description=ds_description,
+                    alternate_paths=alternate_paths, **kwargs)
+            else:
+                if standardize_dims:
+                    idims = arr.decoder.standardize_dims(
+                        next(arr.iter_base_variables), arr.idims)
+                else:
+                    idims = arr.idims
+                ret[arr.arr_name] = d = {'dims': idims}
+                if 'variable' in arr.coords:
+                    d['name'] = list(arr.variable)
+                else:
+                    d['name'] = arr.name
+                if 'fname' in ds_description or 'store' in ds_description:
+                    fname, store_mod, store_cls = get_filename_ds(
+                        arr.base, dump=dump, paths=paths, **kwargs)
+                    if 'store' in ds_description:
+                        d['store'] = (store_mod, store_cls)
+                    if ('fname' in ds_description and
+                            (fname is None or is_remote_url(fname))):
+                        d['fname'] = fname
+                    elif 'fname' in ds_description:
+                        fname = alternate_paths.get(fname, alternate_paths.get(
+                            os.path.abspath(fname), fname))
+                        if fname in alternate_paths:
+                            fname = alternate_paths[fname]
+                        elif use_rel_paths:
+                            fname = os.path.relpath(fname, pwd)
+                        else:
+                            fname = os.path.abspath(fname)
+                        d['fname'] = fname
+                if 'ds' in ds_description:
+                    d['ds'] = arr.base
+                if 'num' in ds_description:
+                    d['num'] = self._get_psyplot_num(arr.base)
+                if 'arr' in ds_description:
+                    d['arr'] = arr
+                if attrs:
+                    d['attrs'] = arr.attrs
+        ret['attrs'] = self.attrs
+        return ret
+
+    @staticmethod
+    def _get_psyplot_num(ds, nums=None):
+        """Assign a unique number to the dataset"""
+        if nums is None:
+            nums = _ds_counter
+        if not hasattr(ds, PSYPLOT_ATTR):
+            ds._initialized = False
+            setattr(ds, PSYPLOT_ATTR, next(nums))
+            ds._initialized = True
+        return getattr(ds, PSYPLOT_ATTR)
+
+    @docstrings.dedent
+    def _register_update(self, method='isel', replot=False, dims={}, fmt={},
+                         force=False, todefault=False):
+        """
+        Register new dimensions and formatoptions for updating. The keywords
+        are the same as for each single array
+
+        Parameters
+        ----------
+        %(InteractiveArray._register_update.parameters)s"""
+
+        for arr in self:
+            arr._register_update(method=method, replot=replot, dims=dims,
+                                 fmt=fmt, force=force, todefault=todefault)
+
+    @docstrings.get_sectionsf('ArrayList.start_update')
+    @dedent
+    def start_update(self, draw=None):
+        """
+        Conduct the registered plot updates
+
+        This method starts the updates from what has been registered by the
+        :meth:`update` method. You can call this method if you did not set the
+        `auto_update` parameter when calling the :meth:`update` method to True
+        and when the :attr:`no_auto_update` attribute is True.
+
+        Parameters
+        ----------
+        draw: bool or None
+            If True, all the figures of the arrays contained in this list will
+            be drawn at the end. If None, it defaults to the `'auto_draw'``
+            parameter in the :attr:`psyplot.rcParams` dictionary
+
+        See Also
+        --------
+        :attr:`no_auto_update`, update"""
+        def worker(arr):
+            results[arr.arr_name] = arr.start_update(draw=False, queues=queues)
+        if len(self) == 0:
+            return
+
+        results = {}
+        threads = [Thread(target=worker, args=(arr,),
+                          name='update_%s' % arr.arr_name)
+                   for arr in self]
+        jobs = [arr._njobs for arr in self]
+        queues = [Queue() for _ in range(max(map(len, jobs)))]
+        # populate the queues
+        for i, arr in enumerate(self):
+            for j, n in enumerate(jobs[i]):
+                for k in range(n):
+                    queues[j].put(arr.arr_name)
+        for thread in threads:
+            thread.setDaemon(True)
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        if draw is None:
+            draw = rcParams['auto_draw']
+        if draw:
+            self(arr_name=[name for name, adraw in six.iteritems(results)
+                           if adraw]).draw()
+            if rcParams['auto_show']:
+                self.show()
+
+    docstrings.keep_params('InteractiveArray.update.parameters',
+                           'auto_update')
+
+    @docstrings.get_sectionsf('ArrayList.update')
+    @docstrings.dedent
+    def update(self, method='isel', dims={}, fmt={}, replot=False,
+               auto_update=False, draw=None, force=False, todefault=False,
+               **kwargs):
+        """
+        Update the coordinates and the plot
+
+        This method updates all arrays in this list with the given coordinate
+        values and formatoptions.
+
+        Parameters
+        ----------
+        %(InteractiveArray._register_update.parameters)s
+        %(InteractiveArray.update.parameters.auto_update)s
+        %(ArrayList.start_update.parameters)s
+        ``**kwargs``
+            Any other formatoption or dimension that shall be updated
+            (additionally to those in `fmt` and `dims`)
+
+        Notes
+        -----
+        %(InteractiveArray.update.notes)s
+
+        See Also
+        --------
+        no_auto_update, start_update"""
+        dims = dict(dims)
+        fmt = dict(fmt)
+        vars_and_coords = set(chain(
+            self.dims, self.coords, ['name', 'x', 'y', 'z', 't']))
+        furtherdims, furtherfmt = sort_kwargs(kwargs, vars_and_coords)
+        dims.update(furtherdims)
+        fmt.update(furtherfmt)
+
+        self._register_update(method=method, replot=replot, dims=dims, fmt=fmt,
+                              force=force, todefault=todefault)
+        if not self.no_auto_update or auto_update:
+            self.start_update(draw)
+
+    def draw(self):
+        """Draws all the figures in this instance"""
+        for fig in set(chain(*map(
+                lambda arr: arr.plotter.figs2draw, self.with_plotter))):
+            fig.canvas.draw()
+        for arr in self:
+            if arr.plotter is not None:
+                arr.plotter._figs2draw.clear()
+
+    def __call__(self, types=None, method='isel', arr_name=None, **attrs):
+        """Get the arrays specified by their attributes
+
+        Parameters
+        ----------
+        types: type or tuple of types
+            Any class that shall be used for an instance check via
+            :func:`isinstance`. If not None, the :attr:`plotter` attribute
+            of the array is checked against this `types`
+        method: {'isel', 'sel'}
+            Selection method for the dimensions in the arrays to be used.
+            If `method` is 'isel', dimension values in `attrs` must correspond
+            to integer values as they are found in the
+            :attr:`InteractiveArray.idims` attribute.
+            Otherwise the :meth:`xarray.DataArray.coords` attribute is used.
+        arr_name: None, str or list of str
+            If not None, the array name serves as a filter
+        ``**attrs``
+            Parameters may be any attribute of the arrays in this instance.
+            Values may be iterables (e.g. lists) of the attributes to consider.
+            If the value is a string, it will be put into a list."""
+        def safe_item_list(key, val):
+            return key, safe_list(val)
+        if not attrs:
+            def filter_by_attrs(arr):
+                return True
+        elif method == 'sel':
+            def filter_by_attrs(arr):
+                if not isinstance(arr, InteractiveList):
+                    tname = arr.decoder.get_tname(
+                        next(six.itervalues(arr.base_variables)))
+
+                    def check_values(attr, vals):
+                        if hasattr(arr, 'decoder') and (
+                                attr.name == tname):
+                            try:
+                                vals = np.asarray(vals, dtype=np.datetime64)
+                            except ValueError:
+                                pass
+                            else:
+                                return attr.values.astype(vals.dtype) in vals
+                        return getattr(attr, 'values', attr) in vals
+
+                return all(
+                    check_values(getattr(arr, key, _NODATA), val)
+                    for key, val in six.iteritems(
+                        attrs if isinstance(arr, InteractiveList) else
+                        arr.decoder.correct_dims(next(six.itervalues(
+                            arr.base_variables)), attrs)))
+        else:
+            def filter_by_attrs(arr):
+                if isinstance(arr, InteractiveList):
+                    return all(
+                        getattr(arr, key, _NODATA) in val
+                        for key, val in six.iteritems(attrs))
+                return all(
+                    getattr(arr, key, _NODATA) if key not in arr.coords else (
+                        arr.idims.get(key, _NODATA)) in val
+                    for key, val in six.iteritems(
+                        arr.decoder.correct_dims(next(six.itervalues(
+                            arr.base_variables)), attrs)))
+        if arr_name is not None and isstring(arr_name):
+            arr_name = [arr_name]
+        attrs = dict(starmap(safe_item_list, six.iteritems(attrs)))
+        return self.__class__(
+            # iterable
+            (arr for arr in self if
+             (types is None or isinstance(arr.plotter, types)) and
+             (arr_name is None or arr.arr_name in arr_name) and
+             filter_by_attrs(arr)),
+            # give itself as base and the auto_update parameter
+            auto_update=bool(self.auto_update))
+
+    def __contains__(self, val):
+        try:
+            name = val if isstring(val) else val.arr_name
+        except AttributeError:
+            raise ValueError(
+                "Only interactive arrays can be inserted in the %s" % (
+                    self.__class__.__name__))
+        else:
+            return name in self.arr_names and (
+                isstring(val) or self._contains_array(val))
+
+    def _contains_array(self, val):
+        """Checks whether exactly this array is in the list"""
+        arr = self(arr_name=val.arr_name)[0]
+        is_not_list = any(
+            map(lambda a: not isinstance(a, InteractiveList),
+                [arr, val]))
+        is_list = any(map(lambda a: isinstance(a, InteractiveList),
+                          [arr, val]))
+        # if one is an InteractiveList and the other not, they differ
+        if is_list and is_not_list:
+            return False
+        # if both are interactive lists, check the lists
+        if is_list:
+            return all(a in arr for a in val) and all(a in val for a in arr)
+        # else we check the shapes and values
+        return arr is val
+
+    def _short_info(self, intend=0, maybe=False):
+        if maybe:
+            intend = 0
+        str_intend = ' ' * intend
+        if len(self) == 1:
+            return str_intend + "%s%s.%s([%s])" % (
+                '' if not hasattr(self, 'arr_name') else self.arr_name + ': ',
+                self.__class__.__module__, self.__class__.__name__,
+                self[0]._short_info(intend+4, maybe=True))
+        return str_intend + "%s%s.%s([\n%s])" % (
+            '' if not hasattr(self, 'arr_name') else self.arr_name + ': ',
+            self.__class__.__module__, self.__class__.__name__,
+            ",\n".join(
+                '%s' % (
+                    arr._short_info(intend+4))
+                for arr in self))
+
+    def __str__(self):
+        return self._short_info()
+
+    def __repr__(self):
+        return self.__str__()
+
+    @docstrings.get_sectionsf('ArrayList.rename', sections=[
+        'Parameters', 'Raises'])
+    @dedent
+    def rename(self, arr, new_name=True):
+        """
+        Rename an array to find a name that isn't already in the list
+
+        Parameters
+        ----------
+        arr: InteractiveBase
+            A :class:`InteractiveArray` or :class:`InteractiveList` instance
+            whose name shall be checked
+        new_name: bool or str
+            If False, and the ``arr_name`` attribute of the new array is
+            already in the list, a ValueError is raised.
+            If True and the ``arr_name`` attribute of the new array is not
+            already in the list, the name is not changed. Otherwise, if the
+            array name is already in use, `new_name` is set to 'arr{0}'.
+            If not True, this will be used for renaming (if the array name of
+            `arr` is in use or not). ``'{0}'`` is replaced by a counter
+
+        Returns
+        -------
+        InteractiveBase
+            `arr` with changed ``arr_name`` attribute
+        bool or None
+            True, if the array has been renamed, False if not and None if the
+            array is already in the list
+
+        Raises
+        ------
+        ValueError
+            If it was impossible to find a name that isn't already  in the list
+        ValueError
+            If `new_name` is False and the array is already in the list"""
+        name_in_me = arr.arr_name in self.arr_names
+        if not name_in_me:
+            return arr, False
+        elif name_in_me and not self._contains_array(arr):
+            if new_name is False:
+                raise ValueError(
+                    "Array name %s is already in use! Set the `new_name` "
+                    "parameter to None for renaming!" % arr.arr_name)
+            elif new_name is True:
+                new_name = new_name if isstring(new_name) else 'arr{0}'
+                arr.arr_name = self.next_available_name(new_name)
+                return arr, True
+        return arr, None
+
+    def next_available_name(self, fmt_str='arr{0}', counter=None):
+        """Create a new array out of the given format string
+
+        Parameters
+        ----------
+        format_str: str
+            The base string to use. ``'{0}'`` will be replaced by a counter
+        counter: iterable
+            An iterable where the numbers should be drawn from. If None,
+            ``range(100)`` is used
+
+        Returns
+        -------
+        str
+            A possible name that is not in the current project"""
+        names = self.arr_names
+        counter = counter or iter(range(1000))
+        try:
+            new_name = next(
+                filter(lambda n: n not in names,
+                       map(fmt_str.format, counter)))
+        except StopIteration:
+            raise ValueError(
+                "{0} already in the list".format(fmt_str))
+        return new_name
+
+    docstrings.keep_params('ArrayList.rename.parameters', 'new_name')
+
+    @docstrings.dedent
+    def append(self, value, new_name=False):
+        """
+        Append a new array to the list
+
+        Parameters
+        ----------
+        value: InteractiveBase
+            The data object to append to this list
+        %(ArrayList.rename.parameters.new_name)s
+
+        Raises
+        ------
+        %(ArrayList.rename.raises)s
+
+        See Also
+        --------
+        list.append, extend, rename"""
+        arr, renamed = self.rename(value, new_name)
+        if renamed is not None:
+            super(ArrayList, self).append(value)
+
+    @docstrings.dedent
+    def extend(self, iterable, new_name=False):
+        """
+        Add further arrays from an iterable to this list
+
+        Parameters
+        ----------
+        iterable
+            Any iterable that contains :class:`InteractiveBase` instances
+        %(ArrayList.rename.parameters.new_name)s
+
+        Raises
+        ------
+        %(ArrayList.rename.raises)s
+
+        See Also
+        --------
+        list.extend, append, rename"""
+        # extend those arrays that aren't alredy in the list
+        super(ArrayList, self).extend(t[0] for t in filter(
+            lambda t: t[1] is not None, (
+                self.rename(arr, new_name) for arr in iterable)))
+
+    def remove(self, arr):
+        """Removes an array from the list
+
+        Parameters
+        ----------
+        arr: str or :class:`InteractiveBase`
+            The array name or the data object in this list to remove
+
+        Raises
+        ------
+        ValueError
+            If no array with the specified array name is in the list"""
+        name = arr if isinstance(arr, six.string_types) else arr.arr_name
+        if arr not in self:
+            raise ValueError(
+                "Array {0} not in the list".format(name))
+        for i, arr in enumerate(self):
+            if arr.arr_name == name:
+                del self[i]
+                return
+        raise ValueError(
+            "No array found with name {0}".format(name))
+
+
+class InteractiveList(ArrayList, InteractiveBase):
+    """List of :class:`InteractiveArray` instances that can be plotted itself
+
+    This class combines the :class:`ArrayList` and the interactive plotting
+    through :class:`psyplot.plotter.Plotter` classes. It is mainly used by the
+    :mod:`psyplot.plotter.simple` module"""
+
+    no_auto_update = property(_no_auto_update_getter,
+                              doc=_no_auto_update_getter.__doc__)
+
+    @no_auto_update.setter
+    def no_auto_update(self, value):
+        ArrayList.no_auto_update.fset(self, value)
+        InteractiveBase.no_auto_update.fset(self, value)
+
+    @property
+    @docstrings
+    def _njobs(self):
+        """%(InteractiveBase._njobs)s"""
+        ret = super(self.__class__, self)._njobs or [0]
+        ret[0] += 1
+        return ret
+
+    logger = InteractiveBase.logger
+
+    docstrings.delete_params('InteractiveBase.parameters', 'auto_update')
+
+    @docstrings.dedent
+    def __init__(self, *args, **kwargs):
+        """
+        Parameters
+        ----------
+        %(ArrayList.parameters)s
+        %(InteractiveBase.parameters.no_auto_update)s"""
+        ibase_kwargs, array_kwargs = sort_kwargs(
+            kwargs, ['plotter', 'arr_name'])
+        self._registered_updates = {}
+        InteractiveBase.__init__(self, **ibase_kwargs)
+        ArrayList.__init__(self, *args, **kwargs)
+
+    @docstrings.dedent
+    def _register_update(self, method='isel', replot=False, dims={}, fmt={},
+                         force=False, todefault=False):
+        """
+        Register new dimensions and formatoptions for updating
+
+        Parameters
+        ----------
+        %(InteractiveArray._register_update.parameters)s"""
+        ArrayList._register_update(self, method=method, dims=dims)
+        InteractiveBase._register_update(self, fmt=fmt, todefault=todefault,
+                                         replot=bool(dims) or replot,
+                                         force=force)
+
+    @docstrings.dedent
+    def start_update(self, draw=None, queues=None):
+        """
+        Conduct the formerly registered updates
+
+        This method conducts the updates that have been registered via the
+        :meth:`update` method. You can call this method if the
+        :attr:`auto_update` attribute of this instance is True and the
+        `auto_update` parameter in the :meth:`update` method has been set to
+        False
+
+        Parameters
+        ----------
+        %(InteractiveBase.start_update.parameters)s
+
+        Returns
+        -------
+        %(InteractiveBase.start_update.returns)s
+
+        See Also
+        --------
+        :attr:`no_auto_update`, update
+        """
+        if queues is not None:
+            queues[0].get()
+        try:
+            for arr in self:
+                arr.start_update(draw=False)
+            self.onupdate.emit()
+        except:
+            self._finish_all(queues)
+            raise
+        if queues is not None:
+            queues[0].task_done()
+        return InteractiveBase.start_update(self, draw=draw, queues=queues)
+
+    def to_dataframe(self):
+        def to_df(arr):
+            df = arr.to_pandas()
+            if hasattr(df, 'to_frame'):
+                df = df.to_frame()
+            return df.rename(columns={df.keys()[0]: arr.arr_name})
+        if len(self) == 1:
+            return self[0].to_pandas().to_frame()
+        else:
+            df = to_df(self[0])
+            for arr in self[1:]:
+                df = df.merge(to_df(arr), left_index=True, right_index=True)
+            return df
+
+    docstrings.delete_params('ArrayList.from_dataset.parameters', 'plotter')
+    docstrings.delete_kwargs('ArrayList.from_dataset.other_parameters',
+                             None, 'kwargs')
+
+    @classmethod
+    @docstrings.dedent
+    def from_dataset(cls, *args, **kwargs):
+        """
+        Create an InteractiveList instance from the given base dataset
+
+        Parameters
+        ----------
+        %(ArrayList.from_dataset.parameters.no_plotter)s
+        plotter: psyplot.plotter.Plotter
+            The plotter instance that is used to visualize the data in this
+            list
+
+        Other Parameters
+        ----------------
+        %(ArrayList.from_dataset.other_parameters.no_args_kwargs)s
+        ``**kwargs``
+            Further keyword arguments may point to any of the dimensions of the
+            data (see `dims`)
+
+        Returns
+        -------
+        %(ArrayList.from_dataset.returns)s"""
+        plotter = kwargs.pop('plotter', None)
+        plot = kwargs.pop('plot', True)
+        instance = super(InteractiveList, cls).from_dataset(*args, **kwargs)
+        if plotter is not None:
+            plotter.initialize_plot(instance, plot=plot)
+        return instance
+
+
+class _MissingModule(object):
+    """Class that can be used if an optional module is not avaible.
+
+    This class raises an error if any attribute is accessed or it is called"""
+    def __init__(self, error):
+        """
+        Parameters
+        ----------
+        error: ImportError
+            The error that has been raised when tried to import the module"""
+        self.error = error
+
+    def __getattr__(self, attr):
+        raise self.error.__class__(self.error.message)
+
+    def __call__(self, *args, **kwargs):
+        raise self.error.__class__(self.error.message)
 
 
 def _open_ds_from_store(fname, store_mod=None, store_cls=None, **kwargs):

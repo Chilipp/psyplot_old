@@ -16,20 +16,19 @@ from itertools import chain, repeat, cycle, count
 from collections import Iterable, defaultdict
 from functools import wraps
 import xarray
+
 import matplotlib as mpl
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.figure as mfig
 import numpy as np
-from . import rcParams
-from .warning import critical
-from .docstring import docstrings, dedent, safe_modulo
-from .data import (
+from psyplot import rcParams
+from psyplot.warning import critical
+from psyplot.docstring import docstrings, dedent, safe_modulo
+from psyplot.data import (
     ArrayList, open_dataset, open_mfdataset, sort_kwargs, _MissingModule,
-    to_netcdf, is_remote_url)
-from .plotter import unique_everseen
-from .plotter.colors import show_colormaps, get_cmap
-from .compat.pycompat import OrderedDict, range, getcwd
+    to_netcdf, is_remote_url, Signal, CFDecoder, safe_list, is_slice)
+from psyplot.plotter import unique_everseen, Plotter
+from psyplot.plotter.colors import show_colormaps, get_cmap
+from psyplot.compat.pycompat import OrderedDict, range, getcwd
 try:
     from cdo import Cdo as CdoBase
     with_cdo = True
@@ -44,7 +43,6 @@ if rcParams['project.import_seaborn'] is not False:
         if rcParams['project.import_seaborn']:
             raise
         _sns = None
-
 
 _open_projects = []  # list of open projects
 _current_project = None  # current main project
@@ -70,10 +68,10 @@ if with_cdo:
         For a demonstration script on how cdos are implemented, see the
         examples of the psyplot package
 
-        Compared to the original cdo.Cdo class, the following things changed, the
-        default cdf handler is the :func:`psyplot.data.open_dataset` function and
-        the following keywords are implemented for each cdo operator. Each of them
-        determine the output of the specific operator.
+        Compared to the original cdo.Cdo class, the following things changed,
+        the default cdf handler is the :func:`psyplot.data.open_dataset`
+        function and the following keywords are implemented for each cdo
+        operator. Each of them determine the output of the specific operator.
 
         Other Parameters
         ----------------
@@ -82,15 +80,15 @@ if with_cdo:
             is used to visualize a scalar field projected on the globe and a
             :class:`psyplot.project.Project` instance is returned.
             If `returnMap` is a string or list of strings, this specifies the
-            variables to plot. A dictionary may contain key-value pairs used for
-            the above visualization method
+            variables to plot. A dictionary may contain key-value pairs used
+            for the above visualization method
         returnLine: str, list or dict
             the :attr:`~psyplot.project.ProjectPlotter.plot1d` plotting method
             is used to visualize a simple one-dimensional plot and a
             :class:`psyplot.project.Project` instance is returned.
             If `returnLine` is a string or list of strings, this specifies the
-            variables to plot. A dictionary may contain key-value pairs used for
-            the above visualization method
+            variables to plot. A dictionary may contain key-value pairs used
+            for the above visualization method
         returnDA: str or list of str
             Returns the :class:`xarray.DataArray` of the specified variables"""
 
@@ -119,14 +117,17 @@ if with_cdo:
                 @wraps(get)
                 def wrapper(self, *args, **kwargs):
                     added_kwargs = {'returnMap', 'returnLine', 'returnDA'}
-                    ret_mode = next(iter(added_kwargs.intersection(kwargs)), None)
+                    ret_mode = next(iter(added_kwargs.intersection(kwargs)),
+                                    None)
                     if ret_mode:
                         val = kwargs.pop(ret_mode, None)
                         kwargs['returnCdf'] = True
                         ds = get(*args, **kwargs)
                         if ret_mode in ['returnMap', 'returnLine']:
-                            plot_method = plot.mapplot if ret_mode == 'returnMap' \
-                                else plot.lineplot
+                            if ret_mode == 'returnMap':
+                                plot_method = plot.mapplot
+                            else:
+                                plot_method = plot.lineplot
                             try:
                                 return plot_method(ds, **dict(val))
                             except (TypeError, ValueError):
@@ -180,6 +181,7 @@ def multiple_subplots(rows=1, cols=1, maxplots=None, n=1, delete=True,
     -------
     list
         list of maplotlib.axes.SubplotBase instances"""
+    import matplotlib.pyplot as plt
     axes = np.array([])
     maxplots = maxplots or rows * cols
     kwargs.setdefault('figsize', [
@@ -203,6 +205,9 @@ def multiple_subplots(rows=1, cols=1, maxplots=None, n=1, delete=True,
                 axes = axes[:n]
     return axes
 
+
+def _is_slice(val):
+    return isinstance(val, slice)
 
 def _only_main(func):
     """Call the given `func` only from the main project"""
@@ -230,6 +235,11 @@ class Project(ArrayList):
 
     _main = None
 
+    _registered_plotters = []  #: registered plotter identifiers
+
+    #: signal to be emiitted when the current main and/or subproject changes
+    oncpchange = Signal(cls_signal=True)
+
     @property
     def main(self):
         """:class:`Project`. The main project of this subproject"""
@@ -248,6 +258,21 @@ class Project(ArrayList):
         return self._plot
 
     @property
+    def _fmtos(self):
+        """An iterator over formatoption objects
+
+        Contains only the formatoption whose keys are in all plotters in this
+        list"""
+        plotters = self.plotters
+        if len(plotters) == 0:
+            return {}
+        p0 = plotters[0]
+        if len(plotters) == 1:
+            return p0._fmtos
+        return (getattr(p0, key) for key in set(p0).intersection(
+            *map(set, plotters[1:])))
+
+    @property
     def figs(self):
         """A mapping from figures to data objects with the plotter in this
         figure"""
@@ -258,7 +283,7 @@ class Project(ArrayList):
                 if fig in ret:
                     ret[fig].append(arr)
                 else:
-                    ret[fig] = Project([arr], main=self.main)
+                    ret[fig] = self.__class__([arr], main=self.main)
         return ret
 
     @property
@@ -299,16 +324,16 @@ class Project(ArrayList):
     @property
     def datasets(self):
         """A mapping from dataset numbers to datasets in this list"""
-        return dict(self._get_datasets(self.array_info(use_fname=False),
-                                       nums=self.main._ds_counter))
+        return {key: val['ds'] for key, val in six.iteritems(
+            self._get_ds_descriptions(self.array_info(ds_description=['ds'])))}
 
     @property
     def dsnames_map(self):
         """A dictionary from the dataset numbers in this list to their
         filenames"""
-        return dict(self._get_datasets(
-            self.array_info(use_fname='both'), nums=self.main._ds_counter,
-            use_fname=True))
+        return {key: val['fname'] for key, val in six.iteritems(
+            self._get_ds_descriptions(self.array_info(
+                ds_description=['num', 'fname']), ds_description={'fname'}))}
 
     @property
     def dsnames(self):
@@ -330,7 +355,7 @@ class Project(ArrayList):
         """
         self.main = kwargs.pop('main', None)
         self._plot = ProjectPlotter(self)
-        self.num = kwargs.pop('num', None)
+        self.num = kwargs.pop('num', 1)
         self._ds_counter = count()
         super(Project, self).__init__(*args, **kwargs)
 
@@ -364,6 +389,7 @@ class Project(ArrayList):
         setattr(cls, identifier, property(get_x, doc=(
             "List of data arrays that are plotted by :class:`%s.%s`"
             " plotters") % (module, plotter_name)))
+        cls._registered_plotters += [identifier]
 
     def disable(self):
         """Disables the plotters in this list"""
@@ -383,13 +409,21 @@ class Project(ArrayList):
 
     @_first_main
     def extend(self, *args, **kwargs):
-        return super(Project, self).extend(*args, **kwargs)
+        len0 = len(self)
+        ret = super(Project, self).extend(*args, **kwargs)
+        if len(self) > len0 and (self is gcp() or self is gcp(True)):
+            self.oncpchange.emit(self)
+        return ret
 
     extend.__doc__ = ArrayList.extend.__doc__
 
     @_first_main
     def append(self, *args, **kwargs):
-        return super(Project, self).append(*args, **kwargs)
+        len0 = len(self)
+        ret = super(Project, self).append(*args, **kwargs)
+        if len(self) > len0 and (self is gcp() or self is gcp(True)):
+            self.oncpchange.emit(self)
+        return ret
 
     append.__doc__ = ArrayList.append.__doc__
 
@@ -407,6 +441,7 @@ class Project(ArrayList):
             Close the figures
         data: bool
             delete the arrays from the (main) project"""
+        import matplotlib.pyplot as plt
         for arr in self[:]:
             if figs and arr.plotter is not None:
                 plt.close(arr.plotter.ax.get_figure().number)
@@ -415,6 +450,10 @@ class Project(ArrayList):
                 if not self.is_main:
                     self.main.remove(arr)
             arr.plotter = None
+        if self.is_main and self is gcp(True):
+            scp(None)
+        elif self.main is gcp(True):
+            self.oncpchange.emit(self.main)
 
     docstrings.keep_params('multiple_subplots.parameters', 'delete')
     docstrings.delete_params('ArrayList.from_dataset.parameters', 'base')
@@ -426,7 +465,7 @@ class Project(ArrayList):
     @docstrings.dedent
     def _add_data(self, plotter_cls, filename_or_obj, fmt={}, make_plot=True,
                   draw=None, mf_mode=False, ax=None, engine=None, delete=True,
-                  share=False, *args, **kwargs):
+                  share=False, clear=False, *args, **kwargs):
         """
         Extract data from a dataset and visualize it with the given plotter
 
@@ -435,8 +474,9 @@ class Project(ArrayList):
         plotter_cls: type
             The subclass of :class:`psyplot.plotter.Plotter` to use for
             visualization
-        filename_or_obj: xarray.Dataset or anything for :func:`xarray.open_dataset`
-            The object (or file name) to open
+        filename_or_obj: filename, :class:`xarray.Dataset` or data store
+            The object (or file name) to open. If not a dataset, the
+            :func:`psyplot.data.open_dataset` will be used to open a dataset
         fmt: dict
             Formatoptions that shall be when initializing the plot (you can
             however also specify them as extra keyword arguments)
@@ -465,6 +505,10 @@ class Project(ArrayList):
             Determines whether the first created plotter shares it's
             formatoptions with the others. If True, all formatoptions are
             shared. Strings or list of strings specify the keys to share.
+        clear: bool
+            If True, axes are cleared before making the plot. This is only
+            necessary if the `ax` keyword consists of subplots with projection
+            that differs from the one that is needed
         %(ArrayList.from_dataset.parameters.no_base)s
 
         Other Parameters
@@ -488,11 +532,9 @@ class Project(ArrayList):
         # create the subproject
         sub_project = self.from_dataset(
             filename_or_obj, **kwargs)
-        self.extend(sub_project, new_name=True)
         sub_project.main = self
         sub_project.no_auto_update = not (
             not sub_project.no_auto_update or not self.no_auto_update)
-        scp(sub_project)
         # create the subplots
         proj = plotter_cls._get_sample_projection()
         if isinstance(ax, tuple):
@@ -502,7 +544,7 @@ class Project(ArrayList):
             axes = repeat(ax)
         else:
             axes = iter(ax)
-        clear = isinstance(ax, tuple) and proj is not None
+        clear = clear or (isinstance(ax, tuple) and proj is not None)
         for arr in sub_project:
             plotter_cls(arr, make_plot=(not bool(share) and make_plot),
                         draw=False, ax=next(axes), clear=clear,
@@ -527,6 +569,8 @@ class Project(ArrayList):
             sub_project.draw()
             if rcParams['auto_show']:
                 self.show()
+        self.extend(sub_project, new_name=True)
+        scp(sub_project)
         return sub_project
 
     def __getitem__(self, key):
@@ -542,8 +586,10 @@ class Project(ArrayList):
         def __getslice__(self, *args):
             return self[slice(*args)]
 
-    def show(self):
+    @staticmethod
+    def show():
         """Shows all open figures"""
+        import matplotlib.pyplot as plt
         plt.show(block=False)
 
     def joined_attrs(self, delimiter=', ', enhanced=True):
@@ -622,7 +668,7 @@ class Project(ArrayList):
         --------
         Simply save all figures into one single pdf::
 
-            >>> p = syp.gcp()
+            >>> p = psy.gcp()
             >>> p.export('my_plots.pdf')
 
         Save all figures into separate pngs with increasing numbers (e.g.
@@ -645,6 +691,8 @@ class Project(ArrayList):
 
             >>> p.export(['my_plots1.pdf', 'my_plots2.pdf'])
         """
+        import matplotlib.pyplot as plt
+        from matplotlib.backends.backend_pdf import PdfPages
         if tight:
             kwargs['bbox_inches'] = 'tight'
         if isinstance(output, six.string_types):  # a single string
@@ -841,6 +889,75 @@ class Project(ArrayList):
 
         return ret
 
+    @docstrings.dedent
+    def keys(self, *args, **kwargs):
+        """
+        Show the available formatoptions in this project
+
+        Parameters
+        ----------
+        %(Plotter.show_keys.parameters)s
+
+        Other Parameters
+        ----------------
+        %(Plotter.show_keys.other_parameters)s
+
+        Returns
+        -------
+        %(Plotter.show_keys.returns)s"""
+
+        class TmpClass(Plotter):
+            pass
+        for fmto in self._fmtos:
+            setattr(TmpClass, fmto.key, type(fmto)(fmto.key))
+        return TmpClass.show_keys(*args, **kwargs)
+
+    @docstrings.dedent
+    def summaries(self, *args, **kwargs):
+        """
+        Show the available formatoptions and their summaries in this project
+
+        Parameters
+        ----------
+        %(Plotter.show_keys.parameters)s
+
+        Other Parameters
+        ----------------
+        %(Plotter.show_keys.other_parameters)s
+
+        Returns
+        -------
+        %(Plotter.show_keys.returns)s"""
+
+        class TmpClass(Plotter):
+            pass
+        for fmto in self._fmtos:
+            setattr(TmpClass, fmto.key, type(fmto)(fmto.key))
+        return TmpClass.show_summaries(*args, **kwargs)
+
+    @docstrings.dedent
+    def docs(self, *args, **kwargs):
+        """
+        Show the available formatoptions in this project and their full docu
+
+        Parameters
+        ----------
+        %(Plotter.show_keys.parameters)s
+
+        Other Parameters
+        ----------------
+        %(Plotter.show_keys.other_parameters)s
+
+        Returns
+        -------
+        %(Plotter.show_keys.returns)s"""
+
+        class TmpClass(Plotter):
+            pass
+        for fmto in self._fmtos:
+            setattr(TmpClass, fmto.key, type(fmto)(fmto.key))
+        return TmpClass.show_docs(*args, **kwargs)
+
     docstrings.delete_params('ArrayList.from_dict.parameters', 'd', 'pwd')
     docstrings.keep_params('Project._add_data.parameters', 'make_plot')
 
@@ -893,7 +1010,7 @@ class Project(ArrayList):
 
         Other Parameters
         ----------------
-        %(ArrayList.from_dict.other_parameters)s
+        %(ArrayList.from_dict.parameters)s
 
         Returns
         -------
@@ -954,7 +1071,76 @@ class Project(ArrayList):
         obj.no_auto_update = not auto_update
         if not obj.is_main:
             obj.main.extend(obj, new_name=True)
+        scp(obj)
         return obj
+
+    @classmethod
+    @docstrings.get_sectionsf('Project.scp')
+    @dedent
+    def scp(cls, project):
+        """
+        Set the current project
+
+        Parameters
+        ----------
+        project: Project
+            The project class. If it is a sub project (see
+            :attr:`Project.is_main`), the current subproject is set to this
+            project. Otherwise it replaces the current main project
+
+        See Also
+        --------
+        scp: The global version for getting the current project
+        gcp: Returns the current project
+        project: Creates a new project"""
+        if project is None:
+            _scp(None)
+            cls.oncpchange.emit(None)
+        elif not project.is_main:
+            if project.main is not _current_project:
+                _scp(project.main, True)
+                cls.oncpchange.emit(project.main)
+            _scp(project)
+            cls.oncpchange.emit(project)
+        else:
+            _scp(project, True)
+            cls.oncpchange.emit(project)
+            sp = project[:]
+            _scp(sp)
+            cls.oncpchange.emit(sp)
+
+    docstrings.delete_params('Project.parameters', 'num')
+
+    @classmethod
+    @docstrings.dedent
+    def new(cls, num=None, *args, **kwargs):
+        """
+        Create a new main project
+
+        Parameters
+        ----------
+        num: int
+            The number of the project
+        %(Project.parameters.no_num)s
+
+        Returns
+        -------
+        Project
+            The with the given `num` (if it does not already exist, it is
+            created)
+
+        See Also
+        --------
+        scp: Sets the current project
+        gcp: Returns the current project
+        """
+        project = cls(*args, num=num, **kwargs)
+        scp(project)
+        return project
+
+    def __str__(self):
+        return ('Main ' if self.is_main else '') + super(
+            Project, self).__str__()
 
 
 class _ProjectLoader(object):
@@ -980,6 +1166,7 @@ class _ProjectLoader(object):
     @staticmethod
     def load_figure(d):
         """Create a figure from what is returned by :meth:`inspect_figure`"""
+        import matplotlib.pyplot as plt
         subplotpars = d.pop('subplotpars', None)
         if subplotpars is not None:
             subplotpars.pop('validate', None)
@@ -996,8 +1183,9 @@ class _ProjectLoader(object):
             proj = (proj.__class__.__module__, proj.__class__.__name__)
         ret['projection'] = proj
         if isinstance(ax, mfig.SubplotBase):
-            geo = ax.get_subplotspec().get_topmost_subplotspec().get_geometry()
-            ret['args'] = [geo[0], geo[1], geo[2] + 1]
+            sp = ax.get_subplotspec().get_topmost_subplotspec()
+            ret['grid_spec'] = sp.get_geometry()[:2]
+            ret['subplotspec'] = [sp.num1, sp.num2]
             ret['is_subplot'] = True
         else:
             ret['args'] = [ax.get_position(True).bounds]
@@ -1008,17 +1196,23 @@ class _ProjectLoader(object):
     def load_axes(d):
         """Create an axes or subplot from what is returned by
         :meth:`inspect_axes`"""
+        import matplotlib.pyplot as plt
         fig = plt.figure(d.pop('fig', None))
-        create_method = fig.add_subplot if d.pop('is_subplot', None) else \
-            fig.add_axes
         proj = d.pop('projection', None)
         if proj is not None and not isinstance(proj, six.string_types):
             proj = getattr(import_module(proj[0]), proj[1])()
-        return create_method(*d.pop('args', []), projection=proj, **d)
+        if d.pop('is_subplot', None):
+            grid_spec = mpl.gridspec.GridSpec(*d.pop('grid_spec', (1, 1)))
+            subplotspec = mpl.gridspec.SubplotSpec(
+                grid_spec, *d.pop('subplotspec', (1, None)))
+            return fig.add_subplot(subplotspec, projection=proj, **d)
+        return fig.add_axes(*d.pop('args', []), projection=proj, **d)
 
 
 class _PlotterInterface(object):
-    """Base class for visualizing a data array from an predefined plotter"""
+    """Base class for visualizing a data array from an predefined plotter
+
+    See the :meth:`__call__` method for details on plotting."""
 
     @property
     def project(self):
@@ -1054,7 +1248,25 @@ class _PlotterInterface(object):
         self.module = module
         self.plotter_name = plotter_name
 
+    docstrings.delete_params('Project._add_data.parameters', 'plotter_cls')
+
+    @docstrings.dedent
     def __call__(self, *args, **kwargs):
+        """
+        Parameters
+        ----------
+        %(Project._add_data.parameters.no_plotter_cls)s
+
+        Other Parameters
+        ----------------
+        %(Project._add_data.other_parameters)s
+
+
+        Returns
+        -------
+        Project
+            The subproject that contains the new (visualized) data array
+        """
         return self.project._add_data(
             self.plotter_cls, *args, **dict(chain(
                 [('prefer_list', self._prefer_list),
@@ -1070,7 +1282,6 @@ class _PlotterInterface(object):
                     self.__class__.__name__, attr))
 
     def __get__(self, instance, owner):
-        """okay"""
         if instance is None:
             return self
         else:
@@ -1100,6 +1311,10 @@ class _PlotterInterface(object):
         ----------
         %(Plotter.show_keys.parameters)s
 
+        Other Parameters
+        ----------------
+        %(Plotter.show_keys.other_parameters)s
+
         Returns
         -------
         %(Plotter.show_keys.returns)s
@@ -1117,6 +1332,10 @@ class _PlotterInterface(object):
         Parameters
         ----------
         %(Plotter.show_keys.parameters)s
+
+        Other Parameters
+        ----------------
+        %(Plotter.show_keys.other_parameters)s
 
         Returns
         -------
@@ -1136,6 +1355,10 @@ class _PlotterInterface(object):
         ----------
         %(Plotter.show_keys.parameters)s
 
+        Other Parameters
+        ----------------
+        %(Plotter.show_keys.other_parameters)s
+
         Returns
         -------
         %(Plotter.show_keys.returns)s
@@ -1144,6 +1367,55 @@ class _PlotterInterface(object):
         --------
         keys, docs"""
         return self.plotter_cls.show_docs(*args, **kwargs)
+
+    @docstrings.dedent
+    def check_data(self, ds, name, dims):
+        """
+        A validation method for the data shape
+
+        Parameters
+        ----------
+        name: list of lists of strings
+            The variable names (see the
+            :meth:`~psyplot.plotter.Plotter.check_data` method of the
+            :attr:`plotter_cls` attribute for details)
+        dims: list of dictionaries
+            The dimensions of the arrays. It will be enhanced by the default
+            dimensions of this plot method
+        is_unstructured: bool or list of bool
+            True if the corresponding array is unstructured.
+
+        Returns
+        -------
+        %(Plotter.check_data.returns)s
+        """
+        if isinstance(name, six.string_types):
+            name = [name]
+            dims = [dims]
+        else:
+            dims = dims[:]
+        variables = [ds[safe_list(n)[0]] for n in name]
+        decoders = [CFDecoder.get_decoder(ds, var) for var in variables]
+        default_slice = slice(None) if self._default_slice is None else \
+            self._default_slice
+        for i, (dim_dict, var, decoder) in enumerate(zip(
+                dims, variables, decoders)):
+            corrected = decoder.correct_dims(var, dict(chain(
+                six.iteritems(self._default_dims),
+                dim_dict.items())))
+            # now use the default slice (we don't do this before because the
+            # `correct_dims` method doesn't use 'x', 'y', 'z' and 't' (as used
+            # for the _default_dims) if the real dimension name is already in
+            # the dictionary)
+            for dim in var.dims:
+                corrected.setdefault(dim, default_slice)
+            dims[i] = [
+                dim for dim, val in map(lambda t: (t[0], safe_list(t[1])),
+                                        six.iteritems(corrected))
+                if val and (len(val) > 1 or _is_slice(val[0]))]
+        return self.plotter_cls.check_data(
+            name, dims, [decoder.is_unstructured(var) for decoder, var in zip(
+                decoders, variables)])
 
 
 class ProjectPlotter(object):
@@ -1158,7 +1430,6 @@ class ProjectPlotter(object):
 
     docstrings.keep_params('ArrayList.from_dataset.parameters',
                            'default_slice')
-    docstrings.delete_params('Project._add_data.parameters', 'plotter_cls')
 
     @classmethod
     @docstrings.get_sectionsf('ProjectPlotter._register_plotter')
@@ -1195,7 +1466,7 @@ class ProjectPlotter(object):
         example_call: str, optional
             The arguments and keyword arguments that shall be included in the
             example of the generated plot method. This call will then appear as
-            ``>>> syp.plot.%%(identifier)s(%%(example_call)s)`` in the
+            ``>>> psy.plot.%%(identifier)s(%%(example_call)s)`` in the
             documentation
         """
         full_name = '%s.%s' % (module, plotter_name)
@@ -1205,7 +1476,7 @@ class ProjectPlotter(object):
                     indent=4, func=str,
                     # include links in sphinx doc
                     _fmt_links=True)
-            doc_str = ('    Possible formatoptions are\n\n'
+            doc_str = ('Possible formatoptions are\n\n'
                        '%%(%s.formatoptions)s') % full_name
         else:
             doc_str = ''
@@ -1216,58 +1487,44 @@ class ProjectPlotter(object):
             __doc__ = docstrings.dedents("""
             %s
 
-            This attribute adds data arrays and plots them via
+            This plotting method adds data arrays and plots them via
             :class:`%s` plotters
 
             To plot data from a netCDF file type::
 
-                >>> syp.plot.%s(%s)
+                >>> psy.plot.%s(%s)
 
-            Parameters
-            ----------
-            %%(Project._add_data.parameters.no_plotter_cls)s
+            %s""" % (summary, full_name, identifier, example_call, doc_str) + (
+                   '' if not show_examples else """
 
-            Other Parameters
-            ----------------
-            %%(Project._add_data.other_parameters)s
-            %s
-
-            Returns
-            -------
-            Project
-                The subproject that contains the new data array visualized by
-                instances of :class:`%s`""" % (
-                    summary, full_name, identifier, example_call, doc_str,
-                    full_name) + ('' if not show_examples else """
-
-            Notes
-            -----
+            Examples
+            --------
             To explore the formatoptions and their documentations, use the
-            ``keys``, ``summaries`` and ``docs`` methods. For example
+            ``keys``, ``summaries`` and ``docs`` methods. For example::
 
-            .. ipython::
-
-                In [1]: import psyplot.project as syp
+                >>> import psyplot.project as psy
 
                 # show the keys corresponding to a group or multiple
                 # formatopions
-                In [2]: syp.plot.%(id)s.keys('labels')
+                >>> psy.plot.%(id)s.keys('labels')
 
                 # show the summaries of a group of formatoptions or of a
                 # formatoption
-                In [3]: syp.plot.%(id)s.summaries('title')
+                >>> psy.plot.%(id)s.summaries('title')
 
                 # show the full documentation
-                In [4]: syp.plot.%(id)s.docs('plot')
+                >>> psy.plot.%(id)s.docs('plot')
 
                 # or access the documentation via the attribute
-                In [5]: syp.plot.%(id)s.plot""" % {'id': identifier})
+                >>> psy.plot.%(id)s.plot""" % {'id': identifier})
             )
 
             _default_slice = default_slice
             _default_dims = default_dims
             _plotter_cls = plotter_cls
             _prefer_list = prefer_list
+
+            _summary = summary
 
         setattr(cls, identifier, PlotMethod(identifier, module, plotter_name))
 
@@ -1300,22 +1557,13 @@ def scp(project):
 
     Parameters
     ----------
-    project: Project
-        The project class. If it is a sub project (see
-        :attr:`Project.is_main`), the current subproject is set to this
-        project. Otherwise it replaces the current main project
+    %(Project.scp.parameters)s
 
     See Also
     --------
     gcp: Returns the current project
     project: Creates a new project"""
-    if project is None:
-        _scp(project)
-    elif not project.is_main:
-        _scp(project)
-        _scp(project.main, True)
-    else:
-        _scp(project, True)
+    return PROJECT_CLS.scp(project)
 
 
 def _scp(project, main=False):
@@ -1327,9 +1575,6 @@ def _scp(project, main=False):
         _current_subproject = project
     else:
         _current_project = project
-
-
-docstrings.delete_params('Project.parameters', 'num')
 
 
 @docstrings.dedent
@@ -1358,9 +1603,8 @@ def project(num=None, *args, **kwargs):
         return _open_projects[numbers.index(num)]
     if num is None:
         num = max(numbers) + 1 if numbers else 1
-    project = Project(*args, num=num, **kwargs)
+    project = PROJECT_CLS.new(num, *args, **kwargs)
     _open_projects.append(project)
-    scp(project)
     return project
 
 
@@ -1455,6 +1699,13 @@ for _identifier, _plotter_settings in rcParams['project.plotters'].items():
     register_plotter(_identifier, **_plotter_settings)
 
 
+def get_project_nums():
+    """Returns the project numbers of the open projects"""
+    return [p.num for p in _open_projects]
+
+#: :class:`ProjectPlotter` of the current project. See the class documentation
+#: for available plotting methods
 plot = ProjectPlotter()
-""":class:`ProjectPlotter` of the current project. See the class documentation
-for available plotting methods"""
+
+#: The project class that is used for creating new projects
+PROJECT_CLS = Project

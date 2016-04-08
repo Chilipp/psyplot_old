@@ -13,17 +13,17 @@ import re
 import yaml
 from itertools import repeat
 import matplotlib as mpl
-from ..warning import warn
-from ..compat.pycompat import UserDict, DictMethods, getcwd, zip, isstring, map
-from ..compat.mplcompat import mpl_version
+from psyplot.warning import warn
+from psyplot.compat.pycompat import UserDict, DictMethods, getcwd, zip, isstring, map
+from psyplot.compat.mplcompat import mpl_version
 from matplotlib.patches import ArrowStyle
 from numpy import asarray
 from matplotlib.rcsetup import (
     validate_bool, validate_color, validate_bool_maybe_none, validate_fontsize,
     validate_nseq_float, ValidateInStrings, validate_int, validate_colorlist,
     validate_path_exists, validate_legend_loc)
-from ..docstring import docstrings, dedent, safe_modulo, dedents
-from .logsetup import _get_home
+from psyplot.docstring import docstrings, dedent, safe_modulo, dedents
+from psyplot.config.logsetup import _get_home
 
 
 @docstrings.get_sectionsf('safe_list')
@@ -199,63 +199,48 @@ base rcParams dictionary."""
 
         Examples
         --------
-        Initialization example:
+        Initialization example::
 
-        .. ipython::
+            >>> from psyplot import rcParams
+            >>> d = rcParams.find_and_replace(['plotter.baseplotter.',
+            ...                                'plotter.vector.'])
+            >>> print d['title']
 
-            In [1]: from psyplot import rcParams
-
-            In [2]: d = rcParams.find_and_replace(['plotter.baseplotter.',
-               ...:                                'plotter.vector.'])
-
-            In [3]: print d['title']
-            Out [3]: None
-
-            In [4]: print d['arrowsize']
-            Out [4]: 1.0
+            >>> print d['arrowsize']
+            1.0
 
         To convert it to a usual dictionary, simply use the :attr:`data`
-        attribute
+        attribute::
 
-        .. ipython::
-
-            In [5]: d.data
+            >>> d.data
+            {'title': None, 'arrowsize': 1.0, ...}
 
         Note that changing one keyword of your :class:`SubDict` will not change
         the :attr:`base` dictionary, unless you set the :attr:`trace` attribute
-        to ``True``.
+        to ``True``::
 
-        .. ipython::
+            >>> d['title'] = 'my title'
+            >>> print(d['title'])
+            my title
 
-            In [6]: d['title'] = 'my title'
+            >>> print(rcParams['plotter.baseplotter.title'])
 
-            In [7]: d['title']
-            Out [7]: 'my title'
-
-            In [8]: rcParams['plotter.baseplotter.title']
-            Out [8]: None
-
-            In [9]: d.trace = True
-
-            In [10]: d['title'] = 'my second title'
-
-            In [11]: d['title']
-            Out [11]: 'my second title'
-
-            In [12]: rcParams['plotter.baseplotter.title']
-            Out [12]: 'my second title'
+            >>> d.trace = True
+            >>> d['title'] = 'my second title'
+            >>> print(d['title'])
+            my second title
+            >>> print(rcParams['plotter.baseplotter.title'])
+            my second title
 
         Furthermore, changing the :attr:`replace` attribute will change how you
-        can access the keys.
+        can access the keys::
 
-        .. ipython::
-
-            In [13]: d.replace = False
+            >>> d.replace = False
 
             # now setting d['title'] = 'anything' would raise an error (since
             # d.trace is set to True and 'title' is not a key in the rcParams
             # dictionary. Instead we need
-            In [14]: d['plotter.baseplotter.title'] = 'anything'
+            >>> d['plotter.baseplotter.title'] = 'anything'
 
         See Also
         --------
@@ -368,13 +353,13 @@ class RcParams(dict):
     def validate(self):
         """Dictionary with validation methods as values"""
         return dict((key, val[1]) for key, val in
-                    six.iteritems(defaultParams)
+                    six.iteritems(self.defaultParams)
                     if key not in _all_deprecated)
 
     @property
     def descriptions(self):
         """The description of each keyword in the rcParams dictionary"""
-        return {key: val[2] for key, val in six.iteritems(defaultParams)
+        return {key: val[2] for key, val in six.iteritems(self.defaultParams)
                 if len(val) >= 3}
 
     HEADER = """Configuration parameters of the psyplot module
@@ -385,6 +370,14 @@ environment variable."""
 
     msg_depr = "%s is deprecated and replaced with %s; please use the latter."
     msg_depr_ignore = "%s is deprecated and ignored. Use %s"
+
+    @property
+    def defaultParams(self):
+        return getattr(self, '_defaultParams', defaultParams)
+
+    @defaultParams.setter
+    def defaultParams(self, value):
+        self._defaultParams = value
 
     # validate values on the way in
     def __init__(self, *args, **kwargs):
@@ -494,9 +487,11 @@ See rcParams.keys() for a list of valid parameters.' % (key,))
         --------
         find_and_replace"""
         pattern_re = re.compile(pattern)
-        return RcParams((key, value)
-                        for key, value in self.items()
-                        if pattern_re.search(key))
+        ret = RcParams()
+        ret.defaultParams = self.defaultParams
+        ret.update((key, value) for key, value in self.items()
+                   if pattern_re.search(key))
+        return ret
 
     @docstrings.dedent
     def find_and_replace(self, *args, **kwargs):
@@ -522,18 +517,17 @@ See rcParams.keys() for a list of valid parameters.' % (key,))
 
         Examples
         --------
-        .. ipython::
+        The syntax is the same as for the initialization of the
+        :class:`SubDict` class::
 
-            In [1]: from psyplot import rcParams
+            >>> from psyplot import rcParams
+            >>> d = rcParams.find_and_replace(['plotter.baseplotter.',
+            ...                                'plotter.vector.'])
+            >>> print(d['title'])
+            None
 
-            In [2]: d = rcParams.find_and_replace(['plotter.baseplotter.',
-               ...:                                'plotter.vector.'])
-
-            In [3]: print d['title']
-            Out [3]: None
-
-            In [4]: print d['arrowsize']
-            Out [4]: 1.0
+            >>> print(d['arrowsize'])
+            1.0
 
         See Also
         --------
@@ -679,7 +673,7 @@ def psyplot_fname():
             else:
                 return path
 
-    configdir = _get_configdir()
+    configdir = get_configdir()
     if configdir is not None:
         fname = os.path.join(configdir, 'psyplotrc.yaml')
         if os.path.exists(fname):
@@ -688,7 +682,7 @@ def psyplot_fname():
     return None
 
 
-def _get_configdir():
+def get_configdir():
     """
     Return the string representing the configuration directory.
 
@@ -722,6 +716,8 @@ def _get_configdir():
     elif h is not None:
         p = os.path.join(h, '.psyplot')
 
+    if not os.path.exists(p):
+        os.makedirs(p)
     return p
 
 
@@ -815,10 +811,6 @@ def validate_text(value):
     tests = [validate_float, validate_float, validate_str,
              validate_transform, dict]
     if isinstance(value, six.string_types):
-        try:
-            from psyplot import rcParams
-        except ImportError:
-            rcParams = defaultParams
         xpos, ypos = rcParams['texts.default_position']
         return [(xpos, ypos, value, 'axes', {'ha': 'right'})]
     elif isinstance(value, tuple):

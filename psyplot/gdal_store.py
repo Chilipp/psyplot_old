@@ -21,7 +21,7 @@ from xarray import Variable
 from collections import OrderedDict
 from xarray.core.utils import FrozenOrderedDict
 from xarray.backends.common import AbstractDataStore
-from .compat.pycompat import range
+from psyplot.compat.pycompat import range
 try:
     import gdal
 except ImportError as e:

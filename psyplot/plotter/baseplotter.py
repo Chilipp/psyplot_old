@@ -5,10 +5,10 @@ import numpy as np
 import pandas as pd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from ..docstring import docstrings, safe_modulo, dedents, dedent
-from ..data import InteractiveList
-from ..compat.pycompat import zip, filter
-from . import Plotter, Formatoption, rcParams, DictFormatoption, START
+from psyplot.docstring import docstrings, safe_modulo, dedents, dedent
+from psyplot.data import InteractiveList
+from psyplot.compat.pycompat import zip, filter
+from psyplot.plotter import Plotter, Formatoption, rcParams, DictFormatoption, START
 
 docstrings.params['replace_note'] = dedents("""
     You can insert any meta key from the :attr:`xarray.DataArray.attrs` via a
@@ -243,6 +243,8 @@ def label_weight(base, label_name=None, children=[], parents=[],
 
         group = 'labels'
 
+        name = 'Font weight of ' + (base.name or base.key)
+
         def update(self, value):
             for text in getattr(self, base.key).texts:
                 text.set_weight(value)
@@ -293,6 +295,8 @@ def label_size(base, label_name=None, children=[], parents=[],
         dependencies = cl_dependencies
 
         group = 'labels'
+
+        name = 'Font size of ' + (base.name or base.key)
 
         def update(self, value):
             for text in getattr(self, base.key).texts:
@@ -358,6 +362,8 @@ def label_props(base, label_name=None, children=[], parents=[],
 
         group = 'labels'
 
+        name = 'Font properties of ' + (base.name or base.key)
+
         def __init__(self, *args, **kwargs):
             super(LabelProps, self).__init__(*args, **kwargs)
             self.default_props = {}
@@ -417,6 +423,8 @@ class Title(TextBase, Formatoption):
     --------
     figtitle, titlesize, titleweight, titleprops"""
 
+    name = 'Axes title'
+
     def initialize_plot(self, value):
         arr = self.data
         self.texts = [self.ax.set_title(
@@ -454,6 +462,9 @@ class Figtitle(TextBase, Formatoption):
     See Also
     --------
     title, figtitlesize, figtitleweight, figtitleprops"""
+
+    name = 'Figure title'
+
     def initialize_plot(self, s):
         if s:
             self.texts = [self.ax.get_figure().suptitle(
@@ -523,6 +534,8 @@ class Text(TextBase, Formatoption):
     See Also
     --------
     title, figtitle"""
+
+    name = 'Arbitrary text on the plot'
 
     @property
     def transform(self):
@@ -670,6 +683,8 @@ class Tight(Formatoption):
 
     group = 'axes'
 
+    name = 'Tight layout'
+
     def update(self, value):
         if value:
             plt.sca(self.ax)
@@ -718,6 +733,9 @@ class MaskLess(ValueMaskBase):
     --------
     maskleq, maskgreater, maskgeq, maskbetween
     """
+
+    name = 'Mask less'
+
     def mask_func(self, data, value):
         data[data < value] = np.nan
         return data
@@ -736,6 +754,9 @@ class MaskLeq(ValueMaskBase):
     --------
     maskless, maskgreater, maskgeq, maskbetween
     """
+
+    name = 'Mask lesser than or equal'
+
     def mask_func(self, data, value):
         data[data <= value] = np.nan
         return data
@@ -754,6 +775,9 @@ class MaskGreater(ValueMaskBase):
     --------
     maskless, maskleq, maskgeq, maskbetween
     """
+
+    name = 'Mask greater'
+
     def mask_func(self, data, value):
         data[data > value] = np.nan
         return data
@@ -772,6 +796,9 @@ class MaskGeq(ValueMaskBase):
     --------
     maskless, maskleq, maskgreater, maskbetween
     """
+
+    name = 'Mask greater than or equal'
+
     def mask_func(self, data, value):
         data[data >= value] = np.nan
         return data
@@ -790,6 +817,9 @@ class MaskBetween(ValueMaskBase):
     --------
     maskless, maskleq, maskgreater, maskgeq
     """
+
+    name = 'Mask between two values'
+
     def mask_func(self, data, value):
         data[np.all([data >= value[0], data <= value[1]], axis=0)] = np.nan
         return data

@@ -86,60 +86,69 @@ online-documentation or via
     *********************
     Masking formatoptions
     *********************
-    ===========  ===========  ===========  ===========  
-    maskgreater  maskbetween  maskless     maskleq      
-    maskgeq      
-    ===========  ===========  ===========  ===========  
+    +-------------+-------------+-------------+-------------+
+    | maskgreater | maskbetween | maskless    | maskleq     |
+    +-------------+-------------+-------------+-------------+
+    | maskgeq     |             |             |             |
+    +-------------+-------------+-------------+-------------+
     
     ***************************
     Miscallaneous formatoptions
     ***************************
-    ==============  ==============  ==============  ==============  
-    lsm             projection      grid_color      map_extent      
-    datagrid        grid_labelsize  grid_labels     ygrid           
-    clon            lonlatbox       transform       grid_settings   
-    clat            xgrid           
-    ==============  ==============  ==============  ==============  
+    +----------------+----------------+----------------+----------------+
+    | lsm            | projection     | grid_color     | map_extent     |
+    +----------------+----------------+----------------+----------------+
+    | datagrid       | grid_labelsize | grid_labels    | ygrid          |
+    +----------------+----------------+----------------+----------------+
+    | clon           | lonlatbox      | transform      | grid_settings  |
+    +----------------+----------------+----------------+----------------+
+    | clat           | xgrid          |                |                |
+    +----------------+----------------+----------------+----------------+
     
     ***********************
     Axis tick formatoptions
     ***********************
-    ===========  ===========  
-    cticks       cticklabels  
-    ===========  ===========  
+    +-------------+-------------+
+    | cticks      | cticklabels |
+    +-------------+-------------+
     
     **************************
     Color coding formatoptions
     **************************
-    ===========  ===========  ===========  ===========  
-    miss_color   extend       cbarspacing  ctickprops   
-    ctickweight  bounds       cticksize    cmap         
-    cbar         
-    ===========  ===========  ===========  ===========  
+    +-------------+-------------+-------------+-------------+
+    | miss_color  | extend      | cbarspacing | ctickprops  |
+    +-------------+-------------+-------------+-------------+
+    | ctickweight | bounds      | cticksize   | cmap        |
+    +-------------+-------------+-------------+-------------+
+    | cbar        |             |             |             |
+    +-------------+-------------+-------------+-------------+
     
     ******************
     Axes formatoptions
     ******************
-    =====  
-    tight  
-    =====  
+    +-------+
+    | tight |
+    +-------+
     
     *******************
     Label formatoptions
     *******************
-    ==============  ==============  ==============  ==============  
-    clabelsize      clabelweight    clabelprops     clabel          
-    figtitlesize    titlesize       title           text            
-    figtitleweight  titleweight     figtitleprops   figtitle        
-    titleprops      
-    ==============  ==============  ==============  ==============  
+    +----------------+----------------+----------------+----------------+
+    | clabelsize     | clabelweight   | clabelprops    | clabel         |
+    +----------------+----------------+----------------+----------------+
+    | figtitlesize   | titlesize      | title          | text           |
+    +----------------+----------------+----------------+----------------+
+    | figtitleweight | titleweight    | figtitleprops  | figtitle       |
+    +----------------+----------------+----------------+----------------+
+    | titleprops     |                |                |                |
+    +----------------+----------------+----------------+----------------+
     
     ******************
     Plot formatoptions
     ******************
-    ====  
-    plot  
-    ====
+    +------+
+    | plot |
+    +------+
 
 
 .. code:: python
@@ -238,13 +247,17 @@ that affect the vector color coding start with ``'v'``
 
 .. parsed-literal::
 
-    ============  ============  ============  ============  
-    vcticksize    color         vbounds       vctickprops   
-    bounds        vcbar         vcmap         cbar          
-    vctickweight  vcbarspacing  miss_color    extend        
-    cbarspacing   ctickprops    ctickweight   cticksize     
-    cmap          
-    ============  ============  ============  ============  
+    +--------------+--------------+--------------+--------------+
+    | vcticksize   | color        | vbounds      | vctickprops  |
+    +--------------+--------------+--------------+--------------+
+    | bounds       | vcbar        | vcmap        | cbar         |
+    +--------------+--------------+--------------+--------------+
+    | vctickweight | vcbarspacing | miss_color   | extend       |
+    +--------------+--------------+--------------+--------------+
+    | cbarspacing  | ctickprops   | ctickweight  | cticksize    |
+    +--------------+--------------+--------------+--------------+
+    | cmap         |              |              |              |
+    +--------------+--------------+--------------+--------------+
 
 
 For example, let's modify the wind vector plots color coding and place a

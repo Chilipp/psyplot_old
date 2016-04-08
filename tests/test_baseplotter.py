@@ -2,7 +2,6 @@
 from itertools import chain
 import _base_testing as bt
 import numpy as np
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 import psyplot
 from psyplot.plotter.baseplotter import BasePlotter

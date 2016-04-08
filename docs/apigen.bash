@@ -13,3 +13,4 @@ sed -i '' -e /Subpackages/'i\'$'\n'".. autosummary:: \\
     " api/psyplot.rst
 
 sphinx-autogen -o generated *.rst */*.rst
+

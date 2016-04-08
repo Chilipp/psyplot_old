@@ -9,18 +9,18 @@ import matplotlib as mpl
 import matplotlib.ticker as ticker
 from matplotlib.colors import BoundaryNorm
 import numpy as np
-from .. import rcParams
-from ..compat.pycompat import map, range
-from ..docstring import docstrings
-from ..warning import warn, PsyPlotRuntimeWarning
-from ..data import InteractiveList
-from . import Formatoption, START, DictFormatoption, END
-from .simple import (
+from psyplot import rcParams
+from psyplot.compat.pycompat import map
+from psyplot.docstring import docstrings
+from psyplot.warning import warn, PsyPlotRuntimeWarning
+from psyplot.data import InteractiveList
+from psyplot.plotter import Formatoption, START, DictFormatoption, END
+from psyplot.plotter.simple import (
     Base2D, Plot2D, BasePlotter, BaseVectorPlotter, VectorPlot, CombinedBase,
     _infer_interval_breaks, DataTicksCalculator, round_to_05, Density,
     Simple2DBase, DataGrid, VectorColor, get_cmap)
-from .boxes import lonlatboxes
-from .colors import FixedBoundaryNorm
+from psyplot.plotter.boxes import lonlatboxes
+from psyplot.plotter.colors import FixedBoundaryNorm
 
 
 @docstrings.get_sectionsf('shiftdata')
@@ -239,6 +239,8 @@ class Projection(ProjectionBase):
 
     requires_clearing = True
 
+    name = 'Projection of the plot'
+
     dependencies = ['clon', 'clat']
 
     def __init__(self, *args, **kwargs):
@@ -333,6 +335,8 @@ class CenterLon(BoxBase):
 
     priority = START
 
+    name = 'Longitude of the center of the plot'
+
     requires_clearing = True
 
     dependencies = ['lonlatbox']
@@ -368,6 +372,8 @@ class CenterLat(BoxBase):
     """
 
     priority = START
+
+    name = 'Latitude of the center of the plot'
 
     requires_clearing = True
 
@@ -416,6 +422,8 @@ class LonLatBox(BoxBase):
     map_extent"""
 
     priority = START
+
+    name = 'Longitude-Latitude box of the data'
 
     requires_clearing = True
 
@@ -601,6 +609,8 @@ class MapExtent(BoxBase):
 
     dependencies = ['lonlatbox', 'plot', 'vplot']
 
+    name = 'Longitude-Latitude box of the plot'
+
     priority = END
 
     update_after_plot = True
@@ -649,6 +659,8 @@ class Transform(ProjectionBase):
 
     priority = START
 
+    name = 'Coordinate system of the data'
+
     connections = ['plot', 'vplot']
 
     def update(self, value):
@@ -671,6 +683,8 @@ class LSM(Formatoption):
         False: don't draw the continents
     float
         Specifies the linewidth of the continents"""
+
+    name = 'Land-Sea mask'
 
     def update(self, value):
         if value:
@@ -696,6 +710,8 @@ class GridColor(Formatoption):
     See Also
     --------
     grid_settings, grid_labels, grid_labelsize, xgrid, ygrid"""
+
+    name = 'Color of the latitude-longitude grid'
 
     connections = ['xgrid', 'ygrid']
 
@@ -723,6 +739,8 @@ class GridLabels(Formatoption):
     See Also
     --------
     grid_color, grid_settings, grid_labelsize, xgrid, ygrid"""
+
+    name = 'Labels of the latitude-longitude grid'
 
     dependencies = ['projection', 'transform']
 
@@ -762,6 +780,8 @@ class GridSettings(DictFormatoption):
     children = ['grid_labels', 'grid_color']
     connections = ['xgrid', 'ygrid']
 
+    name = 'Line properties of the latitude-longitude grid'
+
     def set_value(self, value, validate=True, todefault=False):
         if todefault:
             for connection in self.connections:
@@ -787,6 +807,8 @@ class GridLabelSize(Formatoption):
     grid_color, grid_labels, xgrid, ygrid, grid_settings"""
 
     dependencies = ['xgrid', 'ygrid']
+
+    name = 'Label size of the latitude-longitude grid'
 
     def update(self, value):
         for fmto in map(lambda key: getattr(self, key), self.dependencies):
@@ -904,6 +926,8 @@ class XGrid(GridBase):
 
     dependencies = GridBase.dependencies + ['clon']
 
+    name = 'Meridians'
+
     @property
     def array(self):
         decoder = self.raw_data.decoder
@@ -933,6 +957,8 @@ class YGrid(GridBase):
     See Also
     --------
     xgrid, %(GridBase.see_also)s"""
+
+    name = 'Parallels'
 
     @property
     def array(self):

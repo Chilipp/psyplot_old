@@ -8,7 +8,7 @@ import sys
 import logging
 import logging.config
 import yaml
-from ..docstring import dedent
+from psyplot.docstring import dedent
 
 
 def _get_home():

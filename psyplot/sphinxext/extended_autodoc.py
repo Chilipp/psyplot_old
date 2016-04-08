@@ -25,11 +25,14 @@ from collections import defaultdict
 from itertools import chain
 from sphinx.ext.autodoc import (
     ClassDocumenter, ModuleDocumenter, ALL, AutoDirective, PycodeError,
-    ModuleAnalyzer, bool_option)
+    ModuleAnalyzer, bool_option, DataDocumenter, AttributeDocumenter,
+    is_builtin_class_method, formatargspec, getargspec, force_decode,
+    prepare_docstring)
+import inspect
 import sphinx.ext.autodoc as ad
 from sphinx.ext.autosummary import Autosummary, ViewList, mangle_signature
 from docutils import nodes
-from ..compat.pycompat import OrderedDict, map, filterfalse
+from psyplot.compat.pycompat import OrderedDict, map, filterfalse
 try:
     from psyplot.plotter import Formatoption
 except ImportError:
@@ -244,6 +247,100 @@ class AutoSummClassDocumenter(ClassDocumenter, AutosummaryDocumenter):
                 (tup for tup in chain(*map(sorted, fmt_members.values()))
                  if tup not in ret))
         return ret
+
+
+class CallableDataDocumenter(DataDocumenter):
+    """:class:`sphinx.ext.autodoc.DataDocumenter` that uses the __call__ attr
+    """
+
+    priority = DataDocumenter.priority + 0.1
+
+    def format_args(self):
+        # for classes, the relevant signature is the __init__ method's
+        callmeth = self.get_attr(self.object, '__call__', None)
+        if callmeth is None:
+            return None
+        try:
+            argspec = getargspec(callmeth)
+        except TypeError:
+            # still not possible: happens e.g. for old-style classes
+            # with __call__ in C
+            return None
+        if argspec[0] and argspec[0][0] in ('cls', 'self'):
+            del argspec[0][0]
+        return formatargspec(*argspec)
+
+    def get_doc(self, encoding=None, ignore=1):
+        """Reimplemented  to include data from the call method"""
+        content = self.env.config.autodata_content
+        if content not in ('both', 'call') or not self.get_attr(
+                self.get_attr(self.object, '__call__', None), '__doc__'):
+            return super(CallableDataDocumenter, self).get_doc(
+                encoding=encoding, ignore=ignore)
+
+        # for classes, what the "docstring" is can be controlled via a
+        # config value; the default is both docstrings
+        docstrings = []
+        if content != 'call':
+            docstring = self.get_attr(self.object, '__doc__', None)
+            docstrings = [docstring] if docstring else []
+        calldocstring = self.get_attr(
+            self.get_attr(self.object, '__call__', None), '__doc__')
+        docstrings.append(calldocstring)
+        doc = []
+        for docstring in docstrings:
+            if not isinstance(docstring, six.text_type):
+                docstring = force_decode(docstring, encoding)
+            doc.append(prepare_docstring(docstring))
+
+        return doc
+
+
+class CallableAttributeDocumenter(AttributeDocumenter):
+    """:class:`sphinx.ext.autodoc.DataDocumenter` that uses the __call__ attr
+    """
+
+    priority = AttributeDocumenter.priority + 0.1
+
+    def format_args(self):
+        # for classes, the relevant signature is the __init__ method's
+        callmeth = self.get_attr(self.object, '__call__', None)
+        if callmeth is None:
+            return None
+        try:
+            argspec = getargspec(callmeth)
+        except TypeError:
+            # still not possible: happens e.g. for old-style classes
+            # with __call__ in C
+            return None
+        if argspec[0] and argspec[0][0] in ('cls', 'self'):
+            del argspec[0][0]
+        return formatargspec(*argspec)
+
+    def get_doc(self, encoding=None, ignore=1):
+        """Reimplemented  to include data from the call method"""
+        content = self.env.config.autodata_content
+        if content not in ('both', 'call') or not self.get_attr(
+                self.get_attr(self.object, '__call__', None), '__doc__'):
+            return super(CallableAttributeDocumenter, self).get_doc(
+                encoding=encoding, ignore=ignore)
+
+        # for classes, what the "docstring" is can be controlled via a
+        # config value; the default is both docstrings
+        docstrings = []
+        if content != 'call':
+            docstring = self.get_attr(self.object, '__doc__', None)
+            docstrings = [docstring] if docstring else []
+        calldocstring = self.get_attr(
+            self.get_attr(self.object, '__call__', None), '__doc__')
+        docstrings.append(calldocstring)
+        doc = []
+        for docstring in docstrings:
+            if not isinstance(docstring, six.text_type):
+                docstring = force_decode(docstring, encoding)
+            doc.append(prepare_docstring(docstring))
+
+        return doc
 
 
 class AutoSummDirective(AutoDirective, Autosummary):
@@ -509,8 +606,15 @@ class AutoSummDirective(AutoDirective, Autosummary):
 
 def setup(app):
     """setup function for using this module as a sphinx extension"""
-    app.add_autodocumenter(AutoSummClassDocumenter)
-    app.add_autodocumenter(AutoSummModuleDocumenter)
+    try:
+        app.add_config_value('autodata_content', 'both', True)
+    except sphinx.errors.ExtensionError:  # value already registered
+        pass
+    # make sure to allow inheritance when registering new documenters
+    for cls in [AutoSummClassDocumenter, AutoSummModuleDocumenter,
+                CallableDataDocumenter, CallableAttributeDocumenter]:
+        if not issubclass(AutoDirective._registry.get(cls.objtype), cls):
+            app.add_autodocumenter(cls)
     app.add_directive('automodule', AutoSummDirective)
     app.add_directive('autoclass', AutoSummDirective)
     return {'version': sphinx.__display_version__, 'parallel_read_safe': True}

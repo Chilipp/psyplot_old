@@ -29,7 +29,7 @@ from itertools import chain
 import nbconvert
 import nbformat
 from shutil import copyfile
-from ..compat.pycompat import map, OrderedDict
+from psyplot.compat.pycompat import map, OrderedDict
 import logging
 import subprocess as spr
 

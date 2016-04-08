@@ -9,10 +9,10 @@ from matplotlib.cm import get_cmap as mpl_get_cmap
 import numpy as np
 from difflib import get_close_matches
 from itertools import chain
-from ..warning import warn
-from ..docstring import docstrings
-from .. import rcParams
-from ..compat.mplcompat import mpl_version
+from psyplot.warning import warn
+from psyplot.docstring import docstrings
+from psyplot import rcParams
+from psyplot.compat.mplcompat import mpl_version
 
 
 _cmapnames = {  # names of self defined colormaps (see get_cmap function below)

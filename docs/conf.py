@@ -25,7 +25,7 @@ import psyplot.plotter
 psyplot.rcParams['project.auto_import'] = True
 # include links to the formatoptions in the documentation of the
 # :attr:`psyplot.project.ProjectPlotter` methods
-psyplot.plotter._fmt_links = True
+psyplot.plotter.Plotter.include_links(True)
 
 warnings.filterwarnings('ignore', message="axes.color_cycle is deprecated")
 warnings.filterwarnings(
@@ -54,10 +54,11 @@ extensions = [
     'matplotlib.sphinxext.plot_directive',
     'IPython.sphinxext.ipython_console_highlighting',
     'IPython.sphinxext.ipython_directive',
+    'sphinxarg.ext',
     'psyplot.sphinxext.extended_napoleon',
     'psyplot.sphinxext.no_data',
     'psyplot.sphinxext.extended_autodoc',
-    'psyplot.sphinxext.example_gallery'
+    'psyplot.sphinxext.example_gallery',
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -68,7 +69,7 @@ templates_path = ['_templates']
 on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
 
 # boolean controlling wether to calculate the examples or not
-process_examples = not on_rtd
+process_examples = False  #not on_rtd
 
 example_gallery_config = {'dont_preprocess': ['../examples/example_cdo.ipynb']}
 
@@ -267,7 +268,7 @@ latex_elements = {
 
 # Additional stuff for the LaTeX preamble.
 #'preamble': '',
-'preamble': '\setcounter{tocdepth}{3}'
+'preamble': '\setcounter{tocdepth}{10}'
 
 # Latex figure (float) alignment
 #'figure_align': 'htbp',
@@ -322,7 +323,7 @@ man_pages = [
 #  dir menu entry, description, category)
 texinfo_documents = [
   (master_doc, 'psyplot', u'psyplot Documentation',
-   author, 'psyplot', 'One line description of project.',
+   author, 'psyplot', 'Python framework for interactive data documentation',
    'Miscellaneous'),
 ]
 

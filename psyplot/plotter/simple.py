@@ -4,22 +4,21 @@ from itertools import chain, starmap, cycle
 from pandas import date_range, datetools, to_datetime
 import matplotlib as mpl
 import matplotlib.axes
-import matplotlib.pyplot as plt
 from matplotlib.ticker import FormatStrFormatter, FixedLocator, FixedFormatter
 from matplotlib.dates import DateFormatter, AutoDateFormatter
 import matplotlib.colors as mcol
 import numpy as np
-from ..docstring import docstrings, dedent
-from ..warning import warn, PsyPlotRuntimeWarning
-from . import (
+from psyplot.docstring import docstrings, dedent
+from psyplot.warning import warn, PsyPlotRuntimeWarning
+from psyplot.plotter import (
     Plotter, Formatoption, BEFOREPLOTTING, DictFormatoption, END, rcParams)
-from .baseplotter import (
+from psyplot.plotter.baseplotter import (
     BasePlotter, TextBase, label_size, label_weight, label_props, MaskLess,
     MaskGreater, MaskBetween, MaskLeq, MaskGeq)
-from .colors import get_cmap
-from ..data import _MissingModule, InteractiveList
-from ..compat.pycompat import map, zip, range
-from ..config.rcsetup import validate_color, validate_float, safe_list
+from psyplot.plotter.colors import get_cmap
+from psyplot.data import InteractiveList, isstring
+from psyplot.compat.pycompat import map, zip, range
+from psyplot.config.rcsetup import validate_color, validate_float, safe_list
 
 
 def round_to_05(n, exp=None, mode='s'):
@@ -50,19 +49,15 @@ def round_to_05(n, exp=None, mode='s'):
 
     Examples
     --------
-    .. ipython::
+    The effects of the different parameters are show in the example below::
 
-        In [1]: from psyplot.plotter.simple import round_to_05
-
-        In [2]: a = [-100.3, 40.6, 8.7, -0.00023]
-
-        In [3]: round_to_05(a, mode='s')
-        Out[3]:
+        >>> from psyplot.plotter.simple import round_to_05
+        >>> a = [-100.3, 40.6, 8.7, -0.00023]
+        >>>round_to_05(a, mode='s')
         array([ -1.00000000e+02,   4.00000000e+01,   8.50000000e+00,
                 -2.00000000e-04])
 
-        In [4]: round_to_05(a, mode='l')
-        Out[10]:
+        >>> round_to_05(a, mode='l')
         array([ -1.50000000e+02,   4.50000000e+01,   9.00000000e+00,
                 -2.50000000e-04])"""
     n = np.asarray(n)
@@ -105,6 +100,8 @@ class Grid(Formatoption):
 
     group = 'axes'
 
+    name = 'Grid lines'
+
     def update(self, value):
         try:
             value = validate_color(value)
@@ -130,6 +127,8 @@ class AxisColor(DictFormatoption):
     %(colors)s"""
 
     group = 'axes'
+
+    name = 'Color of x- and y-axes'
 
     def initialize_plot(self, value):
         positions = ['right', 'left', 'bottom', 'top']
@@ -270,7 +269,8 @@ class DataTicksCalculator(Formatoption):
                 vmax = next(percentiles)
         return vmin, vmax
 
-    def _round_min_max(self, vmin, vmax):
+    @staticmethod
+    def _round_min_max(vmin, vmax):
         exp = np.floor(np.log10(abs(vmax - vmin)))
         larger = round_to_05([vmin, vmax], exp, mode='l')
         smaller = round_to_05([vmin, vmax], exp, mode='s')
@@ -510,6 +510,8 @@ class XTicks(DtTicksBase):
 
     children = TicksBase.children + ['yticks']
 
+    name = 'Location of the x-Axis ticks'
+
     @property
     def axis(self):
         return self.ax.xaxis
@@ -550,6 +552,8 @@ class YTicks(DtTicksBase):
     --------
     yticklabels, ticksize, tickweight, ytickprops
     xticks: for possible examples"""
+
+    name = 'Location of the y-Axis ticks'
 
     @property
     def axis(self):
@@ -672,6 +676,8 @@ class XTickLabels(TickLabels):
 
     dependencies = TickLabelsBase.dependencies + ['xticks', 'yticklabels']
 
+    name = 'x-xxis Ticklabels'
+
     @property
     def axis(self):
         return self.ax.xaxis
@@ -706,6 +712,8 @@ class YTickLabels(TickLabels):
     yticks, ticksize, tickweight, ytickprops, xticklabels"""
 
     dependencies = TickLabelsBase.dependencies + ['yticks']
+
+    name = 'y-xxis ticklabels'
 
     @property
     def axis(self):
@@ -778,7 +786,8 @@ class TickSize(TickSizeBase, TicksOptions, DictFormatoption):
     See Also
     --------
     tickweight, xtickprops, ytickprops"""
-    pass
+
+    name = 'Font size of the ticklabels'
 
 
 class TickWeightBase(TicksOptions):
@@ -801,7 +810,8 @@ class TickWeight(TickWeightBase, TicksOptions, DictFormatoption):
     See Also
     --------
     ticksize, xtickprops, ytickprops"""
-    pass
+
+    name = 'Font weight of the ticklabels'
 
 
 @docstrings.get_sectionsf('TickPropsBase')
@@ -867,11 +877,14 @@ class XTickProps(TickPropsBase, TicksManager, DictFormatoption):
     --------
     xticks, yticks, ticksize, tickweight, ytickprops"""
 
+    axisname = 'x'
+
+    name = 'Font properties of the x-ticklabels'
+
     @property
     def axis(self):
         return self.ax.xaxis
 
-    axisname = 'y'
 
 
 class YTickProps(XTickProps):
@@ -889,11 +902,14 @@ class YTickProps(XTickProps):
     --------
     xticks, yticks, ticksize, tickweight, xtickprops"""
 
+    axisname = 'y'
+
+    name = 'Font properties of the y-ticklabels'
+
     @property
     def axis(self):
         return self.ax.xaxis
 
-    axisname = 'x'
 
 
 class Xlabel(TextBase, Formatoption):
@@ -913,6 +929,8 @@ class Xlabel(TextBase, Formatoption):
     xlabelsize, xlabelweight, xlabelprops"""
 
     children = ['transpose', 'ylabel']
+
+    name = 'x-axis label'
 
     def initialize_plot(self, value):
         self.transpose.swap_funcs['labels'] = self._swap_labels
@@ -953,6 +971,8 @@ class Ylabel(TextBase, Formatoption):
     ylabelsize, ylabelweight, ylabelprops"""
 
     children = ['transpose']
+
+    name = 'y-axis label'
 
     def initialize_plot(self, value):
         arr = self.transpose.get_y(self.data)
@@ -1011,6 +1031,8 @@ class LabelSize(LabelOptions):
 
     parents = ['labelprops']
 
+    name = 'font size of x- and y-axis label'
+
     def update_axis(self, value):
         self._text.set_size(value)
 
@@ -1031,6 +1053,8 @@ class LabelWeight(LabelOptions):
     group = 'labels'
 
     parents = ['labelprops']
+
+    name = 'font weight of x- and y-axis label'
 
     def update_axis(self, value):
         self._text.set_weight(value)
@@ -1053,6 +1077,8 @@ class LabelProps(LabelOptions):
     group = 'labels'
 
     children = ['xlabel', 'ylabel', 'labelsize', 'labelweight']
+
+    name = 'font properties of x- and y-axis label'
 
     def update_axis(self, fontprops):
         fontprops = fontprops.copy()
@@ -1077,6 +1103,8 @@ class Transpose(Formatoption):
         If True, axes are switched"""
 
     group = 'axes'
+
+    name = 'Switch x- and y-axes'
 
     priority = BEFOREPLOTTING
 
@@ -1169,6 +1197,8 @@ class LineColors(Formatoption):
 
     priority = BEFOREPLOTTING
 
+    name = 'Color cycle'
+
     def __init__(self, *args, **kwargs):
         super(LineColors, self).__init__(*args, **kwargs)
         self.colors = []
@@ -1227,6 +1257,8 @@ class LinePlot(Formatoption):
 
     children = ['color', 'transpose']
 
+    name = 'Line plot type'
+
     def __init__(self, *args, **kwargs):
         Formatoption.__init__(self, *args, **kwargs)
         self._kwargs = {}
@@ -1280,6 +1312,8 @@ class BarPlot(Formatoption):
     priority = BEFOREPLOTTING
 
     children = ['color', 'transpose']
+
+    name = 'Bar plot type'
 
     def __init__(self, *args, **kwargs):
         Formatoption.__init__(self, *args, **kwargs)
@@ -1390,6 +1424,8 @@ class ViolinPlot(Formatoption):
     priority = BEFOREPLOTTING
 
     children = ['color', 'transpose']
+
+    name = 'Violin plot type'
 
     def __init__(self, *args, **kwargs):
         Formatoption.__init__(self, *args, **kwargs)
@@ -1551,6 +1587,8 @@ class Xlim(LimitBase):
 
     axisname = 'x'
 
+    name = 'x-axis limits'
+
     def get_data(self):
         df = self.data.to_dataframe()
         if self.transpose.value:
@@ -1589,6 +1627,8 @@ class Ylim(LimitBase):
     dependencies = ['yticks']
 
     axisname = 'y'
+
+    name = 'y-axis limits'
 
     def get_data(self):
         df = self.data.to_dataframe()
@@ -1691,6 +1731,8 @@ class XRotation(Formatoption):
 
     children = ['yticklabels']
 
+    name = 'Rotate x-ticklabels'
+
     def update(self, value):
         for text in self.ax.get_xticklabels(which='both'):
             text.set_rotation(value)
@@ -1712,6 +1754,8 @@ class YRotation(Formatoption):
     group = 'ticks'
 
     children = ['yticklabels']
+
+    name = 'Rotate y-ticklabels'
 
     def update(self, value):
         for text in self.ax.get_yticklabels(which='both'):
@@ -1740,6 +1784,8 @@ class CMap(Formatoption):
 
     priority = BEFOREPLOTTING
 
+    name = 'Colormap'
+
     def update(self, value):
         pass  # the colormap is set when plotting
 
@@ -1762,6 +1808,8 @@ class MissColor(Formatoption):
     dependencies = ['plot']
 
     connections = ['transform']
+
+    name = 'Color of missing values'
 
     update_after_plot = True
 
@@ -1858,6 +1906,8 @@ class Bounds(DataTicksCalculator):
 
     priority = BEFOREPLOTTING
 
+    name = 'Boundaries of the color map'
+
     @property
     def value2share(self):
         """The normalization instance"""
@@ -1911,6 +1961,8 @@ class Plot2D(Formatoption):
     group = 'plot'
 
     priority = BEFOREPLOTTING
+
+    name = '2D plot type'
 
     children = ['cmap', 'bounds']
 
@@ -2037,6 +2089,8 @@ class DataGrid(Formatoption):
     psyplot.plotter.maps.FieldPlotter.ygrid"""
 
     children = ['transform']
+
+    name = 'Grid of the data'
 
     @property
     def array(self):
@@ -2180,6 +2234,8 @@ class Extend(Formatoption):
 
     group = 'colors'
 
+    name = 'Ends of the colorbar'
+
     def update(self, value):
         # nothing to do here because the extend is set by the Cbar formatoption
         pass
@@ -2199,6 +2255,8 @@ class CbarSpacing(Formatoption):
     group = 'colors'
 
     connections = ['cbar']
+
+    name = 'Spacing of the colorbar'
 
     def update(self, value):
         self.cbar._kwargs['spacing'] = value
@@ -2235,6 +2293,8 @@ class Cbar(Formatoption):
     dependencies = ['plot', 'cmap', 'bounds', 'extend', 'cbarspacing']
 
     group = 'colors'
+
+    name = 'Position of the colorbar'
 
     priority = END + 0.1
 
@@ -2344,6 +2404,8 @@ class Cbar(Formatoption):
         cbar.draw_all()
 
     def remove(self, positions='all'):
+        import matplotlib.pyplot as plt
+
         def try2remove(cbar):
             try:
                 cbar.remove()
@@ -2383,6 +2445,7 @@ class Cbar(Formatoption):
         return
 
     def draw_colorbar(self, pos):
+        import matplotlib.pyplot as plt
         # TODO: Manage to draw colorbars left and top (gridspec does not work)
         orientations = {
             # 'b': 'bottom', 'r': 'right', 'l': 'left', 't': 'top',
@@ -2408,18 +2471,24 @@ class Cbar(Formatoption):
             fig = self.ax.get_figure()
             if pos == 'fb':
                 fig.subplots_adjust(bottom=0.2)
-                kwargs.update(
-                    {'cax': fig.add_axes([0.125, 0.135, 0.775, 0.05])})
+                kwargs['cax'] = fig.add_axes(
+                    [0.125, 0.135, 0.775, 0.05],
+                    label=self.raw_data.arr_name + '_fb')
             elif pos == 'fr':
                 fig.subplots_adjust(right=0.8)
-                kwargs.update({'cax': fig.add_axes([0.825, 0.25, 0.035, 0.6])})
+                kwargs['cax'] = fig.add_axes(
+                    [0.825, 0.25, 0.035, 0.6],
+                    label=self.raw_data.arr_name + '_fr')
             elif pos == 'fl':
                 fig.subplots_adjust(left=0.225)
-                kwargs.update({'cax': fig.add_axes([0.075, 0.25, 0.035, 0.6])})
+                kwargs['cax'] = fig.add_axes(
+                    [0.075, 0.25, 0.035, 0.6],
+                    label=self.raw_data.arr_name + '_fl')
             elif pos == 'ft':
                 fig.subplots_adjust(top=0.75)
-                kwargs.update(
-                    {'cax': fig.add_axes([0.125, 0.825, 0.775, 0.05])})
+                kwargs['cax'] = fig.add_axes(
+                    [0.125, 0.825, 0.775, 0.05],
+                    label=self.raw_data.arr_name + '_ft')
         kwargs['extend'] = self.extend.value
         if 'location' not in kwargs:
             kwargs['orientation'] = orientation
@@ -2455,6 +2524,8 @@ class CLabel(TextBase, Formatoption):
     children = ['plot']
 
     dependencies = ['cbar']
+
+    name = 'Colorbar label'
 
     data_dependent = True
 
@@ -2496,6 +2567,7 @@ class VCLabel(CLabel):
     See Also
     --------
     vclabelsize, vclabelweight, vclabelprops"""
+    pass
 
 
 class CbarOptions(Formatoption):
@@ -2569,6 +2641,8 @@ class CTicks(CbarOptions, TicksBase):
     """
 
     dependencies = CbarOptions.dependencies + ['bounds']
+
+    name = 'Colorbar ticks'
 
     @property
     def default_locator(self):
@@ -2644,6 +2718,8 @@ class CTickLabels(CbarOptions, TickLabelsBase):
     vcticks, vcticksize, vctickweight, vctickprops
     """
 
+    name = 'Colorbar ticklabels'
+
     @property
     def default_formatters(self):
         """Default locator of the axis of the colorbars"""
@@ -2682,6 +2758,8 @@ class CTickSize(CbarOptions, TickSizeBase):
 
     group = 'colors'
 
+    name = 'Font size of the colorbar ticklabels'
+
 
 class CTickWeight(CbarOptions, TickWeightBase):
     """
@@ -2697,6 +2775,8 @@ class CTickWeight(CbarOptions, TickWeightBase):
     vcticksize, vctickprops, vcticklabels, vcticks"""
 
     group = 'colors'
+
+    name = 'Font weight of the colorbar ticklabels'
 
 
 class CTickProps(CbarOptions, TickPropsBase):
@@ -2715,6 +2795,8 @@ class CTickProps(CbarOptions, TickPropsBase):
     children = CbarOptions.children + TickPropsBase.children
 
     group = 'colors'
+
+    name = 'Font properties of the colorbar ticklabels'
 
 
 class ArrowSize(Formatoption):
@@ -2737,6 +2819,8 @@ class ArrowSize(Formatoption):
     priority = BEFOREPLOTTING
 
     dependencies = ['plot']
+
+    name = 'Size of the arrows'
 
     def update(self, value):
         kwargs = self.plot._kwargs
@@ -2770,6 +2854,8 @@ class ArrowStyle(Formatoption):
     priority = BEFOREPLOTTING
 
     dependencies = ['plot']
+
+    name = 'Style of the arrows'
 
     def update(self, value):
         if self.plot.value == 'stream':
@@ -2847,6 +2933,8 @@ class VectorLineWidth(VectorCalculator):
     --------
     arrowsize, arrowstyle, density, color"""
 
+    name = 'Linewidth of the arrows'
+
     def update(self, value):
         if value is None:
             self.plot._kwargs['linewidth'] = 0 if self.plot.value == 'quiver' \
@@ -2886,6 +2974,8 @@ class VectorColor(VectorCalculator):
     dependencies = VectorCalculator.dependencies + ['cmap', 'bounds']
 
     group = 'colors'
+
+    name = 'Color of the arrows'
 
     def update(self, value):
         try:
@@ -2949,6 +3039,8 @@ class Density(Formatoption):
 
     group = 'vector'
 
+    name = 'Density of the arrows'
+
     priority = BEFOREPLOTTING
 
     data_dependent = True
@@ -3010,6 +3102,8 @@ class VectorPlot(Formatoption):
     plot_fmt = True
 
     group = 'plot'
+
+    name = 'Plot type of the arrows'
 
     priority = BEFOREPLOTTING
 
@@ -3165,6 +3259,8 @@ class LegendLabels(Formatoption, TextBase):
 
     data_dependent = True
 
+    name = 'Labels in the legend'
+
     def update(self, value):
         if isinstance(value, six.string_types):
             self.labels = [
@@ -3198,6 +3294,8 @@ class Legend(Formatoption):
     labels"""
 
     dependencies = ['legendlabels', 'plot']
+
+    name = 'Properties of the legend'
 
     def update(self, value):
         labels = self.legendlabels.labels
@@ -3286,6 +3384,48 @@ class LinePlotter(BasePlotter, XYTickPlotter):
             self.plot_data = InteractiveList(
                 [data], arr_name=data.arr_name, attrs=data.attrs)
 
+    @classmethod
+    @docstrings.dedent
+    def check_data(cls, name, dims, is_unstructured=None):
+        """
+        A validation method for the data shape
+
+        Parameters
+        ----------
+        name: str or list of str
+            The variable names (one variable per array)
+        dims: list with length 1 or list of lists with length 1
+            The dimension of the arrays. Only 1D-Arrays are allowed
+        is_unstructured: bool or list of bool, optional
+            True if the corresponding array is unstructured. This keyword is
+            ignored
+
+        Returns
+        -------
+        %(Plotter.check_data.returns)s
+        """
+        if isinstance(name, six.string_types):
+            name = [name]
+            dims = [dims]
+        N = len(name)
+        if len(dims) != N:
+            return [False] * N, [
+                'Number of provided names (%i) and dimensions '
+                '%(i) are not the same' % (N, len(dims))] * N
+        checks = [True] * N
+        messages = [''] * N
+        for i, (n, d) in enumerate(zip(name, dims)):
+            if len(n) == 0:
+                checks[i] = False
+                messages[i] = 'At least one variable name is required!'
+            elif (not isstring(n) and len(n) != 1) and len(d) != 0:
+                checks[i] = False
+                messages[i] = 'Only one name is allowed per array!'
+            elif len(d) == 0 or len(d) > 1:
+                checks[i] = False
+                messages[i] = 'Only 1-dimensional arrays are allowed!'
+        return checks, messages
+
 
 class ViolinPlotter(LinePlotter):
     """Plotter for making violin plots"""
@@ -3315,9 +3455,63 @@ class BarPlotter(ViolinPlotter):
 
 class Simple2DBase(Base2D):
     """Base class for :class:`Simple2DPlotter` and
-    :class:`psyplot.plotter.FieldPlotter` that defines the data management"""
+    :class:`psyplot.plotter.maps.FieldPlotter` that defines the data
+    management"""
 
     miss_color = MissColor('miss_color', index_in_list=0)
+
+    @classmethod
+    @docstrings.dedent
+    def check_data(cls, name, dims, is_unstructured):
+        """
+        A validation method for the data shape
+
+        Parameters
+        ----------
+        name: str or list of str
+            The variable names (one variable per array)
+        dims: list with length 1 or list of lists with length 1
+            The dimension of the arrays. Only 1D-Arrays are allowed
+        is_unstructured: bool or list of bool
+            True if the corresponding array is unstructured.
+
+        Returns
+        -------
+        %(Plotter.check_data.returns)s
+        """
+        if isinstance(name, six.string_types):
+            name = [name]
+            dims = [dims]
+            is_unstructured = [is_unstructured]
+        N = len(name)
+        if N != 1:
+            return [False] * N, [
+                'Number of provided names (%i) must equal 1!' % (N)] * N
+        elif len(dims) != 1:
+            return [False], [
+                'Number of provided dimension lists (%i) must equal 1!' % (
+                    len(dims))]
+        elif len(is_unstructured) != 1:
+            return [False], [
+                ('Number of provided unstructured information (%i) must '
+                 'equal 1!') % (len(is_unstructured))]
+        if len(name[0]) == 0:
+            return [False], ['At least one variable name must be provided!']
+        # unstructured arrays have only 1 dimension
+        dimlen = 1 if is_unstructured[0] else 2
+        # Check that the array is two-dimensional
+        #
+        # if more than one array name is provided, the dimensions should be
+        # one les than dimlen to have a 2D array
+        if (not isstring(name[0]) and len(name[0]) != 1 and
+                len(dims[0]) != dimlen - 1):
+            return [False], ['Only one name is allowed per array!']
+        # otherwise the number of dimensions must equal dimlen
+        if len(dims[0]) != dimlen:
+            return [False], [
+                'An array with dimension %i is required, not %i' % (
+                    dimlen, len(dims[0]))]
+        return [True], ['']
 
     def _set_data(self, *args, **kwargs):
         Plotter._set_data(self, *args, **kwargs)
@@ -3362,6 +3556,66 @@ class BaseVectorPlotter(Base2D):
     cbar = VectorCbar('cbar')
     bounds = VectorBounds('bounds')
     cticks = VectorCTicks('cticks')
+
+    @classmethod
+    @docstrings.dedent
+    def check_data(cls, name, dims, is_unstructured):
+        """
+        A validation method for the data shape
+
+        Parameters
+        ----------
+        name: str or list of str
+            The variable names (two variables for the array or one if the dims
+            are one greater)
+        dims: list with length 1 or list of lists with length 1
+            The dimension of the arrays. Only 2D-Arrays are allowed (or 1-D if
+            the array is unstructured)
+        is_unstructured: bool or list of bool
+            True if the corresponding array is unstructured.
+
+        Returns
+        -------
+        %(Plotter.check_data.returns)s
+        """
+        if isinstance(name, six.string_types):
+            name = [name]
+            dims = [dims]
+            is_unstructured = [is_unstructured]
+        N = len(name)
+        if N != 1:
+            return [False] * N, [
+                'Number of provided names (%i) must equal 1!' % (N)] * N
+        elif len(dims) != 1:
+            return [False], [
+                'Number of provided dimension lists (%i) must equal 1!' % (
+                    len(dims))]
+        elif len(is_unstructured) != 1:
+            return [False], [
+                ('Number of provided unstructured information (%i) must '
+                 'equal 1!') % (len(is_unstructured))]
+        if len(name[0]) == 0:
+            return [False], ['Two variable names must be provided!']
+        # unstructured arrays have only 1 dimension
+        dimlen = 1 if is_unstructured[0] else 2
+        # Check that the array is two-dimensional
+        #
+        # if more than one array name is provided, the dimensions should be
+        # one les than dimlen to have a 2D array
+        if (((isstring(name[0]) or len(name[0]) == 1) and
+             len(dims[0]) != dimlen + 1) or len(name[0]) > 2):
+            return [False], [
+                ('Two variables (one for x- and one for y-direction) are '
+                 'required!')]
+        elif ((isstring(name[0]) or len(name[0]) == 1) and
+              len(dims[0]) == dimlen + 1):
+            dimlen += 1
+        # otherwise the number of dimensions must equal dimlen
+        if len(dims[0]) != dimlen:
+            return [False], [
+                'An array with dimension %i is required, not %i' % (
+                    dimlen, len(dims[0]))]
+        return [True], ['']
 
     def _set_data(self, *args, **kwargs):
         Plotter._set_data(self, *args, **kwargs)
@@ -3426,6 +3680,42 @@ class CombinedBase(Plotter):
     maskgreater = MaskGreater('maskgreater', index_in_list=0)
     maskgeq = MaskGeq('maskgeq', index_in_list=0)
     maskbetween = MaskBetween('maskbetween', index_in_list=0)
+
+    @classmethod
+    @docstrings.dedent
+    def check_data(cls, name, dims, is_unstructured):
+        """
+        A validation method for the data shape
+
+        Parameters
+        ----------
+        name: list of str with length 2
+            The variable names (one for the first, two for the second array)
+        dims: list with length 2 of lists with length 1
+            The dimension of the arrays. Only 2D-Arrays are allowed (or 1-D if
+            an array is unstructured)
+        is_unstructured: bool or list of bool
+            True if the corresponding array is unstructured.
+
+        Returns
+        -------
+        %(Plotter.check_data.returns)s
+        """
+        if isinstance(name, six.string_types):
+            name = [name]
+            dims = [dims]
+            is_unstructured = [is_unstructured]
+        msg = ('Two arrays are required (one for the scalar and '
+               'one for the vector field)')
+        if len(name) < 2:
+            return [None], [msg]
+        elif len(name) > 2:
+            return [False], [msg]
+        valid1, msg1 = Simple2DBase.check_data(name[:1], dims[0:1],
+                                               is_unstructured[:1])
+        valid2, msg2 = BaseVectorPlotter.check_data(name[1:], dims[1:],
+                                                    is_unstructured[1:])
+        return valid1 + valid2, msg1 + msg2
 
     def _set_data(self, *args, **kwargs):
         super(CombinedBase, self)._set_data(*args, **kwargs)

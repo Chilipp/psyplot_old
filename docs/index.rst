@@ -30,6 +30,7 @@ Documentation
     about
     installing
     getting_started
+    command_line
     framework
     new_formatoption
     api/psyplot
