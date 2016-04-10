@@ -1,1 +1,3 @@
 include README.rst
+include sphinxext/_static/example_gallery_styles.css
+include sphinxext/_static/no_image.png
