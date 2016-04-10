@@ -9,6 +9,10 @@ import psyplot
 from psyplot.docstring import docstrings
 from psyplot.warning import warn
 from psyplot.parser import FuncArgParser
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 
 def main():
@@ -28,6 +32,7 @@ def main():
         parser.create_arguments()
         parser.parse_known_to_func()
     except ImportError:
+        logger.debug('Failed to import gui', exc_info=True)
         parser = get_parser(create=False)
         parser.update_arg('output', required=True)
         parser.create_arguments()
@@ -98,7 +103,7 @@ def make_plot(fnames=[], name=[], dims=None, plot_method=None,
     if project is not None:
         fnames = [s.split(',') for s in fnames]
         single_files = (l[0] for l in fnames if len(l) == 1)
-        alternative_paths = defaultdict(partial(single_files.next, None))
+        alternative_paths = defaultdict(lambda: next(single_files, None))
         alternative_paths.update([l for l in fnames if len(l) == 2])
         p = psy.Project.load_project(
             project, alternative_paths=alternative_paths,
