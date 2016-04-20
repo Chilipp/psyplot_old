@@ -10,8 +10,8 @@
 # In[ ]:
 
 import psyplot.project as psy
-# get_ipython().magic(u'matplotlib inline')
-# get_ipython().magic(u'config InlineBackend.close_figures = False')
+# get_ipython().magic('matplotlib inline')
+# get_ipython().magic('config InlineBackend.close_figures = False')
 
 
 # The visualization works the same way as for a usual rectangular grid. We furthermore choose a robinson projection and a colormap ranging from blue to red.
