@@ -2,17 +2,20 @@
 
 The psyplot framework
 =====================
+.. image:: psyplot_framework.gif
+
 The main module we used so far, was the :mod:`psyplot.project` module. It is
 the end of a whole framework that is setup by the psyplot package.
 
-The full framework however is designed in analogy to matplotlibs
+This framework is designed in analogy to matplotlibs
 `figure - axes - artist setup <http://matplotlib.org/1.5.1/users/artists.html>`__,
-where one figure controls multiple axis, an axes is the manager of multiple
-artists (e.g. a simple line) and each artist is responsible for visualizing an
-object on the plot. The psyplot framework instead is defined through the
-:class:`~psyplot.project.Project` - (:class:`~psyplot.data.InteractiveBase` -
-:class:`~psyplot.plotter.Plotter`) - :class:`~psyplot.plotter.Formatoption`
-relationship.
+where one figure controls multiple axes, an axes is the manager of multiple
+artists (e.g. a simple line) and each artist is responsible for visualizing one
+or more objects on the plot. The psyplot framework instead is defined through
+the :class:`~psyplot.project.Project` -
+(:class:`~psyplot.data.InteractiveBase` - :class:`~psyplot.plotter.Plotter`) -
+:class:`~psyplot.plotter.Formatoption` relationship.
+
 
 The :func:`~psyplot.project.project`
 ------------------------------------
