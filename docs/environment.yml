@@ -13,7 +13,6 @@ dependencies:
     - seaborn
     - ipython
     - nbconvert
-    - ipykernel
     - pip:
         - sphinx-argparse
 

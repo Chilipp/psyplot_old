@@ -69,7 +69,7 @@ templates_path = ['_templates']
 on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
 
 # boolean controlling wether to calculate the examples or not
-process_examples = True
+process_examples = not on_rtd
 
 # The cdo example would require the installation of climate data operators
 # which is a bit of an overkill
@@ -153,11 +153,6 @@ pygments_style = 'sphinx'
 
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = True
-
-# add python2 kernel if on readthedocs
-if on_rtd:
-    from ipykernel.kernelapp import IPKernelApp
-    IPKernelApp.launch_instance(['install', '--user', '--name', 'python2'])
 
 
 # -- Options for HTML output ----------------------------------------------

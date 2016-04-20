@@ -123,7 +123,7 @@ anaconda by typing::
 
     $ conda env create -n psyplot -f docs/environment.yml
     $ source activate psyplot_docs
-    $ conda install sphinx
+    $ conda install sphinx ipykernel
 
 Then build the docs via::
 
