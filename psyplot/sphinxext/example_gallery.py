@@ -217,8 +217,12 @@ logging.getLogger('py.warnings').setLevel(logging.ERROR)
         for original in outputs:
             fname = os.path.join(odir, out_map[os.path.basename(original)])
             pictures.append(fname)
-            with open(fname, 'w') as f:
-                f.write(resources['outputs'][original])
+            if six.PY3:
+                f = open(fname, 'w+b')
+            else:
+                f = open(fname, 'w')
+            f.write(resources['outputs'][original])
+            f.close()
         self.pictures = pictures
 
     def create_py(self, nb, force=False):
@@ -228,8 +232,12 @@ logging.getLogger('py.warnings').setLevel(logging.ERROR)
         # directive. Instead of getting something like ``Out [5]:``, we get
         # some weird like '[0;31mOut[[1;31m5[0;31m]: [0m' which look like
         # color information if we allow the call of nbconvert.export_python
+        if list(map(int, re.findall('\d+', nbconvert.__version__))) >= [4, 2]:
+            py_file = os.path.basename(self.py_file)
+        else:
+            py_file = self.py_file
         spr.call(['jupyter', 'nbconvert', '--to=python',
-                  '--output=' + self.py_file, '--log-level=%s' % logger.level,
+                  '--output=' + py_file, '--log-level=%s' % logger.level,
                   self.outfile])
         with open(self.py_file) as f:
             py_content = f.read()
