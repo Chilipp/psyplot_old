@@ -38,6 +38,8 @@ try:
 except ImportError:
     pass
 
+sphinx_version = list(map(float, re.findall('\d+', sphinx.__version__)[:3]))
+
 
 class AutosummaryDocumenter(object):
     """Abstract class for for extending Documenter methods
@@ -268,7 +270,10 @@ class CallableDataDocumenter(DataDocumenter):
             return None
         if argspec[0] and argspec[0][0] in ('cls', 'self'):
             del argspec[0][0]
-        return formatargspec(*argspec)
+        if sphinx_version < [1, 4]:
+            return formatargspec(*argspec)
+        else:
+            return formatargspec(callmeth, *argspec)
 
     def get_doc(self, encoding=None, ignore=1):
         """Reimplemented  to include data from the call method"""
@@ -315,7 +320,10 @@ class CallableAttributeDocumenter(AttributeDocumenter):
             return None
         if argspec[0] and argspec[0][0] in ('cls', 'self'):
             del argspec[0][0]
-        return formatargspec(*argspec)
+        if sphinx_version < [1, 4]:
+            return formatargspec(*argspec)
+        else:
+            return formatargspec(callmeth, *argspec)
 
     def get_doc(self, encoding=None, ignore=1):
         """Reimplemented  to include data from the call method"""
@@ -330,15 +338,19 @@ class CallableAttributeDocumenter(AttributeDocumenter):
         docstrings = []
         if content != 'call':
             docstring = self.get_attr(self.object, '__doc__', None)
-            docstrings = [docstring] if docstring else []
+            docstrings = [docstring + '\n'] if docstring else []
         calldocstring = self.get_attr(
             self.get_attr(self.object, '__call__', None), '__doc__')
-        docstrings.append(calldocstring)
+        if docstrings:
+            docstrings[0] += calldocstring
+        else:
+            docstrings.append(calldocstring + '\n')
+
         doc = []
         for docstring in docstrings:
             if not isinstance(docstring, six.text_type):
                 docstring = force_decode(docstring, encoding)
-            doc.append(prepare_docstring(docstring))
+            doc.append(prepare_docstring(docstring, ignore))
 
         return doc
 
