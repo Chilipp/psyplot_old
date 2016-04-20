@@ -53,6 +53,7 @@ coverage.xml
 # Sphinx documentation
 docs/_build/
 docs/index.doctree
+docs/examples/
 
 # test results
 tests/psyplot_testresults
