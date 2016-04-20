@@ -996,8 +996,10 @@ class Plotter(dict):
         if clear:
             self.logger.debug("    Clearing axes...")
             self.ax.clear()
+        # get the formatoptions. We sort them here by key to make sure that the
+        # order always stays the same (easier for debugging)
         fmto_groups = self._grouped_fmtos(self._sorted_by_priority(
-            list(self._fmtos)))
+            sorted(self._fmtos, key=lambda fmto: fmto.key)))
         self.plot_data = self.data
         self._updating = True
         for priority, grouper in fmto_groups:
@@ -1090,7 +1092,9 @@ class Plotter(dict):
         # update the formatoptions
         self._save_state()
         try:
-            fmtos = self._set_and_filter()
+            # get the formatoptions. We sort them here by key to make sure that
+            # the order always stays the same (easier for debugging)
+            fmtos = sorted(self._set_and_filter(), key=lambda fmto: fmto.key)
         except:
             # restore last (working) state
             last_state = self._old_fmt.pop(-1)
