@@ -84,6 +84,12 @@ class _TempBool(object):
         return str(bool(self))
 
     def __call__(self, value=None):
+        """
+        Parameters
+        ----------
+        value: bool or None
+            If None, the current value will be negated. Otherwise the current
+            value of this instance is set to the given `value`"""
         if value is None:
             self.value = not self.value
         else:
@@ -1209,7 +1215,7 @@ class CFDecoder(object):
         coord = self.get_variable_by_axis(var, 't', coords)
         if coord is not None:
             return coord
-        dimlist = list(self.t.intersection(var.dims))
+        dimlist = list(self.t.intersection(var.dims).intersection(coords))
         if dimlist:
             if len(dimlist) > 1:
                 warn("Found multiple matches for time coordinate in the "
@@ -2750,7 +2756,7 @@ class ArrayList(list):
                     idims = arr.idims
                 ret[arr.arr_name] = d = {'dims': idims}
                 if 'variable' in arr.coords:
-                    d['name'] = list(arr.variable)
+                    d['name'] = [list(arr.coords['variable'].values)]
                 else:
                     d['name'] = arr.name
                 if 'fname' in ds_description or 'store' in ds_description:
