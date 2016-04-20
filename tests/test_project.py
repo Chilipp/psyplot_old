@@ -58,7 +58,7 @@ class ProjectTester(bt.PsyPlotTestCase):
         p.close(True, True)
         plt.close('all')
         os.remove(fname + '.pkl')
-        for i in xrange(1, 4):
+        for i in range(1, 4):
             os.remove(os.path.join(
                 bt.ref_dir, self.get_ref_file('save_load%i' % i)))
 
