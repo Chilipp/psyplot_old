@@ -15,7 +15,7 @@ import test_baseplotter as tb
 import _base_testing as bt
 import test_simple as ts
 from psyplot import ArrayList, open_dataset
-import psyplot.project as syp
+import psyplot.project as psy
 from psyplot.compat.mplcompat import bold
 from psyplot.compat.pycompat import filter
 
@@ -99,7 +99,7 @@ class FieldPlotterTest(tb.BasePlotterTest, ts.References2D, MapReferences):
 
     def plot(self, **kwargs):
         name = kwargs.pop('name', self.var)
-        return syp.plot.mapplot(self.ncfile, name=name, **kwargs)
+        return psy.plot.mapplot(self.ncfile, name=name, **kwargs)
 
     @classmethod
     def setUpClass(cls):
@@ -310,11 +310,11 @@ class VectorPlotterTest(FieldPlotterTest, ts.References2D, MapReferences):
     var = ['u', 'v']
 
     def plot(self, **kwargs):
-        color_fmts = syp.plot.mapvector.plotter_cls().fmt_groups['colors']
+        color_fmts = psy.plot.mapvector.plotter_cls().fmt_groups['colors']
         fix_colorbar = not color_fmts.intersection(kwargs)
         kwargs.setdefault('color', 'absolute')
         kwargs.setdefault('lonlatbox', 'Europe')
-        sp = syp.plot.mapvector(self.ncfile, name=[self.var], **kwargs)
+        sp = psy.plot.mapvector(self.ncfile, name=[self.var], **kwargs)
         if fix_colorbar:
             # if we have no color formatoptions, we have to consider that
             # the position of the plot may have slighty changed
@@ -343,7 +343,10 @@ class VectorPlotterTest(FieldPlotterTest, ts.References2D, MapReferences):
         Create reference file for
         :attr:`~psyplot.plotter.maps.VectorPlotter.density` (and others)
         formatoption"""
-        sp = self.plot(density=0.5)
+        sp = self.plot()
+        # We do not include the density in the initial plot because there the
+        # map_extent is not already considered
+        sp.update(density=0.5)
         sp.export(os.path.join(bt.ref_dir, self.get_ref_file('density')))
         if close:
             sp.close(True, True)
@@ -361,8 +364,9 @@ class VectorPlotterTest(FieldPlotterTest, ts.References2D, MapReferences):
         cls._color_fmts = cls.plotter.fmt_groups['colors']
         # there is an issue with the colorbar that the size of the axes changes
         # slightly after replotting. Therefore we force a replot here
-        cls.plotter.update(color='absolute')
-        cls.plotter.update(todefault=True, replot=True)
+        if not six.PY34:
+            cls.plotter.update(color='absolute')
+            cls.plotter.update(todefault=True, replot=True)
 
     def update(self, *args, **kwargs):
         if self._color_fmts.intersection(kwargs) or any(
@@ -420,6 +424,8 @@ class VectorPlotterTest(FieldPlotterTest, ts.References2D, MapReferences):
         self.compare_figures(next(iter(args),
                                   self.get_ref_file('cbarspacing')))
 
+    @unittest.skipIf(
+        six.PY34, "The axes size changes using the arrowsize formatoption")
     def test_arrowsize(self, *args):
         """Test arrowsize formatoption"""
         self.update(arrowsize=100.0)
@@ -583,13 +589,13 @@ class CombinedPlotterTest(VectorPlotterTest):
         cls.plotter.update(todefault=True, replot=True)
 
     def plot(self, **kwargs):
-        color_fmts = syp.plot.mapvector.plotter_cls().fmt_groups['colors']
+        color_fmts = psy.plot.mapvector.plotter_cls().fmt_groups['colors']
         fix_colorbar = not color_fmts.intersection(kwargs)
         kwargs.setdefault('lonlatbox', 'Europe')
         kwargs.setdefault('color', 'absolute')
         if self.vector_mode:
             kwargs = self._rename_fmts(kwargs)
-        sp = syp.plot.mapcombined(self.ncfile, name=[self.var],
+        sp = psy.plot.mapcombined(self.ncfile, name=[self.var],
                                   **kwargs)
         if not self.vector_mode or fix_colorbar:
             # if we have no color formatoptions, we have to consider that
@@ -606,7 +612,7 @@ class CombinedPlotterTest(VectorPlotterTest):
                 return 'v' + key
         vcolor_fmts = {
             fmt for fmt in chain(
-                syp.plot.mapcombined.plotter_cls().fmt_groups['colors'],
+                psy.plot.mapcombined.plotter_cls().fmt_groups['colors'],
                 ['ctick|clabel']) if fmt.startswith('v')}
         return {check_key(key): val for key, val in kwargs.items()}
 
@@ -653,9 +659,18 @@ class CombinedPlotterTest(VectorPlotterTest):
     def ref_cbar(self, close=True):
         pass
 
-    @_do_from_both
     def ref_cbarspacing(self, close=True):
-        pass
+        """Create reference file for cbarspacing formatoption"""
+        kwargs = dict(bounds=list(range(245, 255)) + np.linspace(
+                255, 280, 6, endpoint=True).tolist() + list(range(281, 290)))
+        sp = self.plot(
+            cbarspacing='proportional', cticks='rounded',
+            **kwargs)
+        sp.export(os.path.join(bt.ref_dir, self.get_ref_file('cbarspacing')))
+        with self.vector_mode:
+            VectorPlotterTest.ref_cbarspacing(self, close=close)
+        if close:
+            sp.close(True, True)
 
     @_do_from_both
     def ref_cmap(self, close=True):
@@ -692,14 +707,24 @@ class CombinedPlotterTest(VectorPlotterTest):
     def test_cbar(self, *args, **kwargs):
         pass
 
-    @_do_from_both
     def test_cbarspacing(self, *args, **kwargs):
-        pass
+        """Test cbarspacing formatoption"""
+        self.update(
+            cbarspacing='proportional', cticks='rounded',
+            bounds=list(range(245, 255)) + np.linspace(
+                255, 280, 6, endpoint=True).tolist() + list(range(281, 290)))
+        self.compare_figures(next(iter(args),
+                                  self.get_ref_file('cbarspacing')))
+        self.plotter.update(todefault=True)
+        with self.vector_mode:
+            VectorPlotterTest.test_cbarspacing(self, *args, **kwargs)
 
     @_do_from_both
     def test_cmap(self, *args, **kwargs):
         pass
 
+    @unittest.skipIf(
+        six.PY34, "The axes size changes using the arrowsize formatoption")
     @_in_vector_mode
     def test_arrowsize(self):
         pass
@@ -770,8 +795,7 @@ class CircumpolarFieldPlotterTest(FieldPlotterTest):
         Create reference file for
         :attr:`~psyplot.plotter.maps.FieldPlotter.xgrid` (and others)
         formatoption"""
-        sp = self.plot()
-        sp.update(xgrid=False, ygrid=False)
+        sp = self.plot(xgrid=False, ygrid=False)
         sp.export(os.path.join(bt.ref_dir, self.get_ref_file('grid1')))
         sp.update(xgrid='rounded', ygrid=['data', 1000])
         sp.export(os.path.join(bt.ref_dir, self.get_ref_file('grid2')))
