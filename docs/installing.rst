@@ -1,5 +1,7 @@
 .. _install:
 
+.. highlight:: bash
+
 Installation
 ============
 
@@ -85,7 +87,7 @@ an efficient handling of netCDF files and the visualization of data on a globe.
 
 Those environments are
 
-- :download:`psyplot with cartopy, netCDF4, dask, bottleneck, cyordereddict <psyplot_environment.yml>`.
+- :download:`psyplot with cartopy, netCDF4, gdal, dask, bottleneck, cyordereddict <psyplot_environment.yml>`.
   This environment contains the recommended modules to view geo-referenced netCDF
   files without a GUI
 - :download:`psyplot with graphical user interface and the above packages <psyplot_gui_environment.yml>`.
@@ -121,11 +123,26 @@ anaconda by typing::
 
     $ conda env create -n psyplot -f docs/environment.yml
     $ source activate psyplot_docs
+    $ conda install sphinx
 
 Then build the docs via::
 
     $ cd docs
     $ make html
+
+.. note::
+
+    Since some of the examples are written as python 2 notebooks but the above
+    environment uses python 3.4, you may have to install the python2 kernel to
+    your jupyter settings. You can do this via::
+
+        conda create -n py27 python=2.7
+        source activate py27
+        conda install notebook ipykernel
+        ipython kernel install --user
+
+    Futhermore the building of the docs always reprocesses the examples. You
+    might disable that by setting ``process_examples = False``
 
 .. _github: https://github.com/Chilipp/psyplot
 .. _pytest: https://pytest.org/latest/contents.html
