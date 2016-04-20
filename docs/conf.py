@@ -154,6 +154,11 @@ pygments_style = 'sphinx'
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = True
 
+# add python2 kernel if on readthedocs
+if on_rtd:
+    from ipykernel.kernelapp import IPKernelApp
+    IPKernelApp.launch_instance(['install', '--user', '--name', 'python2'])
+
 
 # -- Options for HTML output ----------------------------------------------
 
