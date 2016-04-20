@@ -1475,7 +1475,7 @@ class ProjectPlotter(object):
                 plotter_cls.show_keys(
                     indent=4, func=str,
                     # include links in sphinx doc
-                    _fmt_links=True)
+                    include_links=None)
             doc_str = ('Possible formatoptions are\n\n'
                        '%%(%s.formatoptions)s') % full_name
         else:
