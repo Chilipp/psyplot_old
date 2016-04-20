@@ -2421,10 +2421,10 @@ class Cbar(Formatoption):
         adjustment = {}
         to_adjust = {'fr': 'right', 'fl': 'left', 'ft': 'top', 'fb': 'bottom'}
         for pos in positions:
+            cbar = self.cbars.pop(pos)
             if pos in ['sh', 'sv']:
-                plt.close(self.cbars[pos].ax.get_figure())
+                plt.close(cbar.ax.get_figure())
             else:
-                cbar = self.cbars[pos]
                 # set the axes for the mappable if this has been removed
                 if cbar.mappable.axes is None:
                     cbar.mappable.axes = self.plotter.ax
@@ -2437,7 +2437,6 @@ class Cbar(Formatoption):
                 if pos in to_adjust:
                     adjustment[to_adjust[pos]] = mpl.rcParams[
                         'figure.subplot.' + to_adjust[pos]]
-            del self.cbars[pos]
         if adjustment:
             self.ax.get_figure().subplots_adjust(**adjustment)
         if self.figure_positions.intersection(positions):
@@ -3177,7 +3176,10 @@ class VectorPlot(Formatoption):
             self.ax.patches = [patch for patch in self.ax.patches
                                if keep(patch)]
         else:
-            self._plot.remove()
+            try:
+                self._plot.remove()
+            except ValueError:  # the artist has already been removed
+                pass
         del self._plot
 
 
