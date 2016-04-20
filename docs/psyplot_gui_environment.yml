@@ -1,0 +1,21 @@
+name: psyplot
+channels:
+    - chilipp
+    - scitools
+dependencies:
+    - python=3.4
+    - psyplot_gui
+    - dask
+    - xarray
+    - netCDF4
+    - cartopy
+    - seaborn
+    - bottleneck
+    - qtconsole
+    - ipykernel
+    - pexpect
+    - pygments
+    - sphinx
+    - pip:
+        - fasteners
+	- cyordereddict

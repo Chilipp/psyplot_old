@@ -1,0 +1,16 @@
+name: psyplot
+channels:
+    - chilipp
+    - scitools
+dependencies:
+    - python=3.4
+    - psyplot
+    - dask
+    - xarray
+    - netCDF4
+    - cartopy
+    - seaborn
+    - bottleneck
+    - pip:
+        - cyordereddict
+

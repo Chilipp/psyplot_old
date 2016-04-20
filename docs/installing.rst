@@ -78,6 +78,26 @@ We furthermore recommend to use
 .. _xarray installation notes: http://xarray.pydata.org/en/stable/installing.html
 .. _xarray: http://xarray.pydata.org/
 
+Preconfigured environments
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+There are also some preconfigured environments that you can download which allow
+an efficient handling of netCDF files and the visualization of data on a globe.
+
+Those environments are
+
+- :download:`psyplot with cartopy, netCDF4, dask, bottleneck, cyordereddict <psyplot_environment.yml>`.
+  This environment contains the recommended modules to view geo-referenced netCDF
+  files without a GUI
+- :download:`psyplot with graphical user interface and the above packages <psyplot_gui_environment.yml>`.
+  The same environment as above plus graphical user interface
+
+After you downloaded one of the files, you can create and activate the new
+virtual environment via::
+
+    $ conda env create -f <downloaded file>
+    $ source activate psyplot
+
+
 Running the tests
 -----------------
 Check out the github_ repository and navigate to the ``'tests'`` directory.
