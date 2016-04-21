@@ -61,13 +61,15 @@ We furthermore recommend to use
 - cartopy_: For visualizing Georeferenced data using the plotters from the
   :mod:`psyplot.plotter.maps` module.
 - seaborn_: For modifying the default style of matplotlib figures and making
-    :attr:`violinplots <psyplot.project.ProjectPlotter.violinplot`
+  :attr:`violinplots <psyplot.project.ProjectPlotter.violinplot>`
 - dask_: For an efficient management of the data
 - netCDF4_: For reading and writing netCDF files
 - gdal_: For reading GeoTiff Rasters using the
   :class:`psyplot.gdal_store.GdalStore` or the
   :func:`~psyplot.data.open_dataset` function.
 - `ipython <http://ipython.org/>`__: For using psyplot interactively
+- cdo_: The python bindings for cdos (see also the
+  :ref:`cdo example <gallery_examples_example_cdo.ipynb>`)
 
 .. _conda: http://conda.io/
 .. _anaconda: https://www.continuum.io/downloads
@@ -79,6 +81,7 @@ We furthermore recommend to use
 .. _dask: http://dask.pydata.org
 .. _xarray installation notes: http://xarray.pydata.org/en/stable/installing.html
 .. _xarray: http://xarray.pydata.org/
+.. _cdo: https://code.zmaw.de/projects/cdo/wiki/Anaconda
 
 Preconfigured environments
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
