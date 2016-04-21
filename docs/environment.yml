@@ -15,4 +15,4 @@ dependencies:
     - nbconvert
     - pip:
         - sphinx-argparse
-
+        - cdo
