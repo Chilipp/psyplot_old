@@ -69,7 +69,7 @@ templates_path = ['_templates']
 on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
 
 # boolean controlling wether to calculate the examples or not
-process_examples = not on_rtd
+process_examples = False #not on_rtd
 
 # The cdo example would require the installation of climate data operators
 # which is a bit of an overkill
@@ -165,6 +165,11 @@ if not on_rtd:  # only import and set the theme if we're building docs locally
     html_theme = 'sphinx_rtd_theme'
     html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
 
+    # Add any paths that contain custom static files (such as style sheets) here,
+    # relative to this directory. They are copied after the builtin static files,
+    # so a file named "default.css" will overwrite the builtin "default.css".
+    html_static_path = ['_static']
+
 # otherwise, readthedocs.org uses their theme by default, so no need to specify
 
 # Theme options are theme-specific and customize the look and feel of a theme
@@ -190,11 +195,6 @@ if not on_rtd:  # only import and set the theme if we're building docs locally
 # docs.  This file should be a Windows icon file (.ico) being 16x16 or 32x32
 # pixels large.
 #html_favicon = None
-
-# Add any paths that contain custom static files (such as style sheets) here,
-# relative to this directory. They are copied after the builtin static files,
-# so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
 
 # Add any extra paths that contain custom files (such as robots.txt or
 # .htaccess) here, relative to this directory. These files are copied
