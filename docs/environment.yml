@@ -3,7 +3,6 @@ channels:
     - chilipp
     - scitools
 dependencies:
-    - python=3.4
     - psyplot
     - dask
     - xarray
@@ -13,7 +12,6 @@ dependencies:
     - seaborn
     - ipython
     - nbconvert
-    - sphinx
     - pip:
         - sphinx-argparse
         - cdo
