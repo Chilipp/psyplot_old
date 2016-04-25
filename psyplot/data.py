@@ -700,7 +700,8 @@ class CFDecoder(object):
         CFDecoder._registry.insert(pos, decoder_class)
 
     @classmethod
-    @docstrings.get_sectionsf('CFDecoder.can_decode')
+    @docstrings.get_sectionsf('CFDecoder.can_decode', sections=['Parameters',
+                                                                'Returns'])
     def can_decode(cls, ds, var):
         """
         Class method to determine whether the object can be decoded by this
@@ -713,7 +714,7 @@ class CFDecoder(object):
         var: xarray.Variable or xarray.DataArray
             The array to decode
 
-        Results
+        Returns
         -------
         bool
             True if the decoder can decode the given array `var`. Otherwise
@@ -748,7 +749,8 @@ class CFDecoder(object):
         return CFDecoder(ds)
 
     @staticmethod
-    @docstrings.get_sectionsf('CFDecoder.decode_coords')
+    @docstrings.get_sectionsf('CFDecoder.decode_coords', sections=[
+        'Parameters', 'Returns'])
     def decode_coords(ds, gridfile=None, inplace=True):
         """
         Sets the coordinates and bounds in a dataset
@@ -778,7 +780,7 @@ class CFDecoder(object):
             if 'bounds' in obj.attrs:
                 extra_coords.add(obj.attrs['bounds'])
         if gridfile is not None and not isinstance(gridfile, xarray.Dataset):
-            gridfile = xarray.open_dataset(gridfile)
+            gridfile = open_dataset(gridfile)
         extra_coords = set(ds.coords)
         for k, v in six.iteritems(ds.variables):
             add_attrs(v)
@@ -986,8 +988,12 @@ class CFDecoder(object):
         elif axis == 't' and tname:
             return coords.get(tname)
 
+    @docstrings.get_sectionsf("CFDecoder.get_x", sections=[
+        'Parameters', 'Returns'])
+    @dedent
     def get_x(self, var, coords=None):
-        """Get the x-coordinate of a variable
+        """
+        Get the x-coordinate of a variable
 
         This method searches for the x-coordinate in the :attr:`ds`. It first
         checks whether there is one dimension that holds an ``'axis'``
@@ -1005,8 +1011,8 @@ class CFDecoder(object):
 
         Returns
         -------
-        xarray.Coordinate
-            The x-coordinate"""
+        xarray.Coordinate or None
+            The y-coordinate or None if it could be found"""
         coords = coords or self.ds.coords
         coord = self.get_variable_by_axis(var, 'x', coords)
         if coord is not None:
@@ -1049,8 +1055,12 @@ class CFDecoder(object):
         # otherwise we return the coordinate in the last position
         return var.dims[-1]
 
+    @docstrings.get_sectionsf("CFDecoder.get_y", sections=[
+        'Parameters', 'Returns'])
+    @dedent
     def get_y(self, var, coords=None):
-        """Get the y-coordinate of a variable
+        """
+        Get the y-coordinate of a variable
 
         This method searches for the y-coordinate in the :attr:`ds`. It first
         checks whether there is one dimension that holds an ``'axis'``
@@ -1069,8 +1079,8 @@ class CFDecoder(object):
 
         Returns
         -------
-        xarray.Coordinate
-            The y-coordinate"""
+        xarray.Coordinate or None
+            The y-coordinate or None if it could be found"""
         coords = coords or self.ds.coords
         coord = self.get_variable_by_axis(var, 'y', coords)
         if coord is not None:
@@ -1116,8 +1126,12 @@ class CFDecoder(object):
             return var.dims[-1]
         return var.dims[-2 if var.ndim > 1 else -1]
 
+    @docstrings.get_sectionsf("CFDecoder.get_z", sections=[
+        'Parameters', 'Returns'])
+    @dedent
     def get_z(self, var, coords=None):
-        """Get the vertical (z-) coordinate of a variable
+        """
+        Get the vertical (z-) coordinate of a variable
 
         This method searches for the z-coordinate in the :attr:`ds`. It first
         checks whether there is one dimension that holds an ``'axis'``
@@ -1137,7 +1151,7 @@ class CFDecoder(object):
         Returns
         -------
         xarray.Coordinate or None
-            The z-coordinate or None if no time coordinate could be found"""
+            The z-coordinate or None if no z coordinate could be found"""
         coords = coords or self.ds.coords
         coord = self.get_variable_by_axis(var, 'z', coords)
         if coord is not None:
@@ -1190,8 +1204,12 @@ class CFDecoder(object):
             return var.dims[icheck]
         return None
 
+    @docstrings.get_sectionsf("CFDecoder.get_t", sections=[
+        'Parameters', 'Returns'])
+    @dedent
     def get_t(self, var, coords=None):
-        """Get the time coordinate of a variable
+        """
+        Get the time coordinate of a variable
 
         This method searches for the time coordinate in the :attr:`ds`. It
         first checks whether there is one dimension that holds an ``'axis'``
@@ -1370,6 +1388,8 @@ class CFDecoder(object):
     docstrings.keep_params('CFDecoder._check_triangular_bounds.parameters',
                            'nans')
 
+    @docstrings.get_sectionsf('CFDecoder.get_triangles', sections=[
+        'Parameters', 'Returns'])
     @docstrings.dedent
     def get_triangles(self, var, coords=None, convert_radian=True,
                       copy=False, src_crs=None, target_crs=None,
@@ -1419,6 +1439,9 @@ class CFDecoder(object):
                     vertices = vertices * 180. / np.pi
             return vertices if not copy else vertices.copy()
 
+        if coords is None:
+            coords = self.ds.coords
+
         xvert = get_vertices('x')
         yvert = get_vertices('y')
         if src_crs is not None and src_crs != target_crs:
@@ -1460,10 +1483,11 @@ class CFDecoder(object):
             new_x, new_y = map(_infer_interval_breaks, [x, y])
             return interp2d(x, y, np.asarray(coord), kind=kind)(new_x, new_y)
 
-    @staticmethod
+    @classmethod
+    @docstrings.get_sectionsf('CFDecoder._decode_ds')
     @docstrings.dedent
-    def decode_ds(ds, gridfile=None, inplace=False, decode_coords=True,
-                  decode_times=True):
+    def _decode_ds(cls, ds, gridfile=None, inplace=False, decode_coords=True,
+                   decode_times=True):
         """
         Static method to decode coordinates and time informations
 
@@ -1481,15 +1505,39 @@ class CFDecoder(object):
             If True, decode the 'coordinates' attribute to identify coordinates
             in the resulting dataset."""
         if decode_coords:
-            ds = CFDecoder.decode_coords(ds, gridfile=gridfile,
-                                         inplace=inplace)
+            ds = cls.decode_coords(ds, gridfile=gridfile,
+                                   inplace=inplace)
         if decode_times:
             for k, v in six.iteritems(ds.variables):
-                if v.attrs.get('units', '') == 'day as %Y%m%d.%f':
+                # check for absolute time units and make sure the data is not
+                # already decoded via dtype check
+                if v.attrs.get('units', '') == 'day as %Y%m%d.%f' and (
+                        np.issubdtype(v.dtype, float)):
                     decoded = xarray.Variable(
                         v.dims, AbsoluteTimeDecoder(v), attrs=v.attrs,
                         encoding=v.encoding)
                     ds = ds.update({k: decoded}, inplace=inplace)
+        return ds
+
+    @classmethod
+    @docstrings.dedent
+    def decode_ds(cls, ds, *args, **kwargs):
+        """
+        Static method to decode coordinates and time informations
+
+        This method interpretes absolute time informations (stored with units
+        ``'day as %Y%m%d.%f'``) and coordinates
+
+        Parameters
+        ----------
+        %(CFDecoder._decode_ds.parameters)s
+
+        Returns
+        -------
+        xarray.Dataset
+            The decoded dataset"""
+        for decoder_cls in cls._registry + [CFDecoder]:
+            ds = decoder_cls._decode_ds(ds, *args, **kwargs)
         return ds
 
     def correct_dims(self, var, dims={}):
@@ -1543,6 +1591,234 @@ class CFDecoder(object):
         for dim in set(dims).intersection(name_map):
             dims[name_map[dim]] = dims.pop(dim)
         return dims
+
+
+class UGridDecoder(CFDecoder):
+    """
+    Decoder for UGrid data sets
+
+    Warnings
+    --------
+    Currently only triangles are supported."""
+
+    def is_triangular(self, *args, **kwargs):
+        """Reimpletemented to return always True. Any ``*args`` and ``**kwargs``
+        are ignored"""
+        return True
+
+    def get_mesh(self, var, coords=None):
+        """Get the mesh variable for the given `var`
+
+        Parameters
+        ----------
+        var: xarray.Variable
+            The data source whith the ``'mesh'`` attribute
+        coords: dict
+            The coordinates to use. If None, the coordinates of the dataset of
+            this decoder is used
+
+        Returns
+        -------
+        xarray.Coordinate
+            The mesh coordinate"""
+        mesh = var.attrs.get('mesh')
+        if mesh is None:
+            return None
+        if coords is None:
+            coords = self.ds.coords
+        return coords.get(mesh, self.ds.coords.get(mesh))
+
+    @classmethod
+    @docstrings.dedent
+    def can_decode(cls, ds, var):
+        """
+        Check whether the given variable can be decoded.
+
+        Returns True if a mesh coordinate could be found via the
+        :meth:`get_mesh` method
+
+        Parameters
+        ----------
+        %(CFDecoder.can_decode.parameters)%s
+
+        Returns
+        -------
+        %(CFDecoder.can_decode.returns)%s"""
+        return cls(ds).get_mesh(var) is not None
+
+    @docstrings.dedent
+    def get_triangles(self, var, coords=None, convert_radian=True, copy=False,
+                      src_crs=None, target_crs=None, nans=None):
+        """
+        Get the of the given coordinate.
+
+        Parameters
+        ----------
+        %(CFDecoder.get_triangles.parameters)s
+
+        Returns
+        -------
+        %(CFDecoder.get_triangles.returns)s
+
+        Notes
+        -----
+        If the ``'location'`` attribute is set to ``'node'``, a delaunay
+        triangulation is performed using the
+        :class:`matplotlib.tri.Triangulation` class.
+
+        .. todo::
+            Implement the visualization for UGrid data shown on the edge of the
+            triangles"""
+        from matplotlib.tri import Triangulation
+
+        if coords is None:
+            coords = self.ds.coords
+
+        def get_coord(coord):
+            return coords.get(coord, self.ds.coords.get(coord))
+
+        mesh = self.get_mesh(var, coords)
+        nodes = self.get_nodes(mesh, coords)
+        if any(n is None for n in nodes):
+            raise ValueError("Could not find the nodes variables!")
+        xvert, yvert = nodes
+        xvert = xvert.values
+        yvert = yvert.values
+        loc = var.attrs.get('location', 'face')
+        if loc == 'face':
+            triangles = get_coord(
+                mesh.attrs.get('face_node_connectivity', '')).values
+            if triangles is None:
+                raise ValueError(
+                    "Could not find the connectivity information!")
+        elif loc == 'node':
+            triangles = None
+        else:
+            raise ValueError(
+                "Could not interprete location attribute (%s) of mesh "
+                "variable %s!" % (loc, mesh.name))
+
+        if convert_radian:
+            for coord in nodes:
+                if coord.attrs.get('units') == 'radian':
+                    coord = coord * 180. / np.pi
+        if src_crs is not None and src_crs != target_crs:
+            if target_crs is None:
+                raise ValueError(
+                    "Found %s for the source crs but got None for the "
+                    "target_crs!" % (src_crs, ))
+            xvert = xvert[triangles].ravel()
+            yvert = yvert[triangles].ravel()
+            arr = target_crs.transform_points(src_crs, xvert, yvert)
+            xvert = arr[:, 0]
+            yvert = arr[:, 1]
+            if loc == 'face':
+                triangles = np.reshape(range(len(xvert)), (len(xvert) / 3, 3))
+
+        return Triangulation(xvert, yvert, triangles)
+
+    @staticmethod
+    @docstrings.dedent
+    def decode_coords(ds, gridfile=None, inplace=True):
+        """
+        Reimplemented to set the mesh variables as coordinates
+
+        Parameters
+        ----------
+        %(CFDecoder.decode_coords.parameters)s
+
+        Returns
+        -------
+        %(CFDecoder.decode_coords.returns)s"""
+        extra_coords = set(ds.coords)
+        for var in six.itervalues(ds.variables):
+            if 'mesh' in var.attrs:
+                mesh = var.attrs['mesh']
+                if mesh not in extra_coords:
+                    extra_coords.add(mesh)
+                    try:
+                        mesh_var = ds.variables[mesh]
+                    except KeyError:
+                        warn('Could not find mesh variable %s' % mesh)
+                        continue
+                    if 'node_coordinates' in mesh_var.attrs:
+                        extra_coords.update(
+                            mesh_var.attrs['node_coordinates'].split())
+                    if 'face_node_connectivity' in mesh_var.attrs:
+                        extra_coords.add(
+                            mesh_var.attrs['face_node_connectivity'])
+        if gridfile is not None and not isinstance(gridfile, xarray.Dataset):
+            gridfile = open_dataset(gridfile)
+            ds = ds.update({k: v for k, v in six.iteritems(gridfile.variables)
+                            if k in extra_coords}, inplace=inplace)
+        ds = ds.set_coords(extra_coords.intersection(ds.variables),
+                           inplace=inplace)
+        return ds
+
+    def get_nodes(self, coord, coords):
+        """Get the variables containing the definition of the nodes
+
+        Parameters
+        ----------
+        coord: xarray.Coordinate
+            The mesh variable
+        coords: dict
+            The coordinates to use to get node coordinates"""
+        def get_coord(coord):
+            return coords.get(coord, self.ds.coords.get(coord))
+        return list(map(get_coord,
+                        coord.attrs.get('node_coordinates', '').split()[:2]))
+
+    @docstrings.dedent
+    def get_x(self, var, coords=None):
+        """Get the centers of the triangles in the x-dimension
+
+        Parameters
+        ----------
+        %(CFDecoder.get_y.parameters)s
+
+        Returns
+        -------
+        %(CFDecoder.get_y.returns)s"""
+        if coords is None:
+            coords = self.ds.coords
+        # first we try the super class
+        ret = super(UGridDecoder, self).get_x(var, coords)
+        # but if that doesn't work because we get the variable name in the
+        # dimension of `var`, we use the means of the triangles
+        if ret is None or ret.name in var.dims:
+            triangles = self.get_triangles(var, coords)
+            centers = triangles.x[triangles.triangles].mean(axis=-1)
+            x = self.get_nodes(self.get_mesh(var, coords), coords)[0]
+            return xarray.Coordinate(x.name, centers, attrs=x.attrs.copy())
+
+    @docstrings.dedent
+    def get_y(self, var, coords=None):
+        """
+        Get the centers of the triangles in the y-dimension
+
+        Parameters
+        ----------
+        %(CFDecoder.get_y.parameters)s
+
+        Returns
+        -------
+        %(CFDecoder.get_y.returns)s"""
+        if coords is None:
+            coords = self.ds.coords
+        # first we try the super class
+        ret = super(UGridDecoder, self).get_y(var, coords)
+        # but if that doesn't work because we get the variable name in the
+        # dimension of `var`, we use the means of the triangles
+        if ret is None or ret.name in var.dims:
+            triangles = self.get_triangles(var, coords)
+            centers = triangles.y[triangles.triangles].mean(axis=-1)
+            y = self.get_nodes(self.get_mesh(var, coords), coords)[1]
+            return xarray.Coordinate(y.name, centers, attrs=y.attrs.copy())
+
+
+# register the UGridDecoder
+CFDecoder.register_decoder(UGridDecoder)
 
 docstrings.keep_params('CFDecoder.decode_coords.parameters', 'gridfile')
 docstrings.get_sections(dedents(xarray.open_dataset.__doc__.split('\n', 1)[1]),
@@ -2094,10 +2370,13 @@ class InteractiveArray(xarray.DataArray, InteractiveBase):
                 " I can not choose a new method %s" % (self.method, method))
         else:
             self.method = method
+        if 'name' in dims:
+            self._new_dims['name'] = dims.pop('name')
         self._new_dims.update(self.decoder.correct_dims(
             next(six.itervalues(self.base_variables)), dims))
-        InteractiveBase._register_update(self, fmt=fmt, replot=replot or dims,
-                                         force=force, todefault=todefault)
+        InteractiveBase._register_update(
+            self, fmt=fmt, replot=replot or bool(self._new_dims), force=force,
+            todefault=todefault)
 
     def _update_concatenated(self, dims, method):
         """Updates a concatenated array to new dimensions"""
@@ -2912,10 +3191,12 @@ class ArrayList(list):
         """Draws all the figures in this instance"""
         for fig in set(chain(*map(
                 lambda arr: arr.plotter.figs2draw, self.with_plotter))):
+            self.logger.debug("Drawing figure %s", fig.number)
             fig.canvas.draw()
         for arr in self:
             if arr.plotter is not None:
                 arr.plotter._figs2draw.clear()
+        self.logger.debug("Done drawing.")
 
     def __call__(self, types=None, method='isel', arr_name=None, **attrs):
         """Get the arrays specified by their attributes
