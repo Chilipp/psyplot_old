@@ -981,6 +981,7 @@ class MapPlot2D(Plot2D):
     def _tripcolor(self):
         from matplotlib.tri import TriAnalyzer
         mratio = rcParams['plotter.maps.plot.min_circle_ratio']
+        self.logger.debug("Getting triangles")
         triangles = self.triangles
         if mratio:
             flat_mask = TriAnalyzer(triangles).get_flat_tri_mask(mratio)
@@ -988,6 +989,7 @@ class MapPlot2D(Plot2D):
             # boundaries right. That implies that we mask out flat triangles
             # (epecially those at the end) and transform them manually
             decoder = self.raw_data.decoder
+            self.logger.debug("Wrapping triangles")
             triangles_wrapped = decoder.get_triangles(
                 self.data, self.data.coords, copy=True,
                 src_crs=self.transform.projection,
@@ -996,8 +998,10 @@ class MapPlot2D(Plot2D):
             triangles.set_mask(flat_mask)
         cmap = get_cmap(self.cmap.value, len(self.bounds.bounds) - 1 or None)
         if hasattr(self, '_plot'):
+            self.logger.debug("Updating plot")
             self._plot.update(dict(cmap=cmap, norm=self.bounds.norm))
         else:
+            self.logger.debug("Creating new plot")
             arr = self.array
             arr = arr[~np.isnan(arr)]
             self._plot = self.ax.tripcolor(
@@ -1006,6 +1010,7 @@ class MapPlot2D(Plot2D):
         # draw wrapped collection to fix the issue that the boundaries are
         # masked out when using the min_circle_ration
         if mratio and not hasattr(self, '_wrapped_plot'):
+            self.logger.debug("Creating new wrapped plot")
             kwargs = self._kwargs.copy()
             kwargs['zorder'] = self._plot.zorder - 0.1
             kwargs.pop('transform', None)
@@ -1014,7 +1019,9 @@ class MapPlot2D(Plot2D):
                 triangles_wrapped, arr, norm=self.bounds.norm,
                 cmap=cmap, rasterized=True, **kwargs)
         else:
+            self.logger.debug("Updating wrapped plot")
             self._wrapped_plot.update(dict(cmap=cmap, norm=self.bounds.norm))
+        self.logger.debug("Plot made. Done.")
         return
 
     def remove(self):
