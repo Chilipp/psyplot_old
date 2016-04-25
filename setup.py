@@ -11,7 +11,7 @@ def readme():
 
 
 setup(name='psyplot',
-      version='0.2.9',
+      version='0.2.10',
       description='Python package for interactive data visualization',
       long_description=readme(),
       classifiers=[
@@ -40,6 +40,8 @@ setup(name='psyplot',
           'xarray',
           'PyYAML'
       ],
+      package_data={'psyplot': ['psyplot/sphinxext/_static/*']},
+      include_package_data=True,
       setup_requires=pytest_runner,
       tests_require=['pytest'],
       entry_points={'console_scripts': ['psyplot=psyplot.main:main']},

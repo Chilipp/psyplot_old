@@ -6,7 +6,7 @@ import psyplot.config as config
 from psyplot.data import (
     ArrayList, InteractiveArray, InteractiveList, open_dataset, open_mfdataset)
 
-__version__ = "0.2.9"
+__version__ = "0.2.10"
 __author__ = "Philipp Sommer (philipp.sommer@unil.ch)"
 
 logger = _logging.getLogger(__name__)
