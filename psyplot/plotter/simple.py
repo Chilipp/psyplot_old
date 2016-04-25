@@ -1161,18 +1161,62 @@ class Transpose(Formatoption):
     def get_x(self, arr):
         if not hasattr(arr, 'ndim'):  # if the data object is an array list
             arr = arr[0]
-        if arr.ndim == 1:
-            return arr if self.value else arr.coords[arr.dims[0]]
+        is_unstructured = self.decoder.is_unstructured(arr)
+        if not is_unstructured and arr.ndim == 1:
+            if self.value:
+                return arr
+            else:
+                #: The x-coordinate name of the variable as stored in the
+                #: dataset (might differ from the one in this array because
+                #: this could also be time, z, y, etc.)
+                ds_coord = arr.decoder.get_xname(
+                    next(arr.iter_base_variables))
+                xname = arr.dims[0]
         else:
-            return arr.coords[arr.dims[-1 if not self.value else -2]]
+            if self.value:
+                ds_coord = arr.decoder.get_yname(
+                    next(arr.iter_base_variables))
+                xname = arr.dims[-2 if not is_unstructured else -1]
+            else:
+                ds_coord = arr.decoder.get_xname(
+                    next(arr.iter_base_variables))
+                xname = arr.dims[-1]
+        if xname == ds_coord:
+            if self.value:
+                return arr.decoder.get_y(arr)
+            return arr.decoder.get_x(arr)
+        else:
+            return arr.coords[xname]
 
     def get_y(self, arr):
         if not hasattr(arr, 'ndim'):  # if the data object is an array list
             arr = arr[0]
-        if arr.ndim == 1:
-            return arr if not self.value else arr.coords[arr.dims[0]]
+        is_unstructured = self.decoder.is_unstructured(arr)
+        if not is_unstructured and arr.ndim == 1:
+            if not self.value:
+                return arr
+            else:
+                #: The x-coordinate name of the variable as stored in the
+                #: dataset (might differ from the one in this array because
+                #: this could also be time, z, y, etc.)
+                ds_coord = arr.decoder.get_xname(
+                    next(arr.iter_base_variables))
+                yname = arr.dims[0]
         else:
-            return arr.coords[arr.dims[-2 if not self.value else -1]]
+            if not self.value:
+                ds_coord = arr.decoder.get_yname(
+                    next(arr.iter_base_variables))
+                yname = arr.dims[-2 if not is_unstructured else -1]
+            else:
+                ds_coord = arr.decoder.get_xname(
+                    next(arr.iter_base_variables))
+                yname = arr.dims[-1]
+        if yname == ds_coord:
+            if self.value:
+                return arr.decoder.get_x(arr)
+            return arr.decoder.get_y(arr)
+        else:
+            return arr.coords[yname]
 
 
 class LineColors(Formatoption):
@@ -1674,14 +1718,32 @@ class Xlim2D(Xlim):
     __doc__ = Xlim.__doc__
 
     def get_data(self):
-        return self.transpose.get_x(self.data)
+        xcoord = self.transpose.get_x(self.data)
+        func = 'get_x' if not self.transpose.value else 'get_y'
+        if (self.decoder.is_triangular(self.data) and
+                xcoord.name == getattr(self.decoder, func)(self.data).name):
+            triangles = self.decoder.get_triangles(self.data)
+            if self.transpose.value:
+                return triangles.y[triangles.triangles].ravel()
+            else:
+                return triangles.x[triangles.triangles].ravel()
+        return self.decoder.get_plotbounds(xcoord)
 
 
 class Ylim2D(Ylim):
     __doc__ = Ylim.__doc__
 
     def get_data(self):
-        return self.transpose.get_y(self.data)
+        ycoord = self.transpose.get_y(self.data)
+        func = 'get_x' if self.transpose.value else 'get_y'
+        if (self.decoder.is_triangular(self.data) and
+                ycoord.name == getattr(self.decoder, func)(self.data).name):
+            triangles = self.decoder.get_triangles(self.data)
+            if self.transpose.value:
+                return triangles.x[triangles.triangles].ravel()
+            else:
+                return triangles.y[triangles.triangles].ravel()
+        return self.decoder.get_plotbounds(self.transpose.get_y(self.data))
 
 
 class ViolinYlim(Ylim):
@@ -2176,7 +2238,7 @@ class SimplePlot2D(Plot2D):
         Use the :func:`matplotlib.pyplot.pcolormesh` function to make the plot
     """
 
-    dependencies = ['transpose']
+    dependencies = Plot2D.dependencies + ['transpose']
 
     @property
     def array(self):
@@ -2184,6 +2246,13 @@ class SimplePlot2D(Plot2D):
             return super(SimplePlot2D, self).array.T
         else:
             return super(SimplePlot2D, self).array
+
+    @property
+    def triangles(self):
+        triangles = super(SimplePlot2D, self).triangles
+        if self.transpose.value:
+            triangles.x, triangles.y = triangles.y, triangles.x
+        return triangles
 
     @property
     def xbounds(self):
