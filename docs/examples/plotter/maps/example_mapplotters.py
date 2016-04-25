@@ -10,8 +10,8 @@
 # In[ ]:
 
 import psyplot.project as psy
-# get_ipython().magic('matplotlib inline')
-# get_ipython().magic('config InlineBackend.close_figures = False')
+# get_ipython().magic(u'matplotlib inline')
+# get_ipython().magic(u'config InlineBackend.close_figures = False')
 # we show the figures after they are drawn or updated. This is useful for the 
 # visualization in the ipython notebook
 psy.rcParams['auto_show'] = True

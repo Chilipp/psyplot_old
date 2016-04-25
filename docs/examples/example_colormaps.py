@@ -10,7 +10,7 @@
 # In[ ]:
 
 import psyplot.project as psy
-# get_ipython().magic('matplotlib inline')
+# get_ipython().magic(u'matplotlib inline')
 
 
 # You can either visualize specific colormaps
