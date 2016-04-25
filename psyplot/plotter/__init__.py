@@ -2006,7 +2006,7 @@ class Plotter(dict):
             else:
                 base_var = next(six.itervalues(base_variables))
             attrs['name'] = arr.name
-            for dim, coord in six.iteritems(arr.coords):
+            for dim, coord in six.iteritems(getattr(arr, 'coords', {})):
                 if coord.size == 1:
                     attrs[dim] = format_time(coord.values)
             for dim in axes:
@@ -2015,7 +2015,7 @@ class Plotter(dict):
                 else:
                     decoder = self.data.decoder
                 coord = getattr(decoder, 'get_' + dim)(
-                    base_var, coords=arr.coords)
+                    base_var, coords=getattr(arr, 'coords', None))
                 if coord is None:
                     continue
                 if coord.size == 1:
