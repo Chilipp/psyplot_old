@@ -25,9 +25,7 @@ install:
   - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION dask xarray netCDF4 cartopy seaborn bottleneck
   - source activate test-environment
   - pip install cyordereddict
-  - pip install pytest
-  - pip install pytest-html
   - python setup.py install
 
 script:
-  - py.test --html=report.html
+  - py.test
