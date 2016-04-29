@@ -111,7 +111,7 @@ class DecoderTest(TestCase):
                          circ_name='latitude')
 
     def test_idims(self):
-        ds = psyd.open_dataset('test-t2m-u-v.nc')
+        ds = psyd.open_dataset(os.path.join(bt.test_dir, 'test-t2m-u-v.nc'))
         arr = psyd.InteractiveArray(ds.t2m[1:, 3], base=ds)
         dims = arr.idims
         for dim in ['time', 'lev', 'lat', 'lon']:
