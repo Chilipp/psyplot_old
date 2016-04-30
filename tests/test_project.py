@@ -31,7 +31,7 @@ class ProjectTester(bt.PsyPlotTestCase):
         fname = os.path.join(bt.ref_dir, self.get_ref_file('save_load2'))
         plt.savefig(fname)
         p = psy.gcp(True)
-        p.save_project(fname + '.pkl')
+        p.save_project(fname + '.pkl', use_rel_paths=False)
         p.close(True, True)
         plt.close('all')
         p = psy.Project.load_project(fname + '.pkl')
@@ -55,7 +55,7 @@ class ProjectTester(bt.PsyPlotTestCase):
         plt.close('all')
 
         p = psy.Project.load_project(fname + '.pkl', alternative_paths={
-            '../../../test-t2m-u-v.nc': get_file('icon_test.nc')})
+            get_file('test-t2m-u-v.nc'): get_file('icon_test.nc')})
         plt.figure(1)
         self.compare_figures(self.get_ref_file('save_load3'))
         plt.figure(2)
