@@ -1,0 +1,18 @@
+name: psyplot_py2.7_mpl1.5
+channels:
+    - chilipp
+    - scitools
+dependencies:
+    - python=2.7
+    - matplotlib=1.5
+    - dask
+    - xarray
+    - netCDF4
+    - cartopy
+    - seaborn
+    - bottleneck
+    - pip:
+        - cyordereddict
+        - pytest
+        - pytest-html
+        - pytest-cov
