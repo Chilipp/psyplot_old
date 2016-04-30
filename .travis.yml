@@ -24,11 +24,10 @@ install:
   # Useful for debugging any issues with conda
   - conda info -a
 
-  - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION dask xarray netCDF4 cartopy seaborn bottleneck matplotlib=$MPL_VERSION
-  - source activate test-environment
-  - pip install cyordereddict
-  - pip install pytest-html
-  - pip install pytest-cov
+  - 'ENVKEY=py"${TRAVIS_PYTHON_VERSION}"_mpl"${MPL_VERSION}"'
+
+  - conda env create -f tests/envs/environment_$ENVKEY.yml
+  - source activate psyplot_$ENVKEY
   - python setup.py install
 
 before_script:
