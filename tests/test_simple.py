@@ -222,7 +222,7 @@ class LinePlotterTest(tb.BasePlotterTest):
         if ax.get_xticklabels()[0].get_text():
             self.assertEqual(
                 [int(t.get_text()) for t in ax.get_xticklabels()[:]],
-                range(2, 6))
+                list(range(2, 6)))
         plotter.update(xticks={'minor': 'week'}, xticklabels={'minor': '%d'},
                        xtickprops={'pad': 7.0})
         self.assertEqual(
