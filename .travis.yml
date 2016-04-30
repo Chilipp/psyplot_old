@@ -4,11 +4,8 @@ python:
   - "2.7"
   - "3.4"
 env:
-  global:
-    - MPLBACKEND=Agg
-  matrix:
-    - MPL_VERSION=1.4
-    - MPL_VERSION=1.5
+  - MPL_VERSION=1.4
+  - MPL_VERSION=1.5
 install:
   # We do this conditionally because it saves us some downloading if the
   # version is the same.
