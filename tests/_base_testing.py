@@ -7,6 +7,7 @@ import matplotlib as mpl
 import numpy as np
 
 ref_dir = os.path.join(os.path.dirname(__file__), 'reference_figures',
+                       sys.platform,
                        'py' + '.'.join(map(str, sys.version_info[:2])),
                        'mpl' + mpl.__version__.rsplit('.', 1)[0])
 
