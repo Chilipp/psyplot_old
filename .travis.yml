@@ -28,6 +28,8 @@ install:
 
   - conda env create -f tests/envs/environment_$ENVKEY.yml
   - source activate psyplot_$ENVKEY
+  - pip install coveralls
+  - pip install pytest-xdist
   - python setup.py install
 
 before_script:
@@ -36,4 +38,7 @@ before_script:
   - sleep 3 # give xvfb some time to start
 
 script:
-  - py.test -x --html=report.html --cov=psyplot
+  - py.test -x --html=report.html --cov=psyplot --cov-report=
+
+after_success:
+  coveralls
