@@ -1,0 +1,14 @@
+# Changelog: https://github.com/SciTools/cartopy/blob/master/docs/source/whats_new.rst
+cartopy==0.13.1 # rq.filter: >=0.13, <0.14
+
+# Changelog: https://github.com/matplotlib/matplotlib/blob/master/CHANGELOG
+matplotlib==1.5.1  # rq.filter: >=1.4, <2.0
+
+# Changelog: http://stanford.edu/~mwaskom/software/seaborn/whatsnew.html
+seaborn==0.7.0  # rq.filter: >=0.6, <0.8
+
+# Changelog: https://github.com/pydata/xarray/blob/stable/doc/whats-new.rst
+xarray=0.7.2  # rq.filter: >=0.7.0, < 0.8
+
+# Changelog: https://github.com/Unidata/netcdf4-python/blob/master/Changelog
+netCDF4=1.2.1 # rg.filter: >=1.2, <1.3
