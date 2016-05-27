@@ -5,11 +5,12 @@ The psyplot interactive visualization framework
 
 .. list-table::
     :stub-columns: 1
+    :widths: 10 90
 
     * - docs
       - |docs|
     * - tests
-      - | |travis| |requires|
+      - |travis| |requires|
     * - package
       - |version| |supported-versions| |supported-implementations|
 
@@ -21,7 +22,7 @@ The psyplot interactive visualization framework
     :alt: Travis
     :target: https://travis-ci.org/Chilipp/psyplot
 
-.. |requires| .. image:: https://requires.io/github/Chilipp/psyplot/requirements.svg?branch=master
+.. |requires| image:: https://requires.io/github/Chilipp/psyplot/requirements.svg?branch=master
      :alt: Requirements Status
      :target: https://requires.io/github/Chilipp/psyplot/requirements/?branch=master
 
@@ -52,7 +53,9 @@ can be enhanced by their own visualization scripts.
 
 The package is very new and there are many features that will be included in
 the near future. So we are very pleased for feedback! Please simply raise an issue
-on `GitHub <https://github.com/Chilipp/psyplot>`__.
+on `GitHub <https://github.com/Chilipp/psyplot>`__. The package may also be
+enhanced by the psyplot_gui_ module which provides a graphical user interface
+for an easier interactive usage.
 
 You can see the full documentation on
 `readthedocs.org <http://psyplot.readthedocs.org/en/latest/>`__.

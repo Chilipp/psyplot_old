@@ -6,7 +6,7 @@
 Interactive data visualization with python
 ==========================================
 
-Welcome! **psyplot** is a open source python project that mainly combines the
+Welcome! **psyplot** is an open source python project that mainly combines the
 plotting utilities of matplotlib_ and the data management of the xarray_
 package. The main purpose is to have a framework that allows a  fast,
 attractive, flexible, easily applicable, easily reproducible and especially
@@ -14,11 +14,55 @@ an interactive visualization of your data.
 
 The ultimate goal is to help scientiests and especially climate model
 developers in their daily work by providing a flexibel visualization tool that
-can be enhanced by their own visualization scripts.
+can be enhanced by their own visualization scripts. The package may also be
+enhanced by the psyplot_gui_ module which provides a graphical user interface
+for an easier interactive usage.
 
 The package is very new and there are many features that will be included in
 the future. So we are very pleased for feedback! Please simply raise an issue
 on `GitHub <https://github.com/Chilipp/psyplot>`__.
+
+.. _psyplot_gui: http://psyplot-gui.readthedocs.io/en/latest/
+
+.. start-badges
+
+.. list-table::
+    :stub-columns: 1
+    :widths: 10 90
+
+    * - docs
+      - |docs|
+    * - tests
+      - |travis| |requires|
+    * - package
+      - |version| |supported-versions| |supported-implementations|
+
+.. |docs| image:: https://readthedocs.org/projects/psyplot/badge/?style=flat
+    :target: https://readthedocs.org/projects/psyplot
+    :alt: Documentation Status
+
+.. |travis| image:: https://travis-ci.org/Chilipp/psyplot.svg?branch=master
+    :alt: Travis
+    :target: https://travis-ci.org/Chilipp/psyplot
+
+.. |requires| image:: https://requires.io/github/Chilipp/psyplot/requirements.svg?branch=master
+     :alt: Requirements Status
+     :target: https://requires.io/github/Chilipp/psyplot/requirements/?branch=master
+
+.. |version| image:: https://img.shields.io/pypi/v/psyplot.svg?style=flat
+    :alt: PyPI Package latest release
+    :target: https://pypi.python.org/pypi/psyplot
+
+.. |supported-versions| image:: https://img.shields.io/pypi/pyversions/psyplot.svg?style=flat
+    :alt: Supported versions
+    :target: https://pypi.python.org/pypi/psyplot
+
+.. |supported-implementations| image:: https://img.shields.io/pypi/implementation/psyplot.svg?style=flat
+    :alt: Supported implementations
+    :target: https://pypi.python.org/pypi/psyplot
+
+
+.. end-badges
 
 
 Documentation
