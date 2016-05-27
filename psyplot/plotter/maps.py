@@ -1004,6 +1004,7 @@ class MapPlot2D(Plot2D):
             self.logger.debug("Creating new plot")
             arr = self.array
             arr = arr[~np.isnan(arr)]
+            self.logger.debug("Creating %i triangles", len(arr))
             self._plot = self.ax.tripcolor(
                 triangles, arr, norm=self.bounds.norm, cmap=cmap,
                 rasterized=True, **self._kwargs)
