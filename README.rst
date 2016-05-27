@@ -10,7 +10,7 @@ The psyplot interactive visualization framework
     * - docs
       - |docs|
     * - tests
-      - |travis| |requires|
+      - |travis| |requires| |coveralls|
     * - package
       - |version| |supported-versions| |supported-implementations|
 
@@ -21,6 +21,10 @@ The psyplot interactive visualization framework
 .. |travis| image:: https://travis-ci.org/Chilipp/psyplot.svg?branch=master
     :alt: Travis
     :target: https://travis-ci.org/Chilipp/psyplot
+
+.. |coveralls|  image:: https://coveralls.io/repos/github/Chilipp/psyplot/badge.svg?branch=master
+    :alt: Coverage
+    :target: https://coveralls.io/github/Chilipp/psyplot?branch=master
 
 .. |requires| image:: https://requires.io/github/Chilipp/psyplot/requirements.svg?branch=master
      :alt: Requirements Status
