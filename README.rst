@@ -1,7 +1,46 @@
 The psyplot interactive visualization framework
 ===============================================
 
-Welcome! **psyplot** is a open source python project that mainly combines the
+.. start-badges
+
+.. list-table::
+    :stub-columns: 1
+
+    * - docs
+      - |docs|
+    * - tests
+      - | |travis| |requires|
+    * - package
+      - |version| |supported-versions| |supported-implementations|
+
+.. |docs| image:: https://readthedocs.org/projects/psyplot/badge/?style=flat
+    :target: https://readthedocs.org/projects/psyplot
+    :alt: Documentation Status
+
+.. |travis| image:: https://travis-ci.org/Chilipp/psyplot.svg?branch=master
+    :alt: Travis
+    :target: https://travis-ci.org/Chilipp/psyplot
+
+.. |requires| .. image:: https://requires.io/github/Chilipp/psyplot/requirements.svg?branch=master
+     :alt: Requirements Status
+     :target: https://requires.io/github/Chilipp/psyplot/requirements/?branch=master
+
+.. |version| image:: https://img.shields.io/pypi/v/psyplot.svg?style=flat
+    :alt: PyPI Package latest release
+    :target: https://pypi.python.org/pypi/psyplot
+
+.. |supported-versions| image:: https://img.shields.io/pypi/pyversions/psyplot.svg?style=flat
+    :alt: Supported versions
+    :target: https://pypi.python.org/pypi/psyplot
+
+.. |supported-implementations| image:: https://img.shields.io/pypi/implementation/psyplot.svg?style=flat
+    :alt: Supported implementations
+    :target: https://pypi.python.org/pypi/psyplot
+
+
+.. end-badges
+
+Welcome! **psyplot** is an open source python project that mainly combines the
 plotting utilities of matplotlib_ and the data management of the xarray_
 package. The main purpose is to have a framework that allows a  fast,
 attractive, flexible, easily applicable, easily reproducible and especially
