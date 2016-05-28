@@ -1,3 +1,4 @@
+===============================================
 The psyplot interactive visualization framework
 ===============================================
 
@@ -22,13 +23,13 @@ The psyplot interactive visualization framework
     :alt: Travis
     :target: https://travis-ci.org/Chilipp/psyplot
 
-.. |coveralls|  image:: https://coveralls.io/repos/github/Chilipp/psyplot/badge.svg?branch=master
+.. |coveralls| image:: https://coveralls.io/repos/github/Chilipp/psyplot/badge.svg?branch=master
     :alt: Coverage
     :target: https://coveralls.io/github/Chilipp/psyplot?branch=master
 
 .. |requires| image:: https://requires.io/github/Chilipp/psyplot/requirements.svg?branch=master
-     :alt: Requirements Status
-     :target: https://requires.io/github/Chilipp/psyplot/requirements/?branch=master
+    :alt: Requirements Status
+    :target: https://requires.io/github/Chilipp/psyplot/requirements/?branch=master
 
 .. |version| image:: https://img.shields.io/pypi/v/psyplot.svg?style=flat
     :alt: PyPI Package latest release
@@ -82,6 +83,7 @@ A special thanks to Stefan Hagemann and Tobias Stacke from the
 Max-Planck-Institute of Meterology in Hamburg, Germany for the motivation on
 this project.
 
+.. _psyplot_gui: http://psyplot-gui.readthedocs.io/en/latest/
 .. _matplotlib: http://matplotlib.org
 .. _xarray: http://xarray.pydata.org/
 .. _cartopy: http://scitools.org.uk/cartopy
