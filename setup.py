@@ -11,7 +11,7 @@ def readme():
 
 
 setup(name='psyplot',
-      version='0.2.11',
+      version='0.2.12',
       description='Python package for interactive data visualization',
       long_description=readme(),
       classifiers=[
