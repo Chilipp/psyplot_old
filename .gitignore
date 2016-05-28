@@ -55,7 +55,7 @@ docs/_build/
 docs/index.doctree
 
 # test results
-tests/psyplot_testresults
+*psyplot_testresults
 
 # PyBuilder
 target/
