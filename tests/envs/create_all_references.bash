@@ -20,7 +20,7 @@ for f; do
 	${python_bin} -c "import psyplot" > /dev/null
 	if [[ $? == 1 ]]; then 
 	    source activate ${env}
-	    conda install -c chilipp psyplot
+	    conda install --no-deps -c chilipp psyplot
 	    source deactivate
     fi
 	# create reference figures
