@@ -3,7 +3,7 @@ channels:
     - chilipp
     - scitools
 dependencies:
-    - python=3.4
+    - python=3.5
     - psyplot_gui
     - dask
     - xarray
