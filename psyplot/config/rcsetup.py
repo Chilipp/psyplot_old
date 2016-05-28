@@ -621,7 +621,7 @@ See rcParams.keys() for a list of valid parameters.' % (key,))
         return None
 
 
-def psyplot_fname():
+def psyplot_fname(env_key='PSYPLOTRC', fname='psyplotrc.yaml'):
     """
     Get the location of the config file.
 
@@ -659,15 +659,15 @@ def psyplot_fname():
     ----------
     [1]: http://matplotlib.org/api/"""
     cwd = getcwd()
-    fname = os.path.join(cwd, 'psyplotrc.yaml')
+    fname = os.path.join(cwd, fname)
     if os.path.exists(fname):
         return fname
 
-    if 'PSYPLOTRC' in os.environ:
-        path = os.environ['PSYPLOTRC']
+    if env_key in os.environ:
+        path = os.environ[env_key]
         if os.path.exists(path):
             if os.path.isdir(path):
-                fname = os.path.join(path, 'psyplotrc.yaml')
+                fname = os.path.join(path, fname)
                 if os.path.exists(fname):
                     return fname
             else:
@@ -675,7 +675,7 @@ def psyplot_fname():
 
     configdir = get_configdir()
     if configdir is not None:
-        fname = os.path.join(configdir, 'psyplotrc.yaml')
+        fname = os.path.join(configdir, fname)
         if os.path.exists(fname):
             return fname
 
