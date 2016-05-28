@@ -11,7 +11,7 @@ def readme():
 
 
 setup(name='psyplot',
-      version='0.2.10',
+      version='0.2.11',
       description='Python package for interactive data visualization',
       long_description=readme(),
       classifiers=[
@@ -27,6 +27,7 @@ setup(name='psyplot',
         'Programming Language :: Python :: 3.2',
         'Programming Language :: Python :: 3.3',
         'Programming Language :: Python :: 3.4',
+        'Programming Language :: Python :: 3.5',
         'Operating System :: OS Independent',
       ],
       keywords='visualization netcdf raster cartopy earth-sciences',

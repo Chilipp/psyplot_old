@@ -5,7 +5,7 @@
 # key of the corresponding file. 
 # The results can be seen in ref_psyplot_${key}.log
 envs_dir=`conda info --root`/envs
-for f in `ls environment_*.yml`; do
+for f; do
 
 	conda env create -f ${f}
 	env=${f%.yml}

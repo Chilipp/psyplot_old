@@ -12,7 +12,7 @@ The psyplot interactive visualization framework
     * - tests
       - |travis| |requires| |coveralls|
     * - package
-      - |version| |supported-versions| |supported-implementations|
+      - |version| |conda| |supported-versions| |supported-implementations|
 
 .. |docs| image:: http://readthedocs.org/projects/psyplot/badge/?version=latest
     :alt: Documentation Status
@@ -33,6 +33,10 @@ The psyplot interactive visualization framework
 .. |version| image:: https://img.shields.io/pypi/v/psyplot.svg?style=flat
     :alt: PyPI Package latest release
     :target: https://pypi.python.org/pypi/psyplot
+
+.. |conda| image:: https://anaconda.org/chilipp/psyplot/badges/installer/conda.svg
+    :alt: conda
+    :target: https://conda.anaconda.org/chilipp
 
 .. |supported-versions| image:: https://img.shields.io/pypi/pyversions/psyplot.svg?style=flat
     :alt: Supported versions

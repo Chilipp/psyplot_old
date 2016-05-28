@@ -46,7 +46,7 @@ Dependencies
 ------------
 Required dependencies
 ^^^^^^^^^^^^^^^^^^^^^
-Psyplot has been tested for python 2.7 and 3.4. Furthermore the package is
+Psyplot has been tested for python 2.7, 3.4 and 3.5. Furthermore the package is
 built upon multiple other packages, namely
 
 - xarray_>=0.7: Is used for the data management in the psyplot package
