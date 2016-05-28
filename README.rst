@@ -14,9 +14,9 @@ The psyplot interactive visualization framework
     * - package
       - |version| |supported-versions| |supported-implementations|
 
-.. |docs| image:: https://readthedocs.org/projects/psyplot/badge/?style=flat
-    :target: https://readthedocs.org/projects/psyplot
+.. |docs| image:: http://readthedocs.org/projects/psyplot/badge/?version=latest
     :alt: Documentation Status
+    :target: http://psyplot.readthedocs.io/en/latest/?badge=latest
 
 .. |travis| image:: https://travis-ci.org/Chilipp/psyplot.svg?branch=master
     :alt: Travis
