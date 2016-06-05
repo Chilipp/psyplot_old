@@ -31,6 +31,8 @@ install:
   - source activate psyplot_$ENVKEY
   - pip install coveralls
   - pip install pytest-xdist
+  # the seaborn actual seaborn version on conda is 0.7.0 
+  - pip install --upgrade seaborn
   - python setup.py install
 
 before_script:
