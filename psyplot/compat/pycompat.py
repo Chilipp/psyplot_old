@@ -33,6 +33,7 @@ if six.PY3:
     from functools import reduce
     from itertools import filterfalse
     import builtins
+    from queue import Queue
 elif six.PY2:
     # Python 2
 
@@ -62,6 +63,7 @@ elif six.PY2:
                            ifilterfalse as filterfalse)
     reduce = reduce
     import __builtin__ as builtins
+    from Queue import Queue
 
 try:
     from cyordereddict import OrderedDict
