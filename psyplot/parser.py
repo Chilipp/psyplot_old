@@ -26,7 +26,7 @@ class FuncArgParser(ArgumentParser):
         doc = doc.rstrip()
         default_min = len(args) - len(defaults)
         for i, arg in enumerate(args):
-            if arg in args_dict:
+            if arg == 'self' or arg in args_dict:
                 continue
             arg_doc = docstrings._keep_params(doc, [arg]) or \
                 docstrings._keep_types(doc, [arg])
