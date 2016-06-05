@@ -24,6 +24,7 @@ from xarray.backends.common import AbstractDataStore
 from psyplot.compat.pycompat import range
 try:
     import gdal
+    from osgeo import gdal_array
 except ImportError as e:
     from .data import _MissingModule
     gdal = _MissingModule(e)
@@ -70,8 +71,7 @@ class GdalStore(AbstractDataStore):
         for iband in range(1, ds.RasterCount+1):
             if with_dask:
                 dsk = {('x', 0, 0): (load, iband)}
-                dt = dtype(
-                    gdal.GetDataTypeName(ds.GetRasterBand(iband).DataType))
+                dt = dtype(gdal_array.codes[ds.GetRasterBand(iband).DataType])
                 arr = Array(dsk, 'x', chunks, shape=shape, dtype=dt)
             else:
                 arr = load(iband)
