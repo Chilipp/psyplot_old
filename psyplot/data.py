@@ -20,13 +20,9 @@ import logging
 from psyplot.config.rcsetup import rcParams, safe_list
 from psyplot.docstring import dedent, docstrings, dedents
 from psyplot.compat.pycompat import (
-    zip, map, isstring, OrderedDict, filter, range, getcwd, filterfalse)
+    zip, map, isstring, OrderedDict, filter, range, getcwd, filterfalse,
+    Queue)
 from psyplot.warning import warn, PsyPlotRuntimeWarning
-
-if six.PY2:
-    from Queue import Queue
-else:
-    from queue import Queue
 
 
 # No data variable. This is used for filtering if an attribute could not have
@@ -1479,7 +1475,7 @@ class CFDecoder(object):
         elif coord.ndim == 2:
             from scipy.interpolate import interp2d
             kind = kind or rcParams['decoder.interp_kind']
-            x, y = map(np.arange, coord.shape)
+            y, x = map(np.arange, coord.shape)
             new_x, new_y = map(_infer_interval_breaks, [x, y])
             return interp2d(x, y, np.asarray(coord), kind=kind)(new_x, new_y)
 
