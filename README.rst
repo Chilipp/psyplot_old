@@ -67,7 +67,7 @@ enhanced by the psyplot_gui_ module which provides a graphical user interface
 for an easier interactive usage.
 
 You can see the full documentation on
-`readthedocs.org <http://psyplot.readthedocs.org/en/latest/>`__.
+`readthedocs.org <http://psyplot.readthedocs.io/en/latest/?badge=latest>`__.
 
 
 Acknowledgment
