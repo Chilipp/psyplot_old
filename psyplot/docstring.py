@@ -432,6 +432,60 @@ class DocStringProcessor(object):
             return f
         return func
 
+    @dedentf
+    def get_summary(self, s, base=None):
+        """
+        Get the summary of the given docstring s
+
+        This method extracts the summary from the given docstring `s` which is
+        basicly the part until two newlines appear
+
+        Parameters
+        ----------
+        s: str
+            The docstring to use
+        base: str or None
+            A key under which the summary shall be stored in the :attr:`params`
+            attribute. If not None, the summary will be stored in
+            ``base + '.summary'``
+
+        Returns
+        -------
+        str
+            The extracted summary"""
+        lines = s.splitlines()
+        try:
+            end = lines.index('')
+            sl = slice(end)
+        except ValueError:  # only summary in s
+            sl = slice(None)
+        summary = ' '.join(lines[sl])
+        if base is not None:
+            self.params[base + '.summary'] = summary
+        return summary
+
+    @dedentf
+    def get_summaryf(self, *args, **kwargs):
+        """
+        Decorator method to extract summary from a function docstring
+
+        Parameters
+        ----------
+        ``*args`` and ``**kwargs``
+            See the :meth:`get_summary` method. Note, that the first argument
+            will be the docstring of the specified function
+
+        Returns
+        -------
+        function
+            Wrapper that takes a function as input and registers its sections
+            via the :meth:`get_sections` method"""
+        def func(f):
+            doc = f.__doc__
+            self.get_summary(doc or '', *args, **kwargs)
+            return f
+        return func
+
 
 def indent(text, num=4):
     """Indet the given string"""
