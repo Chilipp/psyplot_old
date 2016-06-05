@@ -552,7 +552,15 @@ class LonLatBox(BoxBase):
         if isinstance(self.transform.projection, ccrs.PlateCarree):
             lon = lon[np.all([lon >= -180, lon <= 360], axis=0)]
             lat = lat[np.all([lat >= -90, lat <= 90], axis=0)]
-        return [lon.min(), lon.max(), lat.min(), lat.max()]
+            return [lon.min(), lon.max(), lat.min(), lat.max()]
+        else:
+            if lon.ndim == 1:
+                lon, lat = np.meshgrid(lon, lat)
+            points = ccrs.PlateCarree().transform_points(
+                self.transform.projection, lon, lat)
+            lon = points[..., 0]
+            lat = points[..., 1]
+            return [lon.min(), lon.max(), lat.min(), lat.max()]
 
     def shiftdata(self, lonsin, datain, lon_0):
         """
@@ -752,7 +760,7 @@ class GridLabels(Formatoption):
             test_value = True
             try:
                 Gridliner(
-                    self.ax, self.transform.projection, draw_labels=test_value)
+                    self.ax, self.ax.projection, draw_labels=test_value)
             except TypeError as e:  # labels cannot be drawn
                 if value:
                     warn(e.message, PsyPlotRuntimeWarning, logger=self.logger)
@@ -873,7 +881,7 @@ class GridBase(DataTicksCalculator):
         else:
             loc = ticker.FixedLocator(value)
         self._gridliner = self.ax.gridlines(
-            self.transform.projection, **self.get_kwargs(loc))
+            self.ax.projection, **self.get_kwargs(loc))
         self._modify_gridliner(self._gridliner)
         self._disable_other_axis()
 
@@ -935,10 +943,8 @@ class XGrid(GridBase):
         arr = np.unique(decoder.get_plotbounds(coord, ignore_shape=True))
         if hasattr(coord, 'units') and coord.units == 'radian':
             arr *= 180. / np.pi
-        if isinstance(self.ax.projection, ccrs.PlateCarree) and isinstance(
-                self.transform.projection, ccrs.PlateCarree):
-            arr = self.ax.projection.transform_points(
-                self.transform.projection, arr, np.zeros(arr.shape))[..., 0]
+        arr = self.ax.projection.transform_points(
+            self.transform.projection, arr, np.zeros(arr.shape))[..., 0]
         return arr
 
     axis = 'x'
@@ -967,6 +973,8 @@ class YGrid(GridBase):
         arr = np.unique(decoder.get_plotbounds(coord, ignore_shape=True))
         if hasattr(coord, 'units') and coord.units == 'radian':
             arr *= 180. / np.pi
+        arr = self.ax.projection.transform_points(
+            self.transform.projection, arr, np.zeros(arr.shape))[..., 1]
         return arr
 
     axis = 'y'
