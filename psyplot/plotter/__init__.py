@@ -42,7 +42,7 @@ default_print_func = six.print_
 
 #: :class:`dict`. Mapping from group to group names
 groups = {
-    'data': 'Data manipulation formatoptions'
+    'data': 'Data manipulation formatoptions',
     'axes': 'Axes formatoptions',
     'labels': 'Label formatoptions',
     'plot': 'Plot formatoptions',
