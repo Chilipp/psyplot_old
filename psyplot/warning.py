@@ -75,7 +75,7 @@ def critical(message, category=PsyPlotCritical, logger=None):
     """wrapper around the warnings.warn function for critical warnings.
     logger may be a logging.Logger instance"""
     if logger is not None:
-        message = "[Warning by %s]\n%s" % (logger.name, message)
+        message = "[Critical warning by %s]\n%s" % (logger.name, message)
     warnings.warn(message, category, stacklevel=2)
 
 
