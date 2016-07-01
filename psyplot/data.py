@@ -1343,7 +1343,7 @@ class CFDecoder(object):
             if ignore_shape:
                 return bounds.values.ravel()
             if not bounds.shape[:-1] == coord.shape:
-                bounds = self.ds.isel(*self.get_idims(coord))
+                bounds = self.ds.isel(**self.get_idims(coord))
             try:
                 return self._get_plotbounds_from_cf(coord, bounds)
             except ValueError as e:
@@ -1370,6 +1370,7 @@ class CFDecoder(object):
         Notes
         -----
         this currently only works for rectilinear grids"""
+
         if bounds.shape[:-1] != coord.shape or bounds.shape[-1] != 2:
             raise ValueError(
                 "Cannot interprete bounds with shape {0} for {1} "
@@ -2039,9 +2040,10 @@ class InteractiveBase(object):
         self.replot = False
 
     def _finish_all(self, queues):
-        for n, queue in zip(self._njobs, queues):
-            for i in xrange(n):
-                queue.task_done()
+        for n, queue in zip(safe_list(self._njobs), safe_list(queues)):
+            if queue is not None:
+                for i in range(n):
+                    queue.task_done()
 
     def interactive_plot(self, plotter=None):
         """Makes the interactive plot
@@ -2190,15 +2192,15 @@ class InteractiveArray(xarray.DataArray, InteractiveBase):
         if self._base is None:
             if 'variable' in self.dims:
                 def to_dataset(i):
-                    return self.isel(variable=i).to_dataset(
+                    return self.isel(variable=i).drop('variable').to_dataset(
                         name=self.coords['variable'].values[i])
                 ds = to_dataset(0)
                 if len(self.coords['variable']) > 1:
                     for i in range(1, len(self.coords['variable'])):
                         ds.merge(to_dataset(i), inplace=True)
-                self.base = ds
+                self._base = ds
             else:
-                self._base = self.to_dataset()
+                self._base = self.to_dataset(name=self.name or self.arr_name)
             self.onbasechange.emit()
         return self._base
 
@@ -2324,8 +2326,8 @@ class InteractiveArray(xarray.DataArray, InteractiveBase):
     def iter_base_variables(self):
         """An iterator over the base variables in the :attr:`base` dataset"""
         if 'variable' in self.coords:
-            return (self.base.variables[name] for name in self.coords[
-                'variable'].values)
+            return (self.base.variables[name] for name in safe_list(
+                self.coords['variable'].values.tolist()))
         return iter([self.base.variables[self.name]])
 
     @property
@@ -2334,7 +2336,8 @@ class InteractiveArray(xarray.DataArray, InteractiveBase):
         dataset."""
         if 'variable' in self.coords:
             return OrderedDict([(name, self.base.variables[name])
-                                for name in self.coords['variable'].values])
+                                for name in safe_list(
+                                    self.coords['variable'].values.tolist())])
         return {self.name: self.base.variables[self.name]}
 
     docstrings.keep_params('setup_coords.parameters', 'dims')
@@ -2393,10 +2396,15 @@ class InteractiveArray(xarray.DataArray, InteractiveBase):
             res = self.base[name].isel(**dims).to_array()
         else:
             for key, val in six.iteritems(self.coords):
-                dims.setdefault(key, val)
-            res = self.base[name].sel(method=method, **dims).to_array()
+                if key != 'variable':
+                    dims.setdefault(key, val)
+            if any(isinstance(idx, slice) for idx in dims.values()):
+                # ignore method argument
+                res = self.base[name].sel(**dims).to_array()
+            else:
+                res = self.base[name].sel(method=method, **dims).to_array()
         self._variable = res._variable
-        self._coords = res.coords
+        self._coords = res._coords
         self.name = saved_name
         for key, val in saved_attrs:
             self.attrs[key] = val
@@ -2422,7 +2430,11 @@ class InteractiveArray(xarray.DataArray, InteractiveBase):
         else:
             for key, val in six.iteritems(self.coords):
                 dims.setdefault(key, val)
-            res = self.base[name].sel(method=method, **dims)
+            if any(isinstance(idx, slice) for idx in dims.values()):
+                # ignore method argument
+                res = self.base[name].sel(**dims)
+            else:
+                res = self.base[name].sel(method=method, **dims)
         self._variable = res._variable
         self._coords = res._coords
         # update to old attributes
@@ -2525,6 +2537,14 @@ class InteractiveArray(xarray.DataArray, InteractiveBase):
             self.arr_name, self.__class__.__name__, name, ", ".join(
                 "%s: %s" % (coord, format_item(val.values))
                 for coord, val in six.iteritems(self.coords) if val.ndim == 0))
+
+    def isel(self, *args, **kwargs):
+        # reimplemented to keep the base. The doc is set below
+        ret = super(InteractiveArray, self).isel(*args, **kwargs)
+        ret._base = self._base
+        return ret
+
+    isel.__doc__ = xarray.DataArray.isel.__doc__
 
 
 class ArrayList(list):
@@ -2746,7 +2766,10 @@ class ArrayList(list):
             def sel_method(key, dims, name=None):
                 if name is None:
                     return recursive_selection(key, dims, dims.pop('name'))
-                arr = base[name]
+                elif isinstance(name, six.string_types):
+                    arr = base[name]
+                else:
+                    arr = base[list(name)]
                 if not isinstance(arr, xarray.DataArray):
                     attrs = next(var for key, var in arr.variables.items()
                                  if key not in arr.coords).attrs
@@ -2759,13 +2782,16 @@ class ArrayList(list):
                 if default_slice is not None:
                     dims.update({
                         key: default_slice for key in set(arr.dims).difference(
-                            dims)})
+                            dims) if key != 'variable'})
                 # the sel method does not work with slice objects
-                return InteractiveArray(squeeze_array(
-                    arr.sel(method=method, **{
-                            key: val for key, val in six.iteritems(dims)
-                            if not isinstance(val, slice)})),
-                    arr_name=key, base=base)
+                if any(isinstance(idx, slice) for idx in dims.values()):
+                    # ignore method argument
+                    return InteractiveArray(squeeze_array(
+                        arr.sel(**dims)), arr_name=key, base=base)
+                else:
+                    return InteractiveArray(squeeze_array(
+                        arr.sel(method=method, **dims)), arr_name=key,
+                        base=base)
         kwargs.setdefault(
             'name', sorted(
                 key for key in base.variables if key not in base.coords))
@@ -3559,10 +3585,13 @@ class InteractiveList(ArrayList, InteractiveBase):
             df = arr.to_pandas()
             if hasattr(df, 'to_frame'):
                 df = df.to_frame()
-            return df.rename(columns={df.keys()[0]: arr.arr_name})
+            if not keep_names:
+                return df.rename(columns={df.keys()[0]: arr.arr_name})
+            return df
         if len(self) == 1:
-            return self[0].to_pandas().to_frame()
+            return self[0].to_series().to_frame()
         else:
+            keep_names = len(set(arr.name for arr in self)) == self
             df = to_df(self[0])
             for arr in self[1:]:
                 df = df.merge(to_df(arr), left_index=True, right_index=True)
