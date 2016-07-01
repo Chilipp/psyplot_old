@@ -34,6 +34,7 @@ if six.PY3:
     from itertools import filterfalse
     import builtins
     from queue import Queue
+
 elif six.PY2:
     # Python 2
 
