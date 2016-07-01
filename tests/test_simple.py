@@ -1,17 +1,22 @@
 """Test module of the :mod:`psyplot.plotter.simple` module"""
 import os
+import re
+import six
+from functools import wraps
 from itertools import chain
 import unittest
 import numpy as np
 import matplotlib as mpl
 import matplotlib.colors as mcol
 import matplotlib.pyplot as plt
+from psyplot.plotter import _TempBool
 from psyplot.plotter.simple import (
-    LinePlotter, Simple2DPlotter, BarPlotter, ViolinPlotter)
+    LinePlotter, Simple2DPlotter, BarPlotter, ViolinPlotter,
+    SimpleVectorPlotter, CombinedSimplePlotter, DensityPlotter)
 import psyplot.project as psy
 import test_baseplotter as tb
 import _base_testing as bt
-from psyplot import InteractiveList, ArrayList, open_dataset
+from psyplot import InteractiveList, ArrayList, open_dataset, rcParams
 from psyplot.compat.mplcompat import bold
 
 
@@ -125,19 +130,26 @@ class LinePlotterTest(tb.BasePlotterTest):
         self.update(xlim=(-1, 'rounded'))
         self.assertEqual(self.plotter.ax.get_xlim(), (-1, curr_lim[1]))
 
-    def test_ylim(self):
+    def test_ylim(self, test_pctls=True):
         """Test ylim formatoption"""
         curr_lim = self.plotter.ax.get_ylim()
         self.update(ylim=(-1, 300))
         self.assertEqual(self.plotter.ax.get_ylim(), (-1, 300))
         self.update(ylim=(-1, 'rounded'))
         self.assertEqual(self.plotter.ax.get_ylim(), (-1, curr_lim[1]))
+        if test_pctls:
+            self.update(ylim=(["minmax", 25], ["minmax", 75]))
+            data = self.data.to_dataframe()
+            arr = data[data.notnull()].values
+            self.assertAlmostArrayEqual(self.plotter.ax.get_ylim(),
+                                        np.percentile(arr, [25, 75]).tolist())
 
     def test_color(self):
+        colors = ['y', 'g'][:len(self.data)]
         current_colors = [l.get_color() for l in self.plotter.ax.lines]
-        self.update(color=['y', 'g'])
+        self.update(color=colors)
         self.assertEqual([l.get_color() for l in self.plotter.ax.lines],
-                         ['y', 'g'])
+                         colors)
         self.update(color=None)
         self.assertEqual([l.get_color() for l in self.plotter.ax.lines],
                          current_colors)
@@ -158,13 +170,16 @@ class LinePlotterTest(tb.BasePlotterTest):
             'loc': 'upper center', 'bbox_to_anchor': (0.5, -0.05), 'ncol': 2})
         self.compare_figures(next(args, self.get_ref_file('legend')))
         self.update(legendlabels='%(lat)s')
-        self.assertEqual([t.get_text() for t in plt.gca().legend_.get_texts()],
-                         list(map(str, self.data[0].base.lat.values[:2])))
+        self.assertAlmostArrayEqual(
+            [float(t.get_text()) for t in plt.gca().legend_.get_texts()],
+            [da.lat.values for da in self.data])
 
     def test_xticks(self, *args):
         """Test xticks, xticklabels, xtickprops formatoptions"""
         self._test_DataTicksCalculator()
         self._test_DtTicksBase(*args)
+
+    _max_rounded_ref = 400
 
     def _test_DataTicksCalculator(self):
         # testing of psyplot.plotter.simple.DataTicksCalculator
@@ -181,11 +196,12 @@ class LinePlotterTest(tb.BasePlotterTest):
         self.update(xticks='rounded')
         self.assertEqual(
             list(ax.get_xticks()),
-            np.linspace(0, 400, 11, endpoint=True).tolist())
+            np.linspace(0, self._max_rounded_ref, 11, endpoint=True).tolist())
         self.update(xticks='roundedsym')
         self.assertEqual(
             list(ax.get_xticks()),
-            np.linspace(-400, 400, 10, endpoint=True).tolist())
+            np.linspace(-self._max_rounded_ref, self._max_rounded_ref, 10,
+                        endpoint=True).tolist())
         self.update(xticks='minmax')
         self.assertEqual(
             list(ax.get_xticks()), np.linspace(
@@ -296,6 +312,32 @@ class LinePlotterTest(tb.BasePlotterTest):
                              ax.spines[pos].get_edgecolor(), msg=error)
 
 
+class SingleLinePlotterTest(LinePlotterTest):
+    """Test of :class:`psyplot.plotter.simple.LinePlotter` with a single array
+    instead of an InteractiveList"""
+
+    plot_type = 'singleline'
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ds = open_dataset(cls.ncfile)
+        cls.data = InteractiveList.from_dataset(
+            cls.ds, y=0, z=0, t=0, name=cls.var, auto_update=True)
+        cls.data[0].arr_name = 'arr0'
+        cls.data.arr_name = 'arr0'
+        cls.plotter = LinePlotter(cls.data[0])
+        cls.create_dirs()
+
+    @classmethod
+    def tearDown(cls):
+        cls.data[0].update(t=0, todefault=True, replot=True)
+
+    def plot(self, **kwargs):
+        name = kwargs.pop('name', self.var)
+        return psy.plot.lineplot(
+            self.ncfile, name=name, t=0, z=0, y=0, **kwargs)
+
+
 class ViolinPlotterTest(LinePlotterTest):
     """Test class for :class:`psyplot.plotter.simple.BarPlotter`"""
 
@@ -329,6 +371,32 @@ class ViolinPlotterTest(LinePlotterTest):
 
     def test_color(self):
         pass
+
+
+class SingleViolinPlotterTest(ViolinPlotterTest):
+    """Test of :class:`psyplot.plotter.simple.ViolinPlotter` with a single array
+    instead of an InteractiveList"""
+
+    plot_type = 'singleviolin'
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ds = open_dataset(cls.ncfile)
+        cls.data = InteractiveList.from_dataset(
+            cls.ds, y=0, z=0, t=0, name=cls.var, auto_update=True)
+        cls.data[0].arr_name = 'arr0'
+        cls.data.arr_name = 'arr0'
+        cls.plotter = ViolinPlotter(cls.data[0])
+        cls.create_dirs()
+
+    @classmethod
+    def tearDown(cls):
+        cls.data[0].update(t=0, todefault=True, replot=True)
+
+    def plot(self, **kwargs):
+        name = kwargs.pop('name', self.var)
+        return psy.plot.violinplot(
+            self.ncfile, name=name, t=0, z=0, y=0, **kwargs)
 
 
 class BarPlotterTest(LinePlotterTest):
@@ -367,17 +435,57 @@ class BarPlotterTest(LinePlotterTest):
                              list(range(5)))
 
     def test_color(self):
+        colors = ['y', 'g'][:len(self.data)]
         current_colors = [
             c[0].get_facecolor() for c in self.plotter.ax.containers]
-        self.update(color=['y', 'g'])
+        self.update(color=colors)
 
         self.assertEqual(
             [c[0].get_facecolor() for c in self.plotter.ax.containers],
-            list(map(mcol.colorConverter.to_rgba, ['y', 'g'])))
+            list(map(mcol.colorConverter.to_rgba, colors)))
         self.update(color=None)
         self.assertEqual(
             [c[0].get_facecolor() for c in self.plotter.ax.containers],
             current_colors)
+
+    def test_ylim(self):
+        """Test ylim formatoption"""
+        curr_lim = self.plotter.ax.get_ylim()
+        self.update(ylim=(-1, 300))
+        self.assertEqual(self.plotter.ax.get_ylim(), (-1, 300))
+        self.update(ylim=(-1, 'rounded'))
+        self.assertEqual(self.plotter.ax.get_ylim(), (-1, curr_lim[1]))
+        self.update(ylim=(0, ["minmax", 75]))
+        data = self.data.to_dataframe()
+        arr = data[data.notnull()].values
+        self.assertAlmostArrayEqual(self.plotter.ax.get_ylim(),
+                                    [0, np.percentile(arr, 75)])
+
+
+class SingleBarPlotterTest(BarPlotterTest):
+    """Test of :class:`psyplot.plotter.simple.ViolinPlotter` with a single array
+    instead of an InteractiveList"""
+
+    plot_type = 'singlebar'
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ds = open_dataset(cls.ncfile)
+        cls.data = InteractiveList.from_dataset(
+            cls.ds, y=0, z=0, t=0, name=cls.var, auto_update=True)
+        cls.data[0].arr_name = 'arr0'
+        cls.data.arr_name = 'arr0'
+        cls.plotter = BarPlotter(cls.data[0])
+        cls.create_dirs()
+
+    @classmethod
+    def tearDown(cls):
+        cls.data[0].update(t=0, todefault=True, replot=True)
+
+    def plot(self, **kwargs):
+        name = kwargs.pop('name', self.var)
+        return psy.plot.barplot(
+            self.ncfile, name=name, t=0, z=0, y=0, **kwargs)
 
 
 class References2D(object):
@@ -460,6 +568,7 @@ class References2D(object):
 
 
 class Simple2DPlotterTest(LinePlotterTest, References2D):
+    """Test :class:`psyplot.plotter.maps.Simple2DPlotter` class"""
 
     plot_type = 'simple2D'
 
@@ -516,17 +625,16 @@ class Simple2DPlotterTest(LinePlotterTest, References2D):
 
     def test_cticks(self):
         """Test cticks, cticksize, ctickweight, ctickprops formatoptions"""
-        cticks = np.round(
-            np.linspace(self.data.values.min(), self.data.values.max(), 11,
-                        endpoint=True), decimals=2).tolist()
+        cticks = self._minmax_cticks
         self.update(cticks='minmax')
         cbar = self.plotter.cbar.cbars['b']
         self.assertEqual(list(map(
             lambda t: float(t.get_text()), cbar.ax.get_xticklabels())), cticks)
         self.update(cticklabels='%3.1f')
         cticks = np.round(cticks, decimals=1).tolist()
-        self.assertEqual(list(map(
-            lambda t: float(t.get_text()), cbar.ax.get_xticklabels())), cticks)
+        self.assertAlmostArrayEqual(list(map(
+            lambda t: float(t.get_text()), cbar.ax.get_xticklabels())), cticks,
+            atol=0.1)
         self.update(cticksize=20, ctickweight=bold, ctickprops={
             'labelcolor': 'r'})
         texts = cbar.ax.get_xticklabels()
@@ -534,6 +642,12 @@ class Simple2DPlotterTest(LinePlotterTest, References2D):
         self.assertEqual([t.get_weight() for t in texts], [bold] * n)
         self.assertEqual([t.get_size() for t in texts], [20] * n)
         self.assertEqual([t.get_color() for t in texts], ['r'] * n)
+
+    @property
+    def _minmax_cticks(self):
+        return np.round(
+            np.linspace(self.data.values.min(), self.data.values.max(), 11,
+                        endpoint=True), decimals=2).tolist()
 
     def test_clabel(self):
         """Test clabel, clabelsize, clabelweight, clabelprops formatoptions"""
@@ -594,6 +708,10 @@ class Simple2DPlotterTest(LinePlotterTest, References2D):
         self.compare_figures(next(iter(args),
                                   self.get_ref_file('cbarspacing')))
 
+    def test_ylim(self):
+        """Test ylim formatoption"""
+        super(Simple2DPlotterTest, self).test_ylim(test_pctls=False)
+
 
 class LinePlotterTest2D(tb.TestBase2D, LinePlotterTest):
     """Test :class:`psyplot.plotter.simple.LinePlotter` class without
@@ -611,6 +729,543 @@ class Simple2DPlotterTest2D(tb.TestBase2D, Simple2DPlotterTest):
     time and vertical dimension"""
 
     var = 't2m_2d'
+
+
+class SimpleVectorPlotterTest(Simple2DPlotterTest):
+    """Test :class:`psyplot.plotter.maps.SimpleVectorPlotter` class"""
+
+    plot_type = 'simplevector'
+
+    var = ['u', 'v']
+
+    def plot(self, **kwargs):
+        color_fmts = psy.plot.mapvector.plotter_cls().fmt_groups['colors']
+        fix_colorbar = not color_fmts.intersection(kwargs)
+        kwargs.setdefault('color', 'absolute')
+        ds = psy.open_dataset(self.ncfile)
+        kwargs.setdefault('t', ds.time.values[0])
+        kwargs.setdefault('z', ds.lev.values[0])
+        kwargs.setdefault('x', slice(0, 69.0))
+        kwargs.setdefault('y', slice(81.0, 34.0))
+        kwargs.setdefault('method', 'sel')
+        sp = psy.plot.vector(ds, name=[self.var], **kwargs)
+        if fix_colorbar:
+            # if we have no color formatoptions, we have to consider that
+            # the position of the plot may have slighty changed
+            sp.update(todefault=True, replot=True, **dict(
+                item for item in kwargs.items() if item[0] != 'color'))
+        return sp
+
+    @unittest.skip("miss_color formatoption not implemented")
+    def ref_miss_color(self, close=True):
+        pass
+
+    def ref_arrowsize(self, close=True):
+        """Create reference file for arrowsize formatoption.
+
+        Create reference file for
+        :attr:`~psyplot.plotter.maps.VectorPlotter.arrowsize` (and others)
+        formatoption"""
+        sp = self.plot(arrowsize=100.0)
+        sp.export(os.path.join(bt.ref_dir, self.get_ref_file('arrowsize')))
+        if close:
+            sp.close(True, True)
+
+    def ref_datagrid(self, close=True):
+        """Create reference file for datagrid formatoption
+
+        Create reference file for
+        :attr:`~psyplot.plotter.simple.Simple2DPlotter.datagrid`
+        formatoption"""
+        sp = self.plot()
+        sp.update(datagrid='k-')
+        sp.export(os.path.join(bt.ref_dir, self.get_ref_file('datagrid')))
+        if close:
+            sp.close(True, True)
+
+    def test_datagrid(self, *args):
+        """Test datagrid formatoption"""
+        self.update(datagrid='k-')
+        self.compare_figures(next(iter(args), self.get_ref_file('datagrid')))
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ds = open_dataset(cls.ncfile)
+        cls.data = ArrayList.from_dataset(
+            cls.ds, t=0, z=0, name=[cls.var], auto_update=True)[0]
+        cls.data = cls.data.sel(lon=slice(0, 69.0), lat=slice(81.0, 34.0))
+        cls.data.attrs['long_name'] = 'absolute wind speed'
+        cls.data.name = 'wind'
+        cls.plotter = SimpleVectorPlotter(cls.data)
+        cls.create_dirs()
+        cls._color_fmts = cls.plotter.fmt_groups['colors']
+        # there is an issue with the colorbar that the size of the axes changes
+        # slightly after replotting. Therefore we force a replot here
+        if not six.PY34:
+            cls.plotter.update(color='absolute')
+            cls.plotter.update(todefault=True, replot=True)
+
+    def update(self, *args, **kwargs):
+        if self._color_fmts.intersection(kwargs) or any(
+                re.match('ctick|clabel', fmt) for fmt in kwargs):
+            kwargs.setdefault('color', 'absolute')
+        super(SimpleVectorPlotterTest, self).update(*args, **kwargs)
+
+    @unittest.skip("Not supported")
+    def test_maskless(self):
+        pass
+
+    @unittest.skip("Not supported")
+    def test_maskgreater(self):
+        pass
+
+    @unittest.skip("Not supported")
+    def test_maskleq(self):
+        pass
+
+    @unittest.skip("Not supported")
+    def test_maskgeq(self):
+        pass
+
+    @unittest.skip("Not supported")
+    def test_maskbetween(self):
+        pass
+
+    @unittest.skip("Not supported")
+    def test_miss_color(self):
+        pass
+
+    def test_cbarspacing(self, *args):
+        """Test cbarspacing formatoption"""
+        self.update(
+            cbarspacing='proportional', cticks='rounded', color='absolute',
+            bounds=np.arange(0, 1.45, 0.1).tolist() + np.linspace(
+                    1.5, 13.5, 7, endpoint=True).tolist() + np.arange(
+                        13.6, 15.05, 0.1).tolist())
+        self.compare_figures(next(iter(args),
+                                  self.get_ref_file('cbarspacing')))
+
+    @unittest.skipIf(
+        six.PY34, "The axes size changes using the arrowsize formatoption")
+    def test_arrowsize(self, *args):
+        """Test arrowsize formatoption"""
+        self.update(arrowsize=100.0)
+        self.compare_figures(next(iter(args), self.get_ref_file('arrowsize')))
+
+    _max_rounded_ref = 70
+
+    @property
+    def _minmax_cticks(self):
+        speed = (self.plotter.plot_data.values[0]**2 +
+                 self.plotter.plot_data.values[1]**2) ** 0.5
+        speed = speed[~np.isnan(speed)]
+        return np.round(
+            np.linspace(speed.min(), speed.max(), 11, endpoint=True),
+            decimals=2).tolist()
+
+    def test_bounds(self):
+        """Test bounds formatoption"""
+        self.update(color='absolute')
+        self.assertEqual(
+            np.round(self.plotter.bounds.norm.boundaries, 2).tolist(),
+            np.linspace(0, 15, 11, endpoint=True).tolist())
+        self.update(bounds='minmax')
+        bounds = [0.36, 1.4, 2.45, 3.49, 4.54, 5.59, 6.63, 7.68, 8.72, 9.77,
+                  10.81]
+
+        self.assertEqual(
+            np.round(self.plotter.bounds.norm.boundaries, 2).tolist(), bounds)
+        self.update(bounds=['rounded', 5, 5, 95])
+        self.assertEqual(
+            np.round(self.plotter.bounds.norm.boundaries, 3).tolist(),
+            np.linspace(1.0, 8.5, 5, endpoint=True).tolist())
+
+
+def _do_from_both(func):
+    """Call the given `func` only from :class:`Simple2DPlotterTest` and
+    :class:`SimpleVectorPlotterTest`"""
+    func.__doc__ = getattr(SimpleVectorPlotterTest, func.__name__).__doc__
+
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        getattr(Simple2DPlotterTest, func.__name__)(self, *args, **kwargs)
+        if hasattr(self, 'plotter'):
+            self.plotter.update(todefault=True)
+        with self.vector_mode:
+            getattr(SimpleVectorPlotterTest, func.__name__)(
+                self, *args, **kwargs)
+
+    return wrapper
+
+
+def _in_vector_mode(func):
+    """Call the given `func` only from :class:`SimpleVectorPlotterTest`"""
+    func.__doc__ = getattr(SimpleVectorPlotterTest, func.__name__).__doc__
+
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        with self.vector_mode:
+            getattr(SimpleVectorPlotterTest, func.__name__)(
+                self, *args, **kwargs)
+
+    return wrapper
+
+
+class _CombinedPlotterData(object):
+    """Descriptor that returns the data"""
+    # Note: We choose to use a descriptor rather than a usual property because
+    # it shall also work for class objects and not only instances
+
+    def __get__(self, instance, owner):
+        if instance is None:
+            return owner._data
+        if instance.vector_mode:
+            return instance._data[1]
+        return instance._data[0]
+
+    def __set__(self, instance, value):
+        instance._data = value
+
+
+class CombinedSimplePlotterTest(SimpleVectorPlotterTest):
+    """Test case for stream plot of
+    :class:`psyplot.plotter.simple.CombinedSimplePlotter`"""
+
+    plot_type = 'simplecombined'
+
+    data = _CombinedPlotterData()
+
+    var = ['t2m', ['u', 'v']]
+
+    @property
+    def vector_mode(self):
+        """:class:`bool` indicating whether a vector specific formatoption is
+        tested or not"""
+        try:
+            return self._vector_mode
+        except AttributeError:
+            self._vector_mode = _TempBool(False)
+            return self._vector_mode
+
+    @vector_mode.setter
+    def vector_mode(self, value):
+        self.vector_mode.value = bool(value)
+
+    def compare_figures(self, fname, **kwargs):
+        kwargs.setdefault('tol', 10)
+        return super(CombinedSimplePlotterTest, self).compare_figures(
+            fname, **kwargs)
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ds = open_dataset(cls.ncfile)
+        rcParams[CombinedSimplePlotter().vcmap.default_key] = 'winter'
+        cls._data = ArrayList.from_dataset(
+            cls.ds, t=0, z=0, name=[cls.var], auto_update=True,
+            prefer_list=True)[0]
+        for i in range(len(cls.data)):
+            cls._data[i] = cls._data[i].sel(lon=slice(0, 69.0),
+                                            lat=slice(81.0, 34.0))
+        cls._data.attrs['long_name'] = 'Temperature'
+        cls._data.attrs['name'] = 't2m'
+        cls.plotter = CombinedSimplePlotter(cls.data)
+        cls.create_dirs()
+        cls._color_fmts = cls.plotter.fmt_groups['colors']
+
+        # there is an issue with the colorbar that the size of the axes changes
+        # slightly after replotting. Therefore we force a replot here
+        cls.plotter.update(color='absolute')
+        cls.plotter.update(todefault=True, replot=True)
+
+    def plot(self, **kwargs):
+        color_fmts = psy.plot.mapvector.plotter_cls().fmt_groups['colors']
+        fix_colorbar = not color_fmts.intersection(kwargs)
+        ds = psy.open_dataset(self.ncfile)
+        kwargs.setdefault('t', ds.time.values[0])
+        kwargs.setdefault('z', ds.lev.values[0])
+        kwargs.setdefault('x', slice(0, 69.0))
+        kwargs.setdefault('y', slice(81.0, 34.0))
+        kwargs.setdefault('method', 'sel')
+        kwargs.setdefault('color', 'absolute')
+        if self.vector_mode:
+            kwargs = self._rename_fmts(kwargs)
+        sp = psy.plot.combined(ds, name=[self.var], **kwargs)
+        if not self.vector_mode or fix_colorbar:
+            # if we have no color formatoptions, we have to consider that
+            # the position of the plot may have slighty changed
+            sp.update(todefault=True, replot=True, **dict(
+                item for item in kwargs.items() if item[0] != 'color'))
+        return sp
+
+    def _rename_fmts(self, kwargs):
+        def check_key(key):
+            if not any(re.match('v' + key, fmt) for fmt in vcolor_fmts):
+                return key
+            else:
+                return 'v' + key
+        vcolor_fmts = {
+            fmt for fmt in chain(
+                psy.plot.combined.plotter_cls().fmt_groups['colors'],
+                ['ctick|clabel']) if fmt.startswith('v')}
+        return {check_key(key): val for key, val in kwargs.items()}
+
+    def update(self, *args, **kwargs):
+        if self.vector_mode and (
+                self._color_fmts.intersection(kwargs) or any(
+                    re.match('ctick|clabel', fmt) for fmt in kwargs)):
+            kwargs.setdefault('color', 'absolute')
+            kwargs = self._rename_fmts(kwargs)
+        super(SimpleVectorPlotterTest, self).update(*args, **kwargs)
+
+    def get_ref_file(self, identifier):
+        if self.vector_mode:
+            identifier += '_vector'
+        return super(CombinedSimplePlotterTest, self).get_ref_file(identifier)
+
+    @property
+    def _minmax_cticks(self):
+        if not self.vector_mode:
+            return np.round(
+                np.linspace(self.plotter.plot_data[0].values.min(),
+                            self.plotter.plot_data[0].values.max(), 11,
+                            endpoint=True), decimals=2).tolist()
+        speed = (self.plotter.plot_data[1].values[0]**2 +
+                 self.plotter.plot_data[1].values[1]**2) ** 0.5
+        return np.round(
+            np.linspace(speed.min(), speed.max(), 11, endpoint=True),
+            decimals=2).tolist()
+
+    @_do_from_both
+    def ref_cbar(self, close=True):
+        pass
+
+    def ref_cbarspacing(self, close=True):
+        """Create reference file for cbarspacing formatoption"""
+        kwargs = dict(bounds=list(range(245, 255)) + np.linspace(
+                255, 280, 6, endpoint=True).tolist() + list(range(281, 290)))
+        sp = self.plot(
+            cbarspacing='proportional', cticks='rounded',
+            **kwargs)
+        sp.export(os.path.join(bt.ref_dir, self.get_ref_file('cbarspacing')))
+        with self.vector_mode:
+            SimpleVectorPlotterTest.ref_cbarspacing(self, close=close)
+        if close:
+            sp.close(True, True)
+
+    @_do_from_both
+    def ref_cmap(self, close=True):
+        pass
+
+    def ref_miss_color(self, close=True):
+        Simple2DPlotterTest.ref_miss_color(self, close)
+
+    @_in_vector_mode
+    def ref_arrowsize(self, *args, **kwargs):
+        pass
+
+    def _label_test(self, key, label_func, has_time=True):
+        kwargs = {
+            key: "Test plot at %Y-%m-%d, {tinfo} o'clock of %(long_name)s"}
+        self.update(**kwargs)
+        t_str = '1979-01-31, 18:00' if has_time else '%Y-%m-%d, %H:%M'
+        self.assertEqual(
+            u"Test plot at %s o'clock of %s" % (
+                t_str, self.data.attrs.get('long_name', 'Temperature')),
+            label_func().get_text())
+        self._data.update(t=1)
+        t_str = '1979-02-28, 18:00' if has_time else '%Y-%m-%d, %H:%M'
+        self.assertEqual(
+            u"Test plot at %s o'clock of %s" % (
+                t_str, self.data.attrs.get('long_name', 'Temperature')),
+            label_func().get_text())
+        self._data.update(t=0)
+
+    def test_miss_color(self, *args, **kwargs):
+        Simple2DPlotterTest.test_miss_color(self, *args, **kwargs)
+
+    @_do_from_both
+    def test_cbar(self, *args, **kwargs):
+        pass
+
+    def test_cbarspacing(self, *args, **kwargs):
+        """Test cbarspacing formatoption"""
+        self.update(
+            cbarspacing='proportional', cticks='rounded',
+            bounds=list(range(245, 255)) + np.linspace(
+                255, 280, 6, endpoint=True).tolist() + list(range(281, 290)))
+        self.compare_figures(next(iter(args),
+                                  self.get_ref_file('cbarspacing')))
+        self.plotter.update(todefault=True)
+        with self.vector_mode:
+            SimpleVectorPlotterTest.test_cbarspacing(self, *args, **kwargs)
+
+    @_do_from_both
+    def test_cmap(self, *args, **kwargs):
+        pass
+
+    @unittest.skipIf(
+        six.PY34, "The axes size changes using the arrowsize formatoption")
+    @_in_vector_mode
+    def test_arrowsize(self):
+        pass
+
+    def test_bounds(self):
+        """Test bounds formatoption"""
+        # test bounds of scalar field
+        self.assertEqual(
+            np.round(self.plotter.bounds.norm.boundaries, 2).tolist(),
+            np.linspace(250, 290, 11, endpoint=True).tolist())
+        self.update(bounds='minmax')
+        bounds = [251.73, 255.54, 259.35, 263.16, 266.97, 270.78, 274.59,
+                  278.4, 282.22, 286.03, 289.84]
+        self.assertEqual(
+            np.round(self.plotter.bounds.norm.boundaries, 2).tolist(), bounds)
+        self.update(bounds=['rounded', 5, 5, 95])
+        self.assertEqual(
+            np.round(self.plotter.bounds.norm.boundaries, 2).tolist(),
+            np.linspace(250, 290, 5, endpoint=True).tolist())
+
+        # test vector bounds
+        self.update(color='absolute')
+        self.assertEqual(
+            np.round(self.plotter.vbounds.norm.boundaries, 2).tolist(),
+            np.linspace(0, 15, 11, endpoint=True).tolist())
+        self.update(vbounds='minmax')
+        bounds = [0.36, 1.4, 2.45, 3.49, 4.54, 5.59, 6.63, 7.68, 8.72, 9.77,
+                  10.81]
+        self.assertEqual(
+            np.round(self.plotter.vbounds.norm.boundaries, 2).tolist(), bounds)
+        self.update(vbounds=['rounded', 5, 5, 95])
+        self.assertEqual(
+            np.round(self.plotter.vbounds.norm.boundaries, 3).tolist(),
+            np.linspace(1.0, 8.5, 5, endpoint=True).tolist())
+
+    def test_clabel(self):
+        def get_clabel():
+            return self.plotter.vcbar.cbars['b'].ax.xaxis.get_label()
+        Simple2DPlotterTest.test_clabel(self)
+        with self.vector_mode:
+            self.update(color='absolute')
+            self._label_test('vclabel', get_clabel)
+            label = get_clabel()
+            self.update(vclabelsize=22, vclabelweight='bold',
+                        vclabelprops={'ha': 'left'})
+            self.assertEqual(label.get_size(), 22)
+            self.assertEqual(label.get_weight(), bold)
+            self.assertEqual(label.get_ha(), 'left')
+
+
+class CombinedSimplePlotterTest2D(tb.TestBase2D, CombinedSimplePlotterTest):
+    """Test :class:`psyplot.plotter.simple.CombinedSimplePlotter` class without
+    time and vertical dimension"""
+
+    var = ['t2m', ['u_2d', 'v_2d']]
+
+    def _label_test(self, key, label_func, has_time=None):
+        if has_time is None:
+            has_time = not bool(self.vector_mode)
+        CombinedSimplePlotterTest._label_test(
+            self, key, label_func, has_time=has_time)
+
+
+class DensityPlotterTest(bt.PsyPlotTestCase):
+    """Test of the :class:`psyplot.plotters.simple.DensityPlotter` class"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.data = cls.define_data()
+        cls.plotter = DensityPlotter(cls.data)
+
+    @classmethod
+    def tearDownClass(cls):
+        super(DensityPlotterTest, cls).tearDownClass()
+        del cls.data
+        plt.close(cls.plotter.ax.get_figure().number)
+
+    def tearDown(self):
+        self.plotter.update(todefault=True)
+
+    @classmethod
+    def update(cls, **kwargs):
+        '''Update the plotter of this test case'''
+        cls.plotter.update(**kwargs)
+
+    @property
+    def plot_data(self):
+        return self.plotter.plot_data
+
+    @classmethod
+    def define_data(cls, mean=[0, 0], cov=[[10, 0], [0, 10]]):
+        import psyplot.data as psyd
+        import numpy as np
+        import pandas as pd
+        import xarray
+        x, y = np.random.multivariate_normal(mean, cov, 5000).T
+        df = pd.DataFrame(y, columns=['y'], index=pd.Index(x, name='x'))
+        ds = xarray.Dataset.from_dataframe(df)
+        return psyd.InteractiveArray(ds.y)
+
+    def test_bins(self):
+        '''Test the bins formatoption'''
+        bins = [100, 10]
+        self.update(bins=bins)
+        self.assertEqual(len(self.plot_data.x), 100)
+        self.assertEqual(len(self.plot_data.y), 10)
+
+    def test_xrange(self):
+        '''Test the xrange formatoption'''
+        data = self.data
+        xrange = np.percentile(data.x.values, [25, 75])
+        self.update(xrange=xrange)
+        self.assertGreaterEqual(self.plot_data.x.min(), xrange[0])
+        self.assertLessEqual(self.plot_data.x.max(), xrange[1])
+
+        # now update to use the quantiles explicitely
+        self.update(xrange=(['minmax', 25], ['minmax', 75]))
+        self.assertGreaterEqual(self.plot_data.x.min(), xrange[0])
+        self.assertLessEqual(self.plot_data.x.max(), xrange[1])
+
+    def test_yrange(self):
+        '''Test the yrange formatoption'''
+        data = self.data
+        yrange = np.percentile(data.values, [25, 75])
+        self.update(yrange=yrange)
+        self.assertGreaterEqual(self.plot_data.y.min(), yrange[0])
+        self.assertLessEqual(self.plot_data.y.max(), yrange[1])
+
+        # now update to use the quantiles explicitely
+        self.update(yrange=(['minmax', 25], ['minmax', 75]))
+        self.assertGreaterEqual(self.plot_data.y.min(), yrange[0])
+        self.assertLessEqual(self.plot_data.y.max(), yrange[1])
+
+    def test_normed(self):
+        '''Test the normed formatoption'''
+        self.update(normed='counts')
+        data = self.plot_data
+        self.assertAlmostEqual(data.values.sum(), 1.0)
+
+        self.update(normed='area')
+        data = self.plot_data
+        a0, a1 = data.x.values[:2]
+        b0, b1 = data.y.values[:2]
+        area = ((a1 - a0) * (b1 - b0))
+        self.assertAlmostEqual((self.plot_data.values * area).sum(),
+                               1.0)
+
+
+class DensityPlotterTestKDE(DensityPlotterTest):
+    """Test of the :class:`psyplot.plotters.simple.DensityPlotter` class
+    with kde plot"""
+
+    @classmethod
+    def setUpClass(cls):
+        rcParams[DensityPlotter().density.default_key] = 'kde'
+        super(DensityPlotterTestKDE, cls).setUpClass()
+
+    @unittest.skip('Not implemented for KDE plots!')
+    def test_normed(self):
+        pass
+
 
 tests2d = [LinePlotterTest2D, Simple2DPlotterTest2D]
 
