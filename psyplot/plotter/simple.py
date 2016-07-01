@@ -2,6 +2,7 @@ import six
 from abc import abstractproperty, abstractmethod
 from itertools import chain, starmap, cycle
 from pandas import date_range, datetools, to_datetime
+import xarray as xr
 import matplotlib as mpl
 import matplotlib.axes
 from matplotlib.ticker import FormatStrFormatter, FixedLocator, FixedFormatter
@@ -11,12 +12,13 @@ import numpy as np
 from psyplot.docstring import docstrings, dedent
 from psyplot.warning import warn, PsyPlotRuntimeWarning
 from psyplot.plotter import (
-    Plotter, Formatoption, BEFOREPLOTTING, DictFormatoption, END, rcParams)
+    Plotter, Formatoption, BEFOREPLOTTING, DictFormatoption, END, rcParams,
+    START)
 from psyplot.plotter.baseplotter import (
     BasePlotter, TextBase, label_size, label_weight, label_props, MaskLess,
     MaskGreater, MaskBetween, MaskLeq, MaskGeq)
 from psyplot.plotter.colors import get_cmap
-from psyplot.data import InteractiveList, isstring
+from psyplot.data import InteractiveList, isstring, InteractiveArray, CFDecoder
 from psyplot.compat.pycompat import map, zip, range
 from psyplot.config.rcsetup import validate_color, validate_float, safe_list
 
@@ -886,7 +888,6 @@ class XTickProps(TickPropsBase, TicksManager, DictFormatoption):
         return self.ax.xaxis
 
 
-
 class YTickProps(XTickProps):
     """
     Specify the y-axis tick parameters
@@ -909,7 +910,6 @@ class YTickProps(XTickProps):
     @property
     def axis(self):
         return self.ax.xaxis
-
 
 
 class Xlabel(TextBase, Formatoption):
@@ -1106,7 +1106,7 @@ class Transpose(Formatoption):
 
     name = 'Switch x- and y-axes'
 
-    priority = BEFOREPLOTTING
+    priority = START
 
     def __init__(self, *args, **kwargs):
         super(Transpose, self).__init__(*args, **kwargs)
@@ -1161,6 +1161,10 @@ class Transpose(Formatoption):
     def get_x(self, arr):
         if not hasattr(arr, 'ndim'):  # if the data object is an array list
             arr = arr[0]
+        if arr.dims[0] == 'variable' and arr.ndim > 1:
+                base = arr.base
+                arr = arr[0]
+                arr.base = base
         is_unstructured = self.decoder.is_unstructured(arr)
         if not is_unstructured and arr.ndim == 1:
             if self.value:
@@ -1183,14 +1187,18 @@ class Transpose(Formatoption):
                 xname = arr.dims[-1]
         if xname == ds_coord:
             if self.value:
-                return arr.decoder.get_y(arr)
-            return arr.decoder.get_x(arr)
+                return arr.decoder.get_y(arr, arr.coords)
+            return arr.decoder.get_x(arr, arr.coords)
         else:
             return arr.coords[xname]
 
     def get_y(self, arr):
         if not hasattr(arr, 'ndim'):  # if the data object is an array list
             arr = arr[0]
+        elif arr.dims[0] == 'variable' and arr.ndim > 1:
+                base = arr.base
+                arr = arr[0]
+                arr.base = base
         is_unstructured = self.decoder.is_unstructured(arr)
         if not is_unstructured and arr.ndim == 1:
             if not self.value:
@@ -1213,8 +1221,8 @@ class Transpose(Formatoption):
                 yname = arr.dims[-1]
         if yname == ds_coord:
             if self.value:
-                return arr.decoder.get_x(arr)
-            return arr.decoder.get_y(arr)
+                return arr.decoder.get_x(arr, arr.coords)
+            return arr.decoder.get_y(arr, arr.coords)
         else:
             return arr.coords[yname]
 
@@ -1263,17 +1271,17 @@ class LineColors(Formatoption):
         else:
             try:
                 self.color_cycle = iter(get_cmap(value)(
-                    np.linspace(0., 1., len(self.data),
+                    np.linspace(0., 1., len(list(self.iter_data)),
                                 endpoint=True)))
             except (ValueError, TypeError, KeyError):
                 self.color_cycle = iter(value)
         if changed:
             self.colors = [
-                next(self.color_cycle) for arr in self.data]
+                next(self.color_cycle) for arr in self.iter_data]
         else:  # then it is replotted
             # append new colors from color_cycle (if necessary)
             self.colors += [next(self.color_cycle) for _ in range(
-                len(self.data) - len(self.colors))]
+                len(list(self.iter_data)) - len(self.colors))]
         # store the default colors
         if value is None and self.default_colors is None:
             self.default_colors = self.colors
@@ -1297,7 +1305,7 @@ class LinePlot(Formatoption):
 
     group = 'plot'
 
-    priority = BEFOREPLOTTING
+    priority = BEFOREPLOTTING + 0.1
 
     children = ['color', 'transpose']
 
@@ -1316,11 +1324,14 @@ class LinePlot(Formatoption):
             self.remove()
         if self.value is not None:
             self._plot = list(chain(*starmap(self.plot_arr, zip(
-                self.data, self.color.colors, cycle(safe_list(self.value))))))
+                self.iter_data, self.color.colors,
+                cycle(safe_list(self.value))))))
 
     def plot_arr(self, arr, c, ls):
         # since date time objects are covered better by pandas,
         # we convert to a series
+        if arr.ndim == 2:  # contains also error information
+            arr = arr[0]
         df = arr.to_series()
         if self.transpose.value:
             return self.ax.plot(df.values, df.index.values,
@@ -1333,6 +1344,123 @@ class LinePlot(Formatoption):
         for artist in self._plot:
             artist.remove()
         del self._plot
+
+
+class ErrorPlot(Formatoption):
+    """
+    Visualize the error range
+
+    This formatoption visualizes the error range. For this, you must provide a
+    two-dimensional data array as input. The first dimension might be either of
+    length
+        - 2 to provide the deviation from minimum and maximum error range from
+          the data
+        - 3 to provide the minimum and maximum error range explicitly
+
+    Possible types
+    --------------
+    None
+        No errors are visualized
+    'fill'
+        The area between min- and max-error is filled with the same color as
+        the line and the alpha is determined by the :attr:`fillalpha` attribute
+
+    Examples
+    --------
+    Assume you have the standard deviation stored in the ``'std'``-variable and
+    the data in the ``'data'`` variable. Then you can visualize the standard
+    deviation simply via::
+
+        >>> psy.plot.lineplot(input_ds, name=[['data', 'std']])
+
+    On the other hand, assume you want to visualize the area between the 25th
+    and 75th percentile (stored in the variables ``'p25'`` and ``'p75'``)::
+
+        >>> psy.plot.lineplot(input_ds, name=[['data', 'p25', 'p75']])
+
+    See Also
+    --------
+    erroralpha
+    """
+
+    plot_fmt = True
+
+    group = 'plot'
+
+    priority = BEFOREPLOTTING
+
+    children = ['color', 'transpose']
+
+    name = 'Error plot type'
+
+    def __init__(self, *args, **kwargs):
+        Formatoption.__init__(self, *args, **kwargs)
+        self._kwargs = {}
+
+    def update(self, value):
+        pass  # the work is done in make_plot
+
+    def make_plot(self):
+        if hasattr(self, '_plot'):
+            self.remove()
+        if self.value is not None:
+            self._plot = []
+            colors = iter(self.color.colors)
+            for da in self.iter_data:
+                if da.ndim == 2 and da.shape[0] > 1:
+                    data = da[0].to_series()
+                    error = da[1:, :]
+                    if error.shape[0] == 1:
+                        min_range = data.values - error[0]
+                        max_range = data.values + error[0]
+                    else:
+                        min_range = error[0]
+                        max_range = error[1]
+                    if self.value == 'fill':
+                        self.plot_fill(data.index.values, min_range, max_range,
+                                       next(colors))
+
+    def plot_fill(self, index, min_range, max_range, c):
+        if self.transpose.value:
+            plot_method = self.ax.fill_betweenx
+        else:
+            plot_method = self.ax.fill_between
+        self._plot.append(
+            plot_method(index, min_range, max_range, facecolor=c,
+                        **self._kwargs))
+
+    def remove(self):
+        for artist in self._plot:
+            artist.remove()
+        del self._plot
+
+
+class ErrorAlpha(Formatoption):
+    """
+    Set the alpha value for the error range
+
+    This formatoption can be used to set the alpha value (opacity) for the
+    :attr:`error` formatoption
+
+    Possible types
+    --------------
+    float
+        A float between 0 and 1
+
+    See Also
+    --------
+    error"""
+
+    priority = BEFOREPLOTTING
+
+    name = 'Alpha value of the error range'
+
+    group = 'colors'
+
+    connections = ['error']
+
+    def update(self, value):
+        self.error._kwargs['alpha'] = value
 
 
 class BarPlot(Formatoption):
@@ -1376,9 +1504,12 @@ class BarPlot(Formatoption):
         if hasattr(self, '_plot'):
             self.remove()
         if self.value is not None:
-            df = self.data.to_dataframe()
-            old_containers = self.ax.containers[:]
+            if isinstance(self.data, InteractiveList):
+                df = self.data.to_dataframe()
+            else:
+                df = self.data.to_series()
             colors = self.color.colors
+            old_containers = self.ax.containers[:]
             if self.transpose.value:
                 df.plot(kind='barh', color=colors, ax=self.ax, rot=0,
                         legend=False, grid=False,
@@ -1489,7 +1620,10 @@ class ViolinPlot(Formatoption):
             self.remove()
         if self.value:
             from seaborn import violinplot
-            df = self.data.to_dataframe()
+            if isinstance(self.data, InteractiveList):
+                df = self.data.to_dataframe()
+            else:
+                df = self.data.to_series().to_frame()
             old_artists = self.ax.containers[:] + self.ax.lines[:] \
                 + self.ax.collections[:]
             palette = self.color.colors
@@ -1504,7 +1638,7 @@ class ViolinPlot(Formatoption):
 
 @docstrings.get_sectionsf('LimitBase')
 @dedent
-class LimitBase(Formatoption):
+class LimitBase(DataTicksCalculator):
     """
     Base class for x- and y-limits
 
@@ -1512,9 +1646,10 @@ class LimitBase(Formatoption):
     --------------
     None
         To not change the current limits
-    str or list [str, str]
+    str or list [str, str] or [[str, float], [str, float]]
         Automatically determine the ticks corresponding to the data. The given
-        string determines how the limits are calculated.
+        string determines how the limits are calculated. The float determines
+        the percentile to use
         A string can be one of the following:
 
         rounded
@@ -1532,7 +1667,8 @@ class LimitBase(Formatoption):
             Same as minmax but symmetric around zero
     tuple (xmin, xmax)
         `xmin` is the smaller value, `xmax` the larger. Any of those values can
-        be None or one of the strings above to use the corresponding value here
+        be None or one of the strings (or lists) above to use the corresponding
+        value here
     """
 
     group = 'axes'
@@ -1540,20 +1676,6 @@ class LimitBase(Formatoption):
     children = ['transpose']
 
     connections = ['plot']
-
-    #: :class:`bool` controlling whether the axis limits have to be relimited
-    #: using the :meth:`matplotlib.axes.Axes.relim` method
-    relim = True
-
-    @abstractproperty
-    def axisname(self):
-        """The axis name (either ``'x'`` or ``'y'``)"""
-        pass
-
-    @abstractmethod
-    def get_data(self):
-        """A method to get the data"""
-        pass
 
     @abstractmethod
     def set_limit(self, min_val, max_val):
@@ -1599,14 +1721,17 @@ class LimitBase(Formatoption):
 
     def update(self, value):
         value = list(value)
-        data = np.asarray(self.get_data())
-        vmin = data.min()
-        vmax = data.max()
+        value_lists = list(map(safe_list, value))
+        kwargs = {}
+        for kw, l in zip(['percmin', 'percmax'], value_lists):
+            if len(l) == 2:
+                kwargs[kw] = l[1]
+        vmin, vmax = self._calc_vmin_vmax(**kwargs)
         for key, func in self._calc_funcs.items():
-            if key in value:
+            if key in value_lists[0] or key in value_lists[1]:
                 minmax = func(vmin, vmax)
-                for i, val in enumerate(value):
-                    if val == key:
+                for i, val in enumerate(value_lists):
+                    if key in val:
                         value[i] = minmax[i]
         self.logger.debug('Setting %s with %s', self.key, value)
         self.set_limit(*value)
@@ -1633,11 +1758,16 @@ class Xlim(LimitBase):
 
     name = 'x-axis limits'
 
-    def get_data(self):
-        df = self.data.to_dataframe()
+    @property
+    def array(self):
+        def select_array(arr):
+            if arr.ndim == 2:
+                return arr[0]
+            return arr
+        df = InteractiveList(map(select_array, self.iter_data)).to_dataframe()
         if self.transpose.value:
-            return df
-        return df.index
+            return df.values
+        return df.index.values
 
     def set_limit(self, *args):
         self.ax.set_xlim(*args)
@@ -1674,11 +1804,16 @@ class Ylim(LimitBase):
 
     name = 'y-axis limits'
 
-    def get_data(self):
-        df = self.data.to_dataframe()
+    @property
+    def array(self):
+        def select_array(arr):
+            if arr.ndim == 2:
+                return arr[0]
+            return arr
+        df = InteractiveList(map(select_array, self.iter_data)).to_dataframe()
         if self.transpose.value:
-            return df.index
-        return df
+            return df.index.values
+        return df.values
 
     def set_limit(self, *args):
         self.ax.set_ylim(*args)
@@ -1688,15 +1823,16 @@ class ViolinXlim(Xlim):
     # xlim class for ViolinPlotter
     __doc__ = Xlim.__doc__
 
-    def get_data(self):
+    @property
+    def array(self):
         if not self.transpose.value:
             return np.array(
-                [-0.5, len(self.data) - 0.5])
-        return super(ViolinXlim, self).get_data()
+                [-0.5, len(list(self.iter_data)) - 0.5])
+        return super(ViolinXlim, self).array
 
     def _round_min_max(self, *args, **kwargs):
         if not self.transpose.value:
-            return self.get_data()
+            return self.array
         return super(ViolinXlim, self)._round_min_max(*args, **kwargs)
 
 
@@ -1704,20 +1840,22 @@ class BarXlim(ViolinXlim):
     # xlim class for bar plotter
     __doc__ = Xlim.__doc__
 
-    def get_data(self):
-        if self.transpose.value and self.plot.value:
+    @property
+    def array(self):
+        if self.transpose.value and self.plot.value == 'stacked':
             df = self.data.to_dataframe()
             return np.array([min([0, df.values.min()]), df.sum(axis=1).max()])
         elif not self.transpose.value:
             return np.array(
                 [-0.5, len(self.data.to_dataframe().index) - 0.5])
-        return super(BarXlim, self).get_data()
+        return super(BarXlim, self).array
 
 
 class Xlim2D(Xlim):
     __doc__ = Xlim.__doc__
 
-    def get_data(self):
+    @property
+    def array(self):
         xcoord = self.transpose.get_x(self.data)
         func = 'get_x' if not self.transpose.value else 'get_y'
         if (self.decoder.is_triangular(self.data) and
@@ -1733,7 +1871,8 @@ class Xlim2D(Xlim):
 class Ylim2D(Ylim):
     __doc__ = Ylim.__doc__
 
-    def get_data(self):
+    @property
+    def array(self):
         ycoord = self.transpose.get_y(self.data)
         func = 'get_x' if self.transpose.value else 'get_y'
         if (self.decoder.is_triangular(self.data) and
@@ -1750,15 +1889,16 @@ class ViolinYlim(Ylim):
     # Ylim class for ViolinPlotter
     __doc__ = Ylim.__doc__
 
-    def get_data(self):
+    @property
+    def array(self):
         if self.transpose.value:
             return np.array(
-                [-0.5, len(self.data) - 0.5])
-        return super(ViolinYlim, self).get_data()
+                [-0.5, len(list(self.iter_data)) - 0.5])
+        return super(ViolinYlim, self).array
 
     def _round_min_max(self, *args, **kwargs):
         if self.transpose.value:
-            return self.get_data()
+            return self.array
         return super(ViolinYlim, self)._round_min_max(*args, **kwargs)
 
 
@@ -1766,14 +1906,15 @@ class BarYlim(ViolinYlim):
     # ylim class for bar plotter
     __doc__ = Ylim.__doc__
 
-    def get_data(self):
-        if not self.transpose.value and self.plot.value:
+    @property
+    def array(self):
+        if not self.transpose.value and self.plot.value == 'stacked':
             df = self.data.to_dataframe()
             return np.array([min(0, df.values.min()), df.sum(axis=1).max()])
         elif self.transpose.value:
             return np.array(
                 [-0.5, len(self.data.to_dataframe().index) - 0.5])
-        return super(BarYlim, self).get_data()
+        return super(BarYlim, self).array
 
 
 class XRotation(Formatoption):
@@ -1879,7 +2020,7 @@ class MissColor(Formatoption):
     def triangles(self):
         """The :class:`matplotlib.tri.Triangulation` instance containing the
         spatial informations"""
-        decoder = self.raw_data.decoder
+        decoder = self.decoder
         return decoder.get_triangles(self.data, self.data.coords, copy=True,
                                      nans='only')
 
@@ -2037,24 +2178,22 @@ class Plot2D(Formatoption):
     @property
     def xbounds(self):
         """Boundaries of the x-coordinate"""
-        raw_data = self.raw_data
         data = self.data
-        coord = raw_data.decoder.get_x(data, coords=data.coords)
-        return raw_data.decoder.get_plotbounds(coord)
+        coord = self.decoder.get_x(data, coords=data.coords)
+        return self.decoder.get_plotbounds(coord)
 
     @property
     def ybounds(self):
         """Boundaries of the y-coordinate"""
-        raw_data = self.raw_data
         data = self.data
-        coord = raw_data.decoder.get_y(data, coords=data.coords)
-        return raw_data.decoder.get_plotbounds(coord)
+        coord = self.decoder.get_y(data, coords=data.coords)
+        return self.decoder.get_plotbounds(coord)
 
     @property
     def triangles(self):
         """The :class:`matplotlib.tri.Triangulation` instance containing the
         spatial informations"""
-        decoder = self.raw_data.decoder
+        decoder = self.decoder
         return decoder.get_triangles(self.data, self.data.coords, copy=True,
                                      nans='skip')
 
@@ -2085,7 +2224,7 @@ class Plot2D(Formatoption):
             self._plot_funcs[self.value]()
 
     def _pcolormesh(self):
-        if self.raw_data.decoder.is_triangular(self.raw_data):
+        if self.decoder.is_triangular(self.raw_data):
             return self._tripcolor()
         arr = self.array
         N = len(np.unique(self.bounds.norm(arr.ravel())))
@@ -2118,8 +2257,8 @@ class Plot2D(Formatoption):
         else:
             arr = self.array
             self._plot = self.ax.tripcolor(
-                triangles, arr[~np.isnan(arr)], norm=self.bounds.norm, cmap=cmap,
-                rasterized=True, **self._kwargs)
+                triangles, arr[~np.isnan(arr)], norm=self.bounds.norm,
+                cmap=cmap, rasterized=True, **self._kwargs)
 
     def remove(self):
         if hasattr(self, '_plot'):
@@ -2163,24 +2302,22 @@ class DataGrid(Formatoption):
     @property
     def xbounds(self):
         """Boundaries of the x-coordinate"""
-        raw_data = self.raw_data
         data = self.data
-        coord = raw_data.decoder.get_x(data, coords=data.coords)
-        return raw_data.decoder.get_plotbounds(coord)
+        coord = self.decoder.get_x(data, coords=data.coords)
+        return self.decoder.get_plotbounds(coord)
 
     @property
     def ybounds(self):
         """Boundaries of the y-coordinate"""
-        raw_data = self.raw_data
         data = self.data
-        coord = raw_data.decoder.get_y(data, coords=data.coords)
-        return raw_data.decoder.get_plotbounds(coord)
+        coord = self.decoder.get_y(data, coords=data.coords)
+        return self.decoder.get_plotbounds(coord)
 
     @property
     def triangles(self):
         """The :class:`matplotlib.tri.Triangulation` instance containing the
         spatial informations"""
-        decoder = self.raw_data.decoder
+        decoder = self.decoder
         return decoder.get_triangles(self.data, self.data.coords, copy=True)
 
     def _triplot(self, value):
@@ -2213,7 +2350,7 @@ class DataGrid(Formatoption):
         if value is None:
             self.remove()
         else:
-            if self.raw_data.decoder.is_triangular(self.raw_data):
+            if self.decoder.is_triangular(self.raw_data):
                 self._triplot(value)
             else:
                 self._rectilinear_plot(value)
@@ -2256,12 +2393,12 @@ class SimplePlot2D(Plot2D):
 
     @property
     def xbounds(self):
-        return self.raw_data.decoder.get_plotbounds(self.transpose.get_x(
+        return self.decoder.get_plotbounds(self.transpose.get_x(
             self.data))
 
     @property
     def ybounds(self):
-        return self.raw_data.decoder.get_plotbounds(self.transpose.get_y(
+        return self.decoder.get_plotbounds(self.transpose.get_y(
             self.data))
 
 
@@ -2271,11 +2408,24 @@ class XTicks2D(XTicks):
 
     @property
     def data(self):
-        da = super(XTicks, self).data
-        if self.transpose.value:
-            return da.coords[da.dims[-2]]
-        else:
-            return da.coords[da.dims[-1]]
+        data = []
+        plot_data = super(XTicks, self).data
+        if not isinstance(plot_data, InteractiveList):
+            plot_data = [plot_data]
+        for da in plot_data:
+            if self.transpose.value:
+                data.append(da.coords[da.dims[-2]])
+            else:
+                data.append(da.coords[da.dims[-1]])
+        if len(data) == 1:
+            return data[0]
+        try:
+            return xr.concat(data)
+        except:
+            self.logger.debug(
+                'Failed to concatenate the data, returning first object!',
+                exc_info=True)
+            return data[0]
 
 
 class YTicks2D(YTicks):
@@ -2284,12 +2434,24 @@ class YTicks2D(YTicks):
 
     @property
     def data(self):
-        da = super(YTicks, self).data
-        if self.transpose.value:
-            return da.coords[da.dims[-1]]
-        else:
-            return da.coords[da.dims[-2]]
-
+        data = []
+        plot_data = super(YTicks, self).data
+        if not isinstance(plot_data, InteractiveList):
+            plot_data = [plot_data]
+        for da in plot_data:
+            if self.transpose.value:
+                return da.coords[da.dims[-1]]
+            else:
+                return da.coords[da.dims[-2]]
+        if len(data) == 1:
+            return data[0]
+        try:
+            return xr.concat(data)
+        except:
+            self.logger.debug(
+                'Failed to concatenate the data, returning first object!',
+                exc_info=True)
+            return data[0]
 
 class Extend(Formatoption):
     """
@@ -2399,8 +2561,8 @@ class Cbar(Formatoption):
         # this is somewhat a hack to make sure that we get the right position
         # although the figure has not been drawn so far
         for key in self.other_cbars:
-            fmto = getattr(self.plotter, key)
-            if fmto.original_position:
+            fmto = getattr(self.plotter, key, None)
+            if fmto is not None and fmto.original_position:
                 self.original_position = fmto.original_position
                 return
         ax = self.ax
@@ -3337,11 +3499,12 @@ class LegendLabels(Formatoption, TextBase):
             self.labels = [
                 self.replace(value, arr, self.get_enhanced_attrs(
                     arr, replot=True))
-                for arr in self.data]
+                for arr in self.iter_data]
         else:
             self.labels = [
                 self.replace(val, arr, self.get_enhanced_attrs(
-                    arr, replot=True)) for val, arr in zip(value, self.data)]
+                    arr, replot=True)) for val, arr in zip(
+                        value, self.iter_data)]
 
 
 class Legend(Formatoption):
@@ -3382,6 +3545,319 @@ class Legend(Formatoption):
     def remove(self):
         if hasattr(self, 'legend'):
             self.legend.remove()
+
+
+docstrings.delete_types('LimitBase.possible_types', 'no_None', 'None')
+
+
+class Hist2DXRange(LimitBase):
+    """
+    Specify the of the histogram for the x-dimension
+
+    This formatoption specifies how much the histogram ranges in the x- and
+    y-dimension
+
+    Possible types
+    --------------
+    %(LimitBase.possible_types.no_None)s
+
+    Notes
+    -----
+    This formatoption always acts on the coordinate, no matter what the
+    value of the :attr:`transpose` formatoption is
+
+    See also
+    --------
+    yrange"""
+
+    priority = START
+
+    group = 'data'
+
+    name = 'Range of the histogram in y-direction'
+
+    @property
+    def array(self):
+        coord = self.raw_data.coords[self.raw_data.dims[0]].values
+        return coord[~np.isnan(coord)]
+
+    def set_limit(self, *args):
+        self.range = args
+
+
+class Hist2DYRange(Hist2DXRange):
+    """
+    Specify the of the histogram for the x-dimension
+
+    This formatoption specifies how much the histogram ranges in the x- and
+    y-dimension
+
+    Possible types
+    --------------
+    %(LimitBase.possible_types.no_None)s
+
+    Notes
+    -----
+    This formatoption always acts on the DataArray, no matter what the
+    value of the :attr:`transpose` formatoption is
+
+    See Also
+    --------
+    xrange"""
+
+    name = 'Range of the histogram in y-direction'
+
+    @property
+    def array(self):
+        return self.raw_data[self.raw_data.notnull()].values
+
+
+class DataPrecision(Formatoption):
+    """
+    Set the precision of the data
+
+    This formatoption can be used to specify the precision of the data which
+    then will be the minimal bin width of the 2D histogram or the bandwith of
+    the kernel size (if the :attr:`density` formatoption is set to ``'kde'``)
+
+    Possible types
+    --------------
+    float
+        If 0, this formatoption has no effect at all. Otherwise it is assumed
+        to be the precision of the data
+    str
+        One of ``{'scott' | 'silverman'}``. If the :attr:`density` formatoption
+        is set to ``'kde'``, this describes the method how to calculate the
+        bandwidth"""
+
+    priority = START
+
+    dependencies = ['xrange', 'yrange']
+
+    connections = ['density']
+
+    def update(self, value):
+        self.bins = [0, 0]
+        value = safe_list(value)
+        if len(value) == 1:
+            value = [value[0], value[0]]
+        for i, val in enumerate(value):
+            if isstring(val) and self.density.value != 'kde':
+                warn("Cannot assign a string to the precision if the density "
+                     "estimation method is not 'kde' but '%s'" % (
+                         self.density.value), logger=self.logger)
+                value[i] = 0
+        self.prec = value
+        for i, prec in enumerate(value):
+            if prec == 0:
+                continue
+            da = self.data
+            if i == 0:
+                data = da.coords[da.dims[0]].values
+                data = data[~np.isnan(data)]
+                r = self.xrange.range
+            else:
+                data = da[da.notnull()].values
+                r = self.yrange.range
+            if r is not None:
+                dmin, dmax = r
+            else:
+                dmax = np.ceil(data.max().values / prec) * prec
+                dmin = data.min().values
+            self.bins[i] = max(int((dmax - dmin) / prec), 1)
+
+
+class HistBins(Formatoption):
+    """
+    Specify the bins of the 2D-Histogramm
+
+    This formatoption can be used to specify, how many bins to use. In other
+    words, it determines the grid size of the resulting histogram or kde plot.
+    If however you also set the :attr:`precision` formatoption keyword then the
+    minimum of precision and the bins specified here will be used.
+
+    Possible types
+    --------------
+    int
+        If 0, only use the bins specified by the :attr:`precision` keyword
+        (raises an error if the :attr:`precision` is also set to 0),
+        otherwise the number of bins to use
+    tuple (x, y) of int
+        The bins for x and y explicitly
+    """
+
+    priority = START
+
+    dependencies = ['precision']
+
+    def update(self, value):
+        self.bins = [0, 0]
+        try:
+            value = tuple(value)
+        except TypeError:
+            value = [value, value]
+        for i, (bins, bins_prec) in enumerate(zip(value, self.precision.bins)):
+            if bins == 0 and bins_prec == 0:
+                raise ValueError('precision and bins must not both be 0!')
+            elif bins == 0:
+                self.bins[i] = bins_prec
+            elif bins_prec == 0:
+                self.bins[i] = bins
+            else:
+                self.bins[i] = min(bins, bins_prec)
+
+
+class NormedHist2D(Formatoption):
+    """
+    Specify the normalization of the histogram
+
+    This formatoption can be used to normalize the histogram. It has no effect
+    if the :attr:`density` formatoption is set to ``'kde'``
+
+    Possible types
+    --------------
+    None
+        Do not make any normalization
+    str
+        One of
+
+        counts
+            To make the normalization based on the total number counts
+        area
+            To make the normalization basen on the total number of counts and
+            area (the default behaviour of :func:`numpy.histogram2d`)
+
+    See Also
+    --------
+    density
+    """
+
+    priority = START
+
+    name = 'Specify how to normalize the histogram'
+
+    def update(self, value):
+        pass  # nothing to do here
+
+    def hist2d(self, da, **kwargs):
+        """Make the two dimensional histogram
+
+        Parameters
+        ----------
+        da: xarray.DataArray
+            The data source"""
+        if self.value is None or self.value == 'counts':
+            normed = False
+        else:
+            normed = True
+        y = da.values
+        x = da.coords[da.dims[0]].values
+        counts, xedges, yedges = np.histogram2d(
+            x, y, normed=normed, **kwargs)
+        if self.value == 'counts':
+            counts = counts / counts.sum().astype(float)
+        return counts, xedges, yedges
+
+
+class PointDensity(Formatoption):
+    """
+    Specify the method to calculate the density
+
+    Possible types
+    --------------
+    str
+        One of the following strings are possible
+
+        hist
+            Make a 2D-histogram. The normalization is controlled by the
+            :attr:`normed` formatoption
+        kde
+            Fit a bivariate kernel density estimate to the data. Note that
+            this choice requires pythons statsmodels [1]_ module to be
+            installed
+
+    References
+    ----------
+    .. [1]: statsmodels
+
+    .. todo::
+
+        Check out statsmodels reference!!
+    """
+
+    priority = START
+
+    name = 'Type of the density plot'
+
+    dependencies = ['normed', 'bins', 'xrange', 'yrange', 'precision']
+
+    def update(self, value):
+        if value == 'hist':
+            self._hist()
+        else:
+            self._kde()
+
+    def _kde(self):
+        raw_da = self.raw_data
+        xyranges = [self.xrange.range, self.yrange.range]
+        bws = self.precision.prec
+        grid = self.bins.bins
+        for i, bw in enumerate(bws):
+            if bw == 0:
+                bws[i] = 'scott'
+        coord = raw_da.coords[raw_da.dims[0]]
+        xname = coord.name
+        yname = raw_da.name
+        x, y, z = self._statsmodels_bivariate_kde(
+            raw_da.coords[raw_da.dims[0]].values, raw_da.values, bws,
+            grid[0], grid[1], xyranges)
+        xcent = xr.Coordinate(xname, x, attrs=coord.attrs.copy())
+        ycent = xr.Coordinate(yname, y, attrs=raw_da.attrs.copy())
+        var = xr.Variable((yname, xname), z, attrs=raw_da.base.attrs.copy())
+        ds = xr.Dataset({'counts': var}, {xname: xcent, yname: ycent})
+        self.decoder = CFDecoder(ds)
+        self.data = InteractiveArray(ds.counts, base=ds, decoder=self.decoder)
+
+    def _statsmodels_bivariate_kde(self, x, y, bws, xsize, ysize, xyranges):
+        """Compute a bivariate kde using statsmodels.
+        This function is mainly motivated through
+        seaborn.distributions._statsmodels_bivariate_kde"""
+        import statsmodels.nonparametric.api as smnp
+        for i, (coord, bw) in enumerate(zip([x, y], bws)):
+            if isinstance(bw, six.string_types):
+                bw_func = getattr(smnp.bandwidths, "bw_" + bw)
+                bws[i] = bw_func(coord)
+        kde = smnp.KDEMultivariate([x, y], "cc", bws)
+        x_support = np.linspace(xyranges[0][0], xyranges[0][1], xsize)
+        y_support = np.linspace(xyranges[1][0], xyranges[1][1], ysize)
+        xx, yy = np.meshgrid(x_support, y_support)
+        z = kde.pdf([xx.ravel(), yy.ravel()]).reshape(xx.shape)
+        return x_support, y_support, z
+
+    def _hist(self):
+        raw_da = self.raw_data
+        bins = self.bins.bins
+        range_ = [self.xrange.range, self.yrange.range]
+        z, x, y = self.normed.hist2d(raw_da, bins=bins, range=range_)
+        coord = raw_da.coords[raw_da.dims[0]]
+        xname = coord.name
+        yname = raw_da.name
+        # calculate the centers
+        xcent = xr.Coordinate(xname, np.c_[[x[:-1], x[1:]]].mean(axis=0),
+                              attrs=coord.attrs.copy())
+        ycent = xr.Coordinate(yname, np.c_[[y[:-1], y[1:]]].mean(axis=0),
+                              attrs=raw_da.attrs.copy())
+        xbounds = xr.Variable((xname, 'bnds'), np.c_[[x[:-1], x[1:]]].T)
+        ybounds = xr.Variable((yname, 'bnds'), np.c_[[y[:-1], y[1:]]].T)
+        xcent.attrs['bounds'] = xname + '_bnds'
+        ycent.attrs['bounds'] = yname + '_bnds'
+        var = xr.Variable((yname, xname), z.T, attrs=raw_da.base.attrs.copy())
+        variables = {'counts': var}
+        coords = {xcent.name: xcent, ycent.name: ycent,
+                  xname + '_bnds': xbounds, yname + '_bnds': ybounds}
+        ds = xr.Dataset(variables, coords)
+        self.decoder = CFDecoder(ds)
+        self.data = InteractiveArray(ds.counts, base=ds, decoder=self.decoder)
 
 
 class XYTickPlotter(Plotter):
@@ -3433,27 +3909,25 @@ class Base2D(Plotter):
     datagrid = DataGrid('datagrid', index_in_list=0)
 
 
-class LinePlotter(BasePlotter, XYTickPlotter):
-    """Plotter for simple one-dimensional line plots
-    """
-    _rcparams_string = ['plotter.line.']
+class SimplePlotterBase(BasePlotter, XYTickPlotter):
+    """Base class for all simple plotters
+
+    There is no real difference between :class:`LinePlotter` and
+    :class:`LinePlotterBase` but we separate the for the sorting methods of the
+    :class:`psyplot.project.Project` class"""
+
+    #: The number variables that one data array visualized by this plotter
+    #: might have.
+    allowed_vars = 1
 
     transpose = Transpose('transpose')
     axiscolor = AxisColor('axiscolor')
     grid = Grid('grid')
     color = LineColors('color')
-    plot = LinePlot('plot')
     xlim = Xlim('xlim')
     ylim = Ylim('ylim')
     legendlabels = LegendLabels('legendlabels')
     legend = Legend('legend')
-
-    def _set_data(self, *args, **kwargs):
-        Plotter._set_data(self, *args, **kwargs)
-        data = self.plot_data
-        if not isinstance(data, InteractiveList):
-            self.plot_data = InteractiveList(
-                [data], arr_name=data.arr_name, attrs=data.attrs)
 
     @classmethod
     @docstrings.dedent
@@ -3464,7 +3938,8 @@ class LinePlotter(BasePlotter, XYTickPlotter):
         Parameters
         ----------
         name: str or list of str
-            The variable names (one variable per array)
+            The variable names (at maximum :attr:`allowed_vars` variables per
+            array)
         dims: list with length 1 or list of lists with length 1
             The dimension of the arrays. Only 1D-Arrays are allowed
         is_unstructured: bool or list of bool, optional
@@ -3489,16 +3964,33 @@ class LinePlotter(BasePlotter, XYTickPlotter):
             if len(n) == 0:
                 checks[i] = False
                 messages[i] = 'At least one variable name is required!'
-            elif (not isstring(n) and len(n) != 1) and len(d) != 0:
+            elif ((not isstring(n) and len(n) > cls.allowed_vars) and
+                  len(d) != (1 - len(n))):
                 checks[i] = False
-                messages[i] = 'Only one name is allowed per array!'
+                messages[i] = 'Only %i names are allowed per array!' % (
+                    cls.allowed_vars)
             elif len(d) == 0 or len(d) > 1:
                 checks[i] = False
                 messages[i] = 'Only 1-dimensional arrays are allowed!'
         return checks, messages
 
 
-class ViolinPlotter(LinePlotter):
+class LinePlotter(SimplePlotterBase):
+    """Plotter for simple one-dimensional line plots
+    """
+
+    _rcparams_string = ['plotter.line.']
+
+    #: The number variables that one data array visualized by this plotter
+    #: might have. We allow up to 3 variableswhere the second and third
+    #: variable might be the errors (see the :attr:`error` formatoption)
+    allowed_vars = 3
+    plot = LinePlot('plot')
+    error = ErrorPlot('error')
+    erroralpha = ErrorAlpha('erroralpha')
+
+
+class ViolinPlotter(SimplePlotterBase):
     """Plotter for making violin plots"""
 
     _rcparams_string = ['plotter.violin.']
@@ -3512,7 +4004,7 @@ class ViolinPlotter(LinePlotter):
     yticklabels = ViolinYTickLabels('yticklabels')
 
 
-class BarPlotter(ViolinPlotter):
+class BarPlotter(SimplePlotterBase):
     """Plotter for making bar plots"""
 
     _rcparams_string = ['plotter.bar.']
@@ -3528,6 +4020,10 @@ class Simple2DBase(Base2D):
     """Base class for :class:`Simple2DPlotter` and
     :class:`psyplot.plotter.maps.FieldPlotter` that defines the data
     management"""
+
+    #: The number of allowed dimensions in the for the visualization. If
+    #: the array is unstructured, one dimension will be subtracted
+    allowed_dims = 2
 
     miss_color = MissColor('miss_color', index_in_list=0)
 
@@ -3569,7 +4065,9 @@ class Simple2DBase(Base2D):
         if len(name[0]) == 0:
             return [False], ['At least one variable name must be provided!']
         # unstructured arrays have only 1 dimension
-        dimlen = 1 if is_unstructured[0] else 2
+        dimlen = cls.allowed_dims
+        if is_unstructured[0]:
+            dimlen -= 1
         # Check that the array is two-dimensional
         #
         # if more than one array name is provided, the dimensions should be
@@ -3590,12 +4088,14 @@ class Simple2DBase(Base2D):
             data = self.data[0]
         else:
             data = self.data
-        if not ((data.decoder.is_unstructured(data) and data.ndim == 1) or
-                data.ndim == 2):
+        ndims = self.allowed_dims
+        if data.decoder.is_unstructured(data):
+            ndims -= 1
+        if data.ndim != ndims:
             raise ValueError("Can only plot 2-dimensional data!")
 
 
-class Simple2DPlotter(Simple2DBase, LinePlotter):
+class Simple2DPlotter(Simple2DBase, SimplePlotterBase):
     """Plotter for visualizing 2-dimensional data.
 
     See Also
@@ -3611,6 +4111,21 @@ class Simple2DPlotter(Simple2DBase, LinePlotter):
     legend = None
     legendlabels = None
     color = None  # no need for this formatoption
+
+
+class DensityPlotter(Simple2DPlotter):
+    """A plotter to visualize the density of points in a 2-dimensional grid"""
+
+    allowed_dims = 1
+
+    _rcparams_string = ['plotter.density.']
+
+    xrange = Hist2DXRange('xrange')
+    yrange = Hist2DYRange('yrange')
+    precision = DataPrecision('precision')
+    bins = HistBins('bins')
+    normed = NormedHist2D('normed')
+    density = PointDensity('density')
 
 
 class BaseVectorPlotter(Base2D):
@@ -3699,7 +4214,7 @@ class BaseVectorPlotter(Base2D):
             raise ValueError("Can only plot 3-dimensional data!")
 
 
-class SimpleVectorPlotter(BaseVectorPlotter, LinePlotter):
+class SimpleVectorPlotter(BaseVectorPlotter, SimplePlotterBase):
     """Plotter for visualizing 2-dimensional vector data
 
     See Also
@@ -3709,22 +4224,40 @@ class SimpleVectorPlotter(BaseVectorPlotter, LinePlotter):
     plot = VectorPlot('plot')
     xticks = XTicks2D('xticks')
     yticks = YTicks2D('yticks')
+    xlim = Xlim2D('xlim')
+    ylim = Ylim2D('ylim')
     legend = None
     legendlabels = None
 
 
-class CombinedBase(Plotter):
-    """Base plotter for combined 2-dimensional scalar and vector plot"""
+class ScalarCombinedBase(Plotter):
+    """Base plotter for combined 2-dimensional scalar field with any other
+    plotter"""
+
     _rcparams_string = ["plotter.combinedsimple."]
 
+    # scalar plot formatoptions
     cbar = Cbar('cbar', other_cbars=['vcbar'])
     cticks = CTicks('cticks')
     bounds = Bounds('bounds', index_in_list=0)
-    arrowsize = ArrowSize('arrowsize', plot='vplot', index_in_list=1)
-    arrowstyle = ArrowStyle('arrowstyle', plot='vplot', index_in_list=1)
+
+    # make sure that masking options only affect the scalar field
+    maskless = MaskLess('maskless', index_in_list=0)
+    maskleq = MaskLeq('maskleq', index_in_list=0)
+    maskgreater = MaskGreater('maskgreater', index_in_list=0)
+    maskgeq = MaskGeq('maskgeq', index_in_list=0)
+    maskbetween = MaskBetween('maskbetween', index_in_list=0)
+
+
+class CombinedBase(ScalarCombinedBase):
+    """Base plotter for combined 2-dimensional scalar and vector plot"""
+
+    # vector plot formatoptions
     color = VectorColor('color', plot='vplot', cmap='vcmap', bounds='vbounds',
                         index_in_list=1)
     linewidth = VectorLineWidth('linewidth', plot='vplot', index_in_list=1)
+    arrowsize = ArrowSize('arrowsize', plot='vplot', index_in_list=1)
+    arrowstyle = ArrowStyle('arrowstyle', plot='vplot', index_in_list=1)
     vcbar = VectorCbar('vcbar', plot='vplot', cmap='vcmap', bounds='vbounds',
                        cbarspacing='vcbarspacing', other_cbars=['cbar'],
                        index_in_list=1)
@@ -3745,12 +4278,6 @@ class CombinedBase(Plotter):
     vctickweight = CTickWeight('vctickweight', cbar='vcbar', index_in_list=1)
     vctickprops = CTickProps('vctickprops', cbar='vcbar',
                              ticksize='vcticksize', index_in_list=1)
-    # make sure that masking options only affect the scalar field
-    maskless = MaskLess('maskless', index_in_list=0)
-    maskleq = MaskLeq('maskleq', index_in_list=0)
-    maskgreater = MaskGreater('maskgreater', index_in_list=0)
-    maskgeq = MaskGeq('maskgeq', index_in_list=0)
-    maskbetween = MaskBetween('maskbetween', index_in_list=0)
 
     @classmethod
     @docstrings.dedent
@@ -3812,5 +4339,5 @@ class CombinedSimplePlotter(CombinedBase, Simple2DPlotter,
     psyplot.plotter.maps.CombinedPlotter: for visualizing the data on a map"""
     plot = Plot2D('plot', index_in_list=0)
     vplot = CombinedVectorPlot('vplot', index_in_list=1, cmap='vcmap',
-                       bounds='vbounds')
+                               bounds='vbounds')
     density = Density('density', plot='vplot', index_in_list=1)
