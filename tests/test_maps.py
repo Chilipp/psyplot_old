@@ -512,8 +512,7 @@ def _do_from_both(func):
 
 
 def _in_vector_mode(func):
-    """Call the given `func` only from :class:`FieldPlotterTest and
-    :class:`VectorPlotterTest`"""
+    """Call the given `func` only from:class:`VectorPlotterTest`"""
     func.__doc__ = getattr(VectorPlotterTest, func.__name__).__doc__
 
     @wraps(func)
