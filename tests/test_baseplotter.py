@@ -23,7 +23,7 @@ class BasePlotterTest(bt.PsyPlotTestCase):
 
     @classmethod
     def tearDownClass(cls):
-        super(DensityPlotterTest, cls).tearDownClass()
+        super(BasePlotterTest, cls).tearDownClass()
         cls.ds.close()
         plt.close(cls.plotter.ax.get_figure().number)
 
