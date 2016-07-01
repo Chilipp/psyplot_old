@@ -454,7 +454,7 @@ class LonLatBox(BoxBase):
         else:
             arr = self.data
             arr = self.update_array(
-                    value, arr, self.raw_data.decoder, next(six.itervalues(
+                    value, arr, self.decoder, next(six.itervalues(
                         self.raw_data.base_variables)))
             self.data = arr
 
@@ -881,7 +881,7 @@ class GridBase(DataTicksCalculator):
         else:
             loc = ticker.FixedLocator(value)
         self._gridliner = self.ax.gridlines(
-            self.ax.projection, **self.get_kwargs(loc))
+            crs=ccrs.PlateCarree(), **self.get_kwargs(loc))
         self._modify_gridliner(self._gridliner)
         self._disable_other_axis()
 
@@ -938,12 +938,12 @@ class XGrid(GridBase):
 
     @property
     def array(self):
-        decoder = self.raw_data.decoder
+        decoder = self.decoder
         coord = decoder.get_x(self.data, self.data.coords)
         arr = np.unique(decoder.get_plotbounds(coord, ignore_shape=True))
         if hasattr(coord, 'units') and coord.units == 'radian':
             arr *= 180. / np.pi
-        arr = self.ax.projection.transform_points(
+        arr = ccrs.PlateCarree().transform_points(
             self.transform.projection, arr, np.zeros(arr.shape))[..., 0]
         return arr
 
@@ -968,12 +968,12 @@ class YGrid(GridBase):
 
     @property
     def array(self):
-        decoder = self.raw_data.decoder
+        decoder = self.decoder
         coord = decoder.get_y(self.data, self.data.coords)
         arr = np.unique(decoder.get_plotbounds(coord, ignore_shape=True))
         if hasattr(coord, 'units') and coord.units == 'radian':
             arr *= 180. / np.pi
-        arr = self.ax.projection.transform_points(
+        arr = ccrs.PlateCarree().transform_points(
             self.transform.projection, arr, np.zeros(arr.shape))[..., 1]
         return arr
 
@@ -987,23 +987,29 @@ class MapPlot2D(Plot2D):
     connections = Plot2D.connections + ['transform']
 
     def _tripcolor(self):
-        from matplotlib.tri import TriAnalyzer
-        mratio = rcParams['plotter.maps.plot.min_circle_ratio']
+        from matplotlib.tri import Triangulation
         self.logger.debug("Getting triangles")
         triangles = self.triangles
-        if mratio:
-            flat_mask = TriAnalyzer(triangles).get_flat_tri_mask(mratio)
+        if isinstance(self.transform.projection, ccrs.PlateCarree):
+            xbounds = triangles.x[triangles.triangles]
+            diffs = np.c_[np.diff(xbounds), np.diff(xbounds[:, ::-2])]
+            mask = (np.abs(diffs) > 180).any(axis=1)
+            x_wrap = xbounds[mask]
+            y_wrap = triangles.y[triangles.triangles[mask]]
+            diffs = diffs[mask]
+            x_wrap[diffs < -180] -= 360
+            diffs = np.c_[np.diff(x_wrap), np.diff(x_wrap[:, ::-2])]
+            x_wrap[diffs < -180] -= 360
+            self.x_wrap = x_wrap
+            triangles_wrapped = Triangulation(
+                x_wrap.ravel(), y_wrap.ravel(),
+                triangles=np.arange(x_wrap.size).reshape(x_wrap.shape))
             # we have to apply a little workaround here in order to draw the
             # boundaries right. That implies that we mask out flat triangles
             # (epecially those at the end) and transform them manually
-            decoder = self.raw_data.decoder
-            self.logger.debug("Wrapping triangles")
-            triangles_wrapped = decoder.get_triangles(
-                self.data, self.data.coords, copy=True,
-                src_crs=self.transform.projection,
-                target_crs=self.ax.projection, nans='skip')
-            triangles_wrapped.set_mask(~flat_mask)
-            triangles.set_mask(flat_mask)
+            triangles.set_mask(mask)
+        else:
+            triangles_wrapped = None
         cmap = get_cmap(self.cmap.value, len(self.bounds.bounds) - 1 or None)
         if hasattr(self, '_plot'):
             self.logger.debug("Updating plot")
@@ -1011,23 +1017,24 @@ class MapPlot2D(Plot2D):
         else:
             self.logger.debug("Creating new plot")
             arr = self.array
-            arr = arr[~np.isnan(arr)]
+            arr_plot = arr[~np.isnan(arr)]
             self.logger.debug("Creating %i triangles", len(arr))
             self._plot = self.ax.tripcolor(
-                triangles, arr, norm=self.bounds.norm, cmap=cmap,
+                triangles, arr_plot, norm=self.bounds.norm, cmap=cmap,
                 rasterized=True, **self._kwargs)
         # draw wrapped collection to fix the issue that the boundaries are
         # masked out when using the min_circle_ration
-        if mratio and not hasattr(self, '_wrapped_plot'):
+        if triangles_wrapped and not hasattr(self, '_wrapped_plot'):
             self.logger.debug("Creating new wrapped plot")
+            arr_wrap = arr[mask]
             kwargs = self._kwargs.copy()
             kwargs['zorder'] = self._plot.zorder - 0.1
-            kwargs.pop('transform', None)
-            kwargs.setdefault('snap', False)
+#            kwargs.pop('transform', None)
+#            kwargs.setdefault('snap', False)
             self._wrapped_plot = self.ax.tripcolor(
-                triangles_wrapped, arr, norm=self.bounds.norm,
+                triangles_wrapped, arr_wrap, norm=self.bounds.norm,
                 cmap=cmap, rasterized=True, **kwargs)
-        else:
+        elif hasattr(self, '_wrapped_plot'):
             self.logger.debug("Updating wrapped plot")
             self._wrapped_plot.update(dict(cmap=cmap, norm=self.bounds.norm))
         self.logger.debug("Plot made. Done.")
@@ -1045,7 +1052,7 @@ class MapDataGrid(DataGrid):
 
     def triangles(self):
         from matplotlib.tri import TriAnalyzer
-        decoder = self.raw_data.decoder
+        decoder = self.decoder
         triangles = decoder.get_triangles(
             self.data, self.data.coords, copy=True,
             src_crs=self.transform.projection, target_crs=self.ax.projection)
@@ -1089,10 +1096,10 @@ class MapDensity(Density):
     def _set_quiver_density(self, value):
         if all(val == 1.0 for val in value):
             self.plot._kwargs.pop('regrid_shape', None)
-        elif self.raw_data.decoder.is_unstructured(self.raw_data):
+        elif self.decoder.is_unstructured(self.raw_data):
             warn("Quiver plot of unstructered data does not support the "
                  "density keyword!", PsyPlotRuntimeWarning, logger=self.logger)
-        elif self.raw_data.decoder.is_circumpolar(self.raw_data):
+        elif self.decoder.is_circumpolar(self.raw_data):
             warn("Quiver plot of circumpolar data does not support the "
                  "density keyword!", PsyPlotRuntimeWarning, logger=self.logger)
         else:
@@ -1123,7 +1130,7 @@ class MapVectorPlot(VectorPlot):
     def set_value(self, value, *args, **kwargs):
         # stream plots for circumpolar grids is not supported
         if (value == 'stream' and self.raw_data is not None and
-                self.raw_data.decoder.is_circumpolar(self.raw_data)):
+                self.decoder.is_circumpolar(self.raw_data)):
             warn('Cannot make stream plots of circumpolar data!',
                  logger=self.logger)
             value = 'quiver'
@@ -1165,7 +1172,7 @@ class MapVectorPlot(VectorPlot):
         return x, y, u, v
 
     def _stream_plot(self):
-        if self.raw_data.decoder.is_circumpolar(self.raw_data):
+        if self.decoder.is_circumpolar(self.raw_data):
             warn('Cannot make stream plots of circumpolar data!',
                  logger=self.logger)
             return
