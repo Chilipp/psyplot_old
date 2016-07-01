@@ -80,6 +80,13 @@ class PsyPlotTestCase(TestCase):
     ncfile = os.path.join(test_dir, 'test-t2m-u-v.nc')
 
     @classmethod
+    def tearDownClass(cls):
+        import psyplot
+        from psyplot.config.rcsetup import defaultParams
+        psyplot.rcParams.update(
+            **{key: val[0] for key, val in defaultParams.items()})
+
+    @classmethod
     def create_dirs(cls):
         if not os.path.exists(ref_dir):
             os.makedirs(ref_dir)
