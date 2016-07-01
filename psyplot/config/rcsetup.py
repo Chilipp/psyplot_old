@@ -733,13 +733,13 @@ def try_and_error(*funcs):
     -------
     function"""
     def validate(value):
+        exc = None
         for func in funcs:
             try:
                 return func(value)
-            except (ValueError, TypeError):
-
-                continue
-        raise
+            except (ValueError, TypeError) as e:
+                exc = e
+        raise exc
     return validate
 
 
@@ -856,10 +856,12 @@ class validate_list(object):
         A datatype (e.g. :class:`float`) that shall be used for the conversion
     """
 
-    def __init__(self, dtype=None):
+    def __init__(self, dtype=None, length=None, listtype=list):
         """Initialization function"""
         #: data type (e.g. :class:`float`) used for the conversion
         self.dtype = dtype
+        self.length = length
+        self.listtype = list
 
     def __call__(self, l):
         """Validate whether `l` is a list with contents of :attr:`dtype`
@@ -878,9 +880,9 @@ class validate_list(object):
         ValueError"""
         try:
             if self.dtype is None:
-                l = list(l)
+                l = self.listtype(l)
             else:
-                l = list(map(self.dtype, l))
+                l = self.listtype(map(self.dtype, l))
         except TypeError:
             if self.dtype is None:
                 raise ValueError(
@@ -888,6 +890,9 @@ class validate_list(object):
             else:
                 raise ValueError(
                     "Could not convert to list of type %s!" % str(self.dtype))
+        if self.length is not None and len(l) != self.length:
+            raise ValueError('List with length %i is required! Not %i!' % (
+                self.length, len(l)))
         return l
 
 
@@ -1324,6 +1329,51 @@ def validate_dict_yaml(s):
             return yaml.load(f)
 
 
+def validate_fix(val):
+    if val is None:
+        return [None]
+    try:
+        val = validate_float(val)
+        return [[0, val]]
+    except ValueError:
+        pass
+    msg = 'Values for the fix formatoptions must be of length 2!'
+    validator = try_and_error(validate_none, validate_list(float))
+    try:
+        val = validator(val)
+    except ValueError:
+        val = list(map(validator, val))
+        if not all(v is None or len(v) == 2 for v in val):
+            raise ValueError(msg)
+    else:
+        if val is not None and len(val) != 2:
+            raise ValueError(msg)
+    return val
+
+
+def validate_callable(val):
+    if callable(val):
+        return val
+    raise ValueError('%s is not callable!' % str(val))
+
+
+def validate_alpha(val):
+    '''Validate an alpha value between 0 and 1'''
+    val = validate_float(val)
+    if val < 0 or val > 1:
+        raise ValueError('Alpha values must lay between 0 and 1!')
+    return val
+
+
+def validate_grid(val):
+    if isinstance(val, tuple) and len(val) in [2, 3]:
+        return val
+    try:
+        return validate_bool_maybe_none(val)
+    except ValueError:
+        return BoundsValidator('grid', bound_strings, True)(val)
+
+
 bound_strings = ['data', 'mid', 'rounded', 'roundedsym', 'minmax', 'sym']
 
 tick_strings = bound_strings + ['hour', 'day', 'week', 'month', 'monthend',
@@ -1425,6 +1475,27 @@ defaultParams = {
     'plotter.plot2d.ctickprops': [
         {}, validate_dict,
         'fmt key for the additional properties of the colorbar ticklabels'],
+
+    # density plotter
+    'plotter.density.xrange': [
+        'minmax', validate_limits, 'The histogram limits of the density plot'],
+    'plotter.density.yrange': [
+        'minmax', validate_limits, 'The histogram limits of the density plot'],
+    'plotter.density.precision': [
+        0, try_and_error(validate_float, validate_list(float, 2),
+                         validate_str, validate_list(str, 2)),
+        'The precision of the data to make sure that the bin width is not '
+        'below this value'],
+    'plotter.density.bins': [
+        10, try_and_error(validate_int, validate_list(int, 2)),
+        'The bins in x- and y-direction of the density plot'],
+    'plotter.density.normed': [
+        None, try_and_error(validate_none, ValidateInStrings(
+            'normed', ['area', 'counts'], True)),
+        'The normalization of the density histogram'],
+    'plotter.density.density': [
+        'hist', ValidateInStrings('density', ['hist', 'kde'], True)],
+
     # axis color
     'plotter.simple.axiscolor': [
         None, validate_axiscolor, 'fmt key to modify the color of the spines'],
@@ -1434,6 +1505,12 @@ defaultParams = {
         '-', try_and_error(validate_none, validate_str,
                            validate_stringlist),
         'fmt key to modify the line style'],
+    'plotter.line.error': [
+        'fill', try_and_error(ValidateInStrings('error', ['fill'], True),
+                              validate_none),
+        'The visualization type of the errors for line plots'],
+    'plotter.line.erroralpha': [
+        0.15, validate_alpha, 'The alpha value of the error range'],
     'plotter.bar.plot': [
         'bar', try_and_error(validate_none, ValidateInStrings(
             'plot', ['bar', 'stacked'], True)),
@@ -1481,6 +1558,32 @@ defaultParams = {
         True, try_and_error(
             validate_bool, validate_int, validate_dict, validate_legend_loc),
         'fmt key to draw a legend'],
+
+    # Linear regression
+    'plotter.linreg.fix': [
+        None, validate_fix,
+        'fmt key to set a fix point for the linear regression fit'],
+    'plotter.linreg.fit': [
+        'fit', try_and_error(
+            validate_callable, validate_none,
+            ValidateInStrings('fit', ['fit', 'robust'], True)),
+        'The model to use for fitting a model'],
+    'plotter.linreg.nboot': [
+        1000, validate_int,
+        'Number of bootstrap resamples to estimate the confidence interval'],
+    'plotter.linreg.ci': [
+        95, validate_float,
+        'Size of the confidence interval'],
+    'plotter.linreg.bootstrap.random_seed': [
+        None, try_and_error(validate_none, validate_int),
+        'The seed to use for the bootstrap algorithm to estimate the '
+        'confidence interval'],
+
+    # combined density and linear regression plot
+    'plotter.densityreg.lineplot': [
+        '-', try_and_error(validate_none, validate_str,
+                           validate_stringlist),
+        'fmt key to modify the line style'],
 
     # Plot2D
     'plotter.plot2d.plot': [
@@ -1550,13 +1653,9 @@ defaultParams = {
         {}, validate_dict,
         'fmt key for additional line properties for the lat-lon-grid'],
     'plotter.maps.xgrid': [
-        True, try_and_error(validate_bool_maybe_none, BoundsValidator(
-            'bounds', bound_strings, True)),
-        'fmt key for drawing meridians on the map'],
+        True, validate_grid, 'fmt key for drawing meridians on the map'],
     'plotter.maps.ygrid': [
-        True, try_and_error(validate_bool_maybe_none, BoundsValidator(
-            'bounds', bound_strings, True)),
-        'fmt key for drawing parallels on the map'],
+        True, validate_grid, 'fmt key for drawing parallels on the map'],
     'plotter.maps.projection': [
         'cyl', ProjectionValidator(
             'projection', ['northpole', 'ortho', 'southpole', 'moll', 'geo',
@@ -1604,7 +1703,7 @@ defaultParams = {
         '-|>', ValidateInStrings('arrowstyle', ArrowStyle._style_list),
         'fmt key for the style of the arrows on stream plots'],
     'plotter.vector.density': [
-        1.0, try_and_error(validate_float, validate_list(float)),
+        1.0, try_and_error(validate_float, validate_list(float, 2)),
         'fmt key for the density of arrows on a vector plot'],
     'plotter.vector.linewidth': [
         None, LineWidthValidator('linewidth', ['absolute', 'u', 'v'], True),
@@ -1699,73 +1798,11 @@ defaultParams = {
         'boolean controlling whether the seaborn module shall be imported '
         'when importing the project module. If None, it is only tried to '
         'import the module.'],
-    'project.plotters': [{  # these plotters are automatically registered
-        'lineplot': {
-            'module': 'psyplot.plotter.simple',
-            'plotter_name': 'LinePlotter',
-            'prefer_list': True,
-            'default_slice': None,
-            'summary': 'Make a line plot of one-dimensional data'},
-        'barplot': {
-            'module': 'psyplot.plotter.simple',
-            'plotter_name': 'BarPlotter',
-            'prefer_list': True,
-            'default_slice': None,
-            'summary': 'Make a bar plot of one-dimensional data'},
-        'violinplot': {
-            'module': 'psyplot.plotter.simple',
-            'plotter_name': 'ViolinPlotter',
-            'prefer_list': True,
-            'default_slice': None,
-            'summary': 'Make a violin plot of your data'},
-        'plot2d': {
-            'module': 'psyplot.plotter.simple',
-            'plotter_name': 'Simple2DPlotter',
-            'prefer_list': False,
-            'default_slice': 0,
-            'default_dims': {'x': slice(None), 'y': slice(None)},
-            'summary': 'Make a simple plot of a 2D scalar field'},
-        'vector': {
-            'module': 'psyplot.plotter.simple',
-            'plotter_name': 'SimpleVectorPlotter',
-            'prefer_list': False,
-            'default_slice': 0,
-            'default_dims': {'x': slice(None), 'y': slice(None)},
-            'summary': 'Make a simple plot of a 2D vector field',
-            'example_call': "filename, name=[['u_var', 'v_var']], ..."},
-        'maps': {
-            'module': 'psyplot.plotter.maps',
-            'plotter_name': 'MapPlotter',
-            'plot_func': False},
-        'mapplot': {
-            'module': 'psyplot.plotter.maps',
-            'plotter_name': 'FieldPlotter',
-            'prefer_list': False,
-            'default_slice': 0,
-            'default_dims': {'x': slice(None), 'y': slice(None)},
-            'summary': 'Plot a 2D scalar field on a map'},
-        'mapvector': {
-            'module': 'psyplot.plotter.maps',
-            'plotter_name': 'VectorPlotter',
-            'prefer_list': False,
-            'default_slice': 0,
-            'default_dims': {'x': slice(None), 'y': slice(None)},
-            'summary': 'Plot a 2D vector field on a map',
-            'example_call': "filename, name=[['u_var', 'v_var']], ..."},
-        'mapcombined': {
-            'module': 'psyplot.plotter.maps',
-            'plotter_name': 'CombinedPlotter',
-            'prefer_list': True,
-            'default_slice': 0,
-            'default_dims': {'x': slice(None), 'y': slice(None)},
-            'summary': ('Plot a 2D scalar field with an overlying vector field'
-                        'on a map'),
-            'example_call': (
-                "filename, name=[['my_variable', ['u_var', 'v_var']]], ...")},
-        }, validate_dict,
+    'project.plotters': [{}, validate_dict,
         'mapping from identifier to plotter definitions for the Project class.'
         ' See the :func:`psyplot.project.register_plotter` function for '
-        'possible keywords and values'],
+        'possible keywords and values. See '
+        ':attr:`psyplot.project.registered_plotters` for examples.'],
     }
 
 # add combinedplotter strings for windplot
