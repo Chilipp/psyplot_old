@@ -2,9 +2,13 @@ import types
 import six
 from matplotlib.docstring import dedent
 from matplotlib.cbook import dedent as dedents
-from re import (compile as re_compile, sub, MULTILINE, findall, finditer,
+from re import (compile as re_compile, sub, MULTILINE, findall,
                 VERBOSE)
 from psyplot.warning import warn
+
+substitution_pattern = re_compile(
+    r"""(?<!%)(%%)*%(?!%)   # uneven number of %
+        \((?P<key>(?s).*?)\)# key enclosed in brackets""", VERBOSE)
 
 
 def safe_modulo(s, meta, checked='', print_warning=True):
@@ -42,9 +46,7 @@ def safe_modulo(s, meta, checked='', print_warning=True):
         return s % meta
     except (ValueError, TypeError, KeyError):
         # replace the missing fields by %%
-        keys = finditer(r"""(?<!%)(%%)*%(?!%)   # uneven number of %
-                            \((?P<key>(?s).*?)\)# key enclosed in brackets""",
-                        s, VERBOSE)
+        keys = substitution_pattern.finditer(s)
         for m in keys:
             key = m.group('key')
             if not isinstance(meta, dict) or key not in meta:
