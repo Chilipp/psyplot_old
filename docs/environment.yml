@@ -13,6 +13,7 @@ dependencies:
     - ipython
     - nbconvert
     - sphinx
+    - statsmodels
     - pip:
         - sphinx-argparse
         - cdo
