@@ -50,7 +50,8 @@ groups = {
     'misc': 'Miscallaneous formatoptions',
     'ticks': 'Axis tick formatoptions',
     'vector': 'Vector plot formatoptions',
-    'masking': 'Masking formatoptions'
+    'masking': 'Masking formatoptions',
+    'fit': 'Fitting formatoptions',
     }
 
 
@@ -275,16 +276,37 @@ class Formatoption(object):
     def decoder(self):
         """The :class:`~psyplot.data.CFDecoder` instance that decodes the
         :attr:`raw_data`"""
+        # If the decoder is modified by one of the formatoptions, use this one
+        if self.plotter.plot_data_decoder is not None:
+            if self.index_in_list is not None and isinstance(
+                    self.plotter.plot_data, InteractiveList):
+                ret = self.plotter.plot_data_decoder[self.index_in_list]
+                if ret is not None:
+                    return ret
+            else:
+                return self.plotter.plot_data_decoder
         data = self.raw_data
         if isinstance(data, InteractiveList):
             return data[0].decoder
         return data.decoder
 
+    @decoder.setter
+    def decoder(self, value):
+        # we do not modify the raw data but instead set it on the plotter
+        if self.index_in_list is not None and isinstance(
+                self.plotter.plot_data, InteractiveList):
+            n = len(self.plotter.plot_data)
+            decoders = self.plotter.plot_data_decoder or [None] * n
+            decoders[self.index_in_list] = value
+            self.plotter.plot_data_decoder = decoders
+        else:
+            self.plotter.plot_data_decoder = value
+
     @property
     def data(self):
         """The :class:`psyplot.DataArray` that is plotted"""
         if self.index_in_list is not None and isinstance(
-                self.plotter.data, InteractiveList):
+                self.plotter.plot_data, InteractiveList):
             return self.plotter.plot_data[self.index_in_list]
         else:
             return self.plotter.plot_data
@@ -305,11 +327,11 @@ class Formatoption(object):
         return iter([self.data])
 
     @property
-    def iter_plotdata(self):
+    def iter_raw_data(self):
         """Returns an iterator over the plot data arrays"""
-        if isinstance(self.plotter.plot_data, InteractiveList):
-            return iter(self.plotter.plot_data)
-        return iter([self.plotter.plot_data])
+        if isinstance(self.raw_data, InteractiveList):
+            return iter(self.raw_data)
+        return iter([self.raw_data])
 
     @property
     def validate(self):
@@ -448,9 +470,58 @@ class Formatoption(object):
             try:
                 self.plotter[self.key] = value if not validate else \
                     self.validate(value)
-            except ValueError:
-                self.logger.error("Error while setting %s!" % self.key,
-                                  exc_info=True)
+            except ValueError as e:
+                critical("Error while setting %s!" % self.key,
+                         logger=self.logger)
+                raise e
+
+    def set_data(self, data, i=None):
+        """
+        Replace the data to plot
+
+        This method may be used to replace the data that is visualized by the
+        plotter. It changes it's behaviour depending on whether an
+        :class:`psyplot.data.InteractiveList` is visualized or a single
+        :class:`pysplot.data.InteractiveArray`
+
+        Parameters
+        ----------
+        data: psyplot.data.InteractiveBase
+            The data to insert
+        i: int
+            The position in the InteractiveList where to insert the data (if
+            the plotter visualizes a list anyway)
+        """
+        if i is not None and isinstance(self.data, InteractiveList):
+            self.data[i] = data
+        else:
+            self.data = data
+
+    def set_decoder(self, decoder, i=None):
+        """
+        Replace the data to plot
+
+        This method may be used to replace the data that is visualized by the
+        plotter. It changes it's behaviour depending on whether an
+        :class:`psyplot.data.InteractiveList` is visualized or a single
+        :class:`pysplot.data.InteractiveArray`
+
+        Parameters
+        ----------
+        decoder: psyplot.data.CFDecoder
+            The decoder to insert
+        i: int
+            The position in the InteractiveList where to insert the data (if
+            the plotter visualizes a list anyway)
+        """
+        if i is not None and isinstance(
+                self.plotter.plot_data, InteractiveList):
+            n = len(self.plotter.plot_data)
+            decoders = self.plotter.plot_data_decoder or [None] * n
+            decoders[i] = decoder
+            self.plotter.plot_data_decoder = decoders
+        else:
+            self.plotter.plot_data_decoder = decoder
 
     def check_and_set(self, value, todefault=False, validate=True):
         """Checks the value and sets the value if it changed
@@ -766,6 +837,10 @@ class Plotter(dict):
     def plot_data(self, value):
         self._set_data(value)
 
+    #: The decoder to use for the formatoptions. If None, the decoder of the
+    #: raw data is used
+    plot_data_decoder = None
+
     def _set_data(self, value):
         if isinstance(value, InteractiveList):
             self._plot_data = value.copy()
@@ -862,10 +937,10 @@ class Plotter(dict):
             method"""
         try:
             fmto.set_value(*args, **kwargs)
-        except:
+        except Exception as e:
             critical("Error while setting %s!" % fmto.key,
                      logger=getattr(self, 'logger', None))
-            raise
+            raise e
 
     def __getitem__(self, key):
         try:
@@ -1277,9 +1352,10 @@ class Plotter(dict):
                     changed = fmto.check_and_set(
                         value, todefault=self._todefault,
                         validate=not self.no_validation)
-                except:
+                except Exception as e:
                     self._registered_updates.pop(key, None)
-                    raise
+                    self.logger.debug('Failed to set %s', key)
+                    raise e
             changed = changed or key in self._force
             if changed:
                 fmtos.append(fmto)
