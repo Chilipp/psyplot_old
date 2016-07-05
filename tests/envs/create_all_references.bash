@@ -24,5 +24,5 @@ for f; do
 	    source deactivate
     fi
     # create reference figures
-    ${python_bin} ../create_references.py &> ref_${env}.log && conda env remove -y -n ${env} || echo "Error occured when creating references for ${env}!" 
+    ${python_bin} ../create_references.py &> ref_${env}.log && conda env remove -y -n ${env} || echo "Error occured when creating references for ${env}!" & 
 done
