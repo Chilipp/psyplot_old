@@ -1761,13 +1761,14 @@ class Xlim(LimitBase):
     @property
     def array(self):
         def select_array(arr):
-            if arr.ndim == 2:
+            if arr.ndim > 1:
                 return arr[0]
             return arr
         df = InteractiveList(map(select_array, self.iter_data)).to_dataframe()
         if self.transpose.value:
-            return df.values
-        return df.index.values
+            return df.values[df.notnull().values]
+        else:
+            return df.index.values
 
     def set_limit(self, *args):
         self.ax.set_xlim(*args)
@@ -1807,13 +1808,14 @@ class Ylim(LimitBase):
     @property
     def array(self):
         def select_array(arr):
-            if arr.ndim == 2:
+            if arr.ndim > 1:
                 return arr[0]
             return arr
         df = InteractiveList(map(select_array, self.iter_data)).to_dataframe()
         if self.transpose.value:
             return df.index.values
-        return df.values
+        else:
+            return df.values[df.notnull().values]
 
     def set_limit(self, *args):
         self.ax.set_ylim(*args)
@@ -2227,7 +2229,10 @@ class Plot2D(Formatoption):
         if self.decoder.is_triangular(self.raw_data):
             return self._tripcolor()
         arr = self.array
-        N = len(np.unique(self.bounds.norm(arr.ravel())))
+        try:
+            N = self.bounds.norm.Ncmap
+        except AttributeError:
+            N = len(np.unique(self.bounds.norm(arr.ravel())))
         cmap = get_cmap(self.cmap.value, N)
         if hasattr(self, '_plot'):
             self._plot.update(dict(cmap=cmap, norm=self.bounds.norm))
@@ -2247,15 +2252,18 @@ class Plot2D(Formatoption):
     def _tripcolor(self):
         from matplotlib.tri import TriAnalyzer
         triangles = self.triangles
-        mratio = rcParams['plotter.maps.plot.min_circle_ratio']
-        if mratio:
-            triangles.set_mask(
-                TriAnalyzer(triangles).get_flat_tri_mask(mratio))
-        cmap = get_cmap(self.cmap.value, len(self.bounds.bounds) - 1 or None)
+        arr = None
+        try:
+            N = self.bounds.norm.Ncmap
+        except AttributeError:
+            arr = self.array
+            N = len(np.unique(self.bounds.norm(arr.ravel())))
+        cmap = get_cmap(self.cmap.value, N)
         if hasattr(self, '_plot'):
             self._plot.update(dict(cmap=cmap, norm=self.bounds.norm))
         else:
-            arr = self.array
+            if arr is None:
+                arr = self.array
             self._plot = self.ax.tripcolor(
                 triangles, arr[~np.isnan(arr)], norm=self.bounds.norm,
                 cmap=cmap, rasterized=True, **self._kwargs)
