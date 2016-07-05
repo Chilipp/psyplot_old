@@ -578,7 +578,7 @@ class CombinedPlotterTest(VectorPlotterTest):
             prefer_list=True)[0]
         cls._data.attrs['long_name'] = 'Temperature'
         cls._data.attrs['name'] = 't2m'
-        cls.plotter = CombinedPlotter(cls.data)
+        cls.plotter = CombinedPlotter(cls._data)
         cls.create_dirs()
         cls._color_fmts = cls.plotter.fmt_groups['colors']
 
@@ -586,6 +586,9 @@ class CombinedPlotterTest(VectorPlotterTest):
         # slightly after replotting. Therefore we force a replot here
         cls.plotter.update(color='absolute')
         cls.plotter.update(todefault=True, replot=True)
+
+    def tearDown(self):
+        self._data.update(t=0, todefault=True, replot=True)
 
     def plot(self, **kwargs):
         color_fmts = psy.plot.mapvector.plotter_cls().fmt_groups['colors']

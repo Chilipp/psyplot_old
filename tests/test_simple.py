@@ -977,6 +977,9 @@ class CombinedSimplePlotterTest(SimpleVectorPlotterTest):
         cls.plotter.update(color='absolute')
         cls.plotter.update(todefault=True, replot=True)
 
+    def tearDown(self):
+        self._data.update(t=0, todefault=True, replot=True)
+
     def plot(self, **kwargs):
         color_fmts = psy.plot.mapvector.plotter_cls().fmt_groups['colors']
         fix_colorbar = not color_fmts.intersection(kwargs)
