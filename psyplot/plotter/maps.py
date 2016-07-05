@@ -1010,13 +1010,20 @@ class MapPlot2D(Plot2D):
                 # triangles (epecially those at the end) and transform them
                 # manually
                 triangles.set_mask(mask)
-        cmap = get_cmap(self.cmap.value, len(self.bounds.bounds) - 1 or None)
+        arr = None
+        try:
+            N = self.bounds.norm.Ncmap
+        except AttributeError:
+            arr = self.array
+            N = len(np.unique(self.bounds.norm(arr.ravel())))
+        cmap = get_cmap(self.cmap.value, N)
         if hasattr(self, '_plot'):
             self.logger.debug("Updating plot")
             self._plot.update(dict(cmap=cmap, norm=self.bounds.norm))
         else:
             self.logger.debug("Creating new plot")
-            arr = self.array
+            if arr is None:
+                arr = self.array
             arr_plot = arr[~np.isnan(arr)]
             self.logger.debug("Creating %i triangles", len(arr))
             self._plot = self.ax.tripcolor(
