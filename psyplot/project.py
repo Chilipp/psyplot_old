@@ -30,7 +30,7 @@ from psyplot.plotter import unique_everseen, Plotter
 from psyplot.plotter.colors import show_colormaps, get_cmap
 from psyplot.compat.pycompat import OrderedDict, range, getcwd
 try:
-    from cdo import Cdo as CdoBase
+    from cdo import Cdo as _CdoBase
     with_cdo = True
 except ImportError as e:
     Cdo = _MissingModule(e)
@@ -47,103 +47,6 @@ if rcParams['project.import_seaborn'] is not False:
 _open_projects = []  # list of open projects
 _current_project = None  # current main project
 _current_subproject = None  # current subproject
-
-
-if with_cdo:
-    CDF_MOD_NCREADER = 'xarray'
-
-    class Cdo(CdoBase):
-        """Subclass of the original cdo.Cdo class in the cdo.py module
-
-        Requirements are a working cdo binary and the installed cdo.py python
-        module.
-
-        For a documentation of an operator, use the python help function, for a
-        list of operators, use the builtin dir function.
-        Further documentation on the operators can be found here:
-        https://code.zmaw.de/projects/cdo/wiki/Cdo%7Brbpy%7D
-        and on the usage of the cdo.py module here:
-        https://code.zmaw.de/projects/cdo
-
-        For a demonstration script on how cdos are implemented, see the
-        examples of the psyplot package
-
-        Compared to the original cdo.Cdo class, the following things changed,
-        the default cdf handler is the :func:`psyplot.data.open_dataset`
-        function and the following keywords are implemented for each cdo
-        operator. Each of them determine the output of the specific operator.
-
-        Other Parameters
-        ----------------
-        returnMap: str, list or dict
-            the :attr:`~psyplot.project.ProjectPlotter.mapplot` plotting method
-            is used to visualize a scalar field projected on the globe and a
-            :class:`psyplot.project.Project` instance is returned.
-            If `returnMap` is a string or list of strings, this specifies the
-            variables to plot. A dictionary may contain key-value pairs used
-            for the above visualization method
-        returnLine: str, list or dict
-            the :attr:`~psyplot.project.ProjectPlotter.plot1d` plotting method
-            is used to visualize a simple one-dimensional plot and a
-            :class:`psyplot.project.Project` instance is returned.
-            If `returnLine` is a string or list of strings, this specifies the
-            variables to plot. A dictionary may contain key-value pairs used
-            for the above visualization method
-        returnDA: str or list of str
-            Returns the :class:`xarray.DataArray` of the specified variables"""
-
-        def __init__(self, *args, **kwargs):
-            """Initialization method of nc2map.Cdo class.
-            args and kwargs are the same as for Base Class __init__ with the
-            only exception that cdfMod is set to CDF_MOD_NCREADER by default"""
-            kwargs.setdefault('cdfMod', CDF_MOD_NCREADER)
-            super(Cdo, self).__init__(*args, **kwargs)
-            self.loadCdf()
-
-        def loadCdf(self, *args, **kwargs):
-            """Load data handler as specified by self.cdfMod"""
-            def open_nc(*args, **kwargs):
-                kwargs.pop('mode', None)
-                return open_dataset(*args, **kwargs)
-            if self.cdfMod == CDF_MOD_NCREADER:
-                self.cdf = open_nc
-            else:
-                super(Cdo, self).loadCdf(*args, **kwargs)
-
-        def __getattr__(self, method_name):
-            def my_get(get):
-                """Wrapper for get method of Cdo class to include several plotters
-                """
-                @wraps(get)
-                def wrapper(self, *args, **kwargs):
-                    added_kwargs = {'returnMap', 'returnLine', 'returnDA'}
-                    ret_mode = next(iter(added_kwargs.intersection(kwargs)),
-                                    None)
-                    if ret_mode:
-                        val = kwargs.pop(ret_mode, None)
-                        kwargs['returnCdf'] = True
-                        ds = get(*args, **kwargs)
-                        if ret_mode in ['returnMap', 'returnLine']:
-                            if ret_mode == 'returnMap':
-                                plot_method = plot.mapplot
-                            else:
-                                plot_method = plot.lineplot
-                            try:
-                                return plot_method(ds, **dict(val))
-                            except (TypeError, ValueError):
-                                return plot_method(ds, name=val)
-                        return ds[val]
-                    else:
-                        return get(*args, **kwargs)
-                return wrapper
-            if method_name == 'cdf':
-                # initialize cdf module implicitly
-                self.loadCdf()
-                return self.cdf
-            else:
-                get = my_get(super(Cdo, self).__getattr__(method_name))
-                setattr(self.__class__, method_name, get)
-                return get.__get__(self)
 
 
 @docstrings.get_sectionsf('multiple_subplots')
@@ -1529,6 +1432,114 @@ class ProjectPlotter(object):
         setattr(cls, identifier, PlotMethod(identifier, module, plotter_name))
 
 
+if with_cdo:
+    CDF_MOD_NCREADER = 'xarray'
+
+    docstrings.keep_params('Project._add_data.parameters', 'ax', 'make_plot')
+
+    class Cdo(_CdoBase):
+        """Subclass of the original cdo.Cdo class in the cdo.py module
+
+        Requirements are a working cdo binary and the installed cdo.py python
+        module.
+
+        For a documentation of an operator, use the python help function, for a
+        list of operators, use the builtin dir function.
+        Further documentation on the operators can be found here:
+        https://code.zmaw.de/projects/cdo/wiki/Cdo%7Brbpy%7D
+        and on the usage of the cdo.py module here:
+        https://code.zmaw.de/projects/cdo
+
+        For a demonstration script on how cdos are implemented, see the
+        examples of the psyplot package
+
+        Compared to the original cdo.Cdo class, the following things changed,
+        the default cdf handler is the :func:`psyplot.data.open_dataset`
+        function and the following keywords are implemented for each cdo
+        operator. Each of them determine the output of the specific operator.
+
+        Other Parameters
+        ----------------
+        returnMap: str, list or dict
+            the :attr:`~psyplot.project.ProjectPlotter.mapplot` plotting method
+            is used to visualize a scalar field projected on the globe and a
+            :class:`psyplot.project.Project` instance is returned.
+            If `returnMap` is a string or list of strings, this specifies the
+            variables to plot. A dictionary may contain key-value pairs used
+            for the above visualization method
+        returnLine: str, list or dict
+            the :attr:`~psyplot.project.ProjectPlotter.plot1d` plotting method
+            is used to visualize a simple one-dimensional plot and a
+            :class:`psyplot.project.Project` instance is returned.
+            If `returnLine` is a string or list of strings, this specifies the
+            variables to plot. A dictionary may contain key-value pairs used
+            for the above visualization method
+        returnDA: str or list of str
+            Returns the :class:`xarray.DataArray` of the specified variables
+        %(Project._add_data.parameters.ax|make_plot)s
+        """
+
+        def __init__(self, *args, **kwargs):
+            """Initialization method of nc2map.Cdo class.
+            args and kwargs are the same as for Base Class __init__ with the
+            only exception that cdfMod is set to CDF_MOD_NCREADER by default"""
+            kwargs.setdefault('cdfMod', CDF_MOD_NCREADER)
+            super(Cdo, self).__init__(*args, **kwargs)
+            self.loadCdf()
+
+        def loadCdf(self, *args, **kwargs):
+            """Load data handler as specified by self.cdfMod"""
+            def open_nc(*args, **kwargs):
+                kwargs.pop('mode', None)
+                return open_dataset(*args, **kwargs)
+            if self.cdfMod == CDF_MOD_NCREADER:
+                self.cdf = open_nc
+            else:
+                super(Cdo, self).loadCdf(*args, **kwargs)
+
+        def __getattr__(self, method_name):
+            def my_get(get):
+                """Wrapper for get method of Cdo class to include several plotters
+                """
+                @wraps(get)
+                def wrapper(self, *args, **kwargs):
+                    added_kwargs = {'returnMap', 'returnLine', 'returnDA'}
+                    ret_mode = next(iter(added_kwargs.intersection(kwargs)),
+                                    None)
+                    if ret_mode:
+                        val = kwargs.pop(ret_mode, None)
+                        ax = kwargs.pop('ax', None)
+                        make_plot = kwargs.pop('make_plot', True)
+                        kwargs['returnCdf'] = True
+                        ds = get(*args, **kwargs)
+                        if ret_mode in ['returnMap', 'returnLine']:
+                            if ret_mode == 'returnMap':
+                                plot_method = plot.mapplot
+                            else:
+                                plot_method = plot.lineplot
+                            try:
+                                val = dict(val)
+                            except (TypeError, ValueError):
+                                return plot_method(ds, name=val, ax=ax,
+                                                   make_plot=make_plot)
+                            else:
+                                val.setdefault('ax', ax)
+                                val.setdefault('make_plot', make_plot)
+                                return plot_method(ds, **dict(val))
+                        return ds[val]
+                    else:
+                        return get(*args, **kwargs)
+                return wrapper
+            if method_name == 'cdf':
+                # initialize cdf module implicitly
+                self.loadCdf()
+                return self.cdf
+            else:
+                get = my_get(super(Cdo, self).__getattr__(method_name))
+                setattr(self.__class__, method_name, get)
+                return get.__get__(self)
+
+
 @dedent
 def gcp(main=False):
     """
@@ -1627,6 +1638,7 @@ def close(num=None, *args, **kwargs):
     if num is None:
         project = gcp()
         scp(None)
+        project.close(*args, **kwargs)
     elif num == 'all':
         for project in _open_projects[:]:
             project.close(*args, **kwargs)
@@ -1640,7 +1652,7 @@ def close(num=None, *args, **kwargs):
             scp(_open_projects[-1])
         else:
             _scp(None, True)  # set the current project to None
-    project.close(*args, **kwargs)
+        project.close(*args, **kwargs)
 
 
 docstrings.delete_params('Project._register_plotter.parameters', 'plotter_cls')
