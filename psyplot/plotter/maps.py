@@ -990,26 +990,26 @@ class MapPlot2D(Plot2D):
         from matplotlib.tri import Triangulation
         self.logger.debug("Getting triangles")
         triangles = self.triangles
+        triangles_wrapped = None
         if isinstance(self.transform.projection, ccrs.PlateCarree):
             xbounds = triangles.x[triangles.triangles]
             diffs = np.c_[np.diff(xbounds), np.diff(xbounds[:, ::-2])]
             mask = (np.abs(diffs) > 180).any(axis=1)
             x_wrap = xbounds[mask]
-            y_wrap = triangles.y[triangles.triangles[mask]]
-            diffs = diffs[mask]
-            x_wrap[diffs < -180] -= 360
-            diffs = np.c_[np.diff(x_wrap), np.diff(x_wrap[:, ::-2])]
-            x_wrap[diffs < -180] -= 360
-            self.x_wrap = x_wrap
-            triangles_wrapped = Triangulation(
-                x_wrap.ravel(), y_wrap.ravel(),
-                triangles=np.arange(x_wrap.size).reshape(x_wrap.shape))
-            # we have to apply a little workaround here in order to draw the
-            # boundaries right. That implies that we mask out flat triangles
-            # (epecially those at the end) and transform them manually
-            triangles.set_mask(mask)
-        else:
-            triangles_wrapped = None
+            if x_wrap.size:
+                y_wrap = triangles.y[triangles.triangles[mask]]
+                diffs = diffs[mask]
+                x_wrap[diffs < -180] -= 360
+                diffs = np.c_[np.diff(x_wrap), np.diff(x_wrap[:, ::-2])]
+                x_wrap[diffs < -180] -= 360
+                triangles_wrapped = Triangulation(
+                    x_wrap.ravel(), y_wrap.ravel(),
+                    triangles=np.arange(x_wrap.size).reshape(x_wrap.shape))
+                # we have to apply a little workaround here in order to draw
+                # the  boundaries right. That implies that we mask out flat
+                # triangles (epecially those at the end) and transform them
+                # manually
+                triangles.set_mask(mask)
         cmap = get_cmap(self.cmap.value, len(self.bounds.bounds) - 1 or None)
         if hasattr(self, '_plot'):
             self.logger.debug("Updating plot")
