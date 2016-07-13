@@ -21,7 +21,7 @@ import matplotlib as mpl
 import matplotlib.figure as mfig
 import numpy as np
 from psyplot import rcParams
-from psyplot.warning import critical
+from psyplot.warning import warn, critical
 from psyplot.docstring import docstrings, dedent, safe_modulo
 from psyplot.data import (
     ArrayList, open_dataset, open_mfdataset, sort_kwargs, _MissingModule,
@@ -986,19 +986,20 @@ class Project(ArrayList):
 
         Parameters
         ----------
-        project: Project
-            The project class. If it is a sub project (see
-            :attr:`Project.is_main`), the current subproject is set to this
-            project. Otherwise it replaces the current main project
+        project: Project or None
+            The project to set. If it is None, the current subproject is set
+            to empty. If it is a sub project (see:attr:`Project.is_main`),
+            the current subproject is set to this project. Otherwise it
+            replaces the current main project
 
         See Also
         --------
-        scp: The global version for getting the current project
+        scp: The global version for setting the current project
         gcp: Returns the current project
         project: Creates a new project"""
         if project is None:
             _scp(None)
-            cls.oncpchange.emit(None)
+            cls.oncpchange.emit(gcp())
         elif not project.is_main:
             if project.main is not _current_project:
                 _scp(project.main, True)
@@ -1577,15 +1578,19 @@ def scp(project):
     return PROJECT_CLS.scp(project)
 
 
-def _scp(project, main=False):
+def _scp(p, main=False):
     """scp version that allows a bit more control over whether the project is a
     main project or not"""
     global _current_subproject
     global _current_project
-    if not main:
-        _current_subproject = project
+    if p is None:
+        mp = project() if main or _current_project is None else \
+            _current_project
+        _current_subproject = Project(main=mp)
+    elif not main:
+        _current_subproject = p
     else:
-        _current_project = project
+        _current_project = p
 
 
 @docstrings.dedent
@@ -1623,7 +1628,8 @@ def close(num=None, *args, **kwargs):
     """
     Close the project
 
-    This method closes the current project or the project specified by `num`
+    This method closes the current project (figures and data) or the project
+    specified by `num`
 
     Parameters
     ----------
@@ -1634,7 +1640,18 @@ def close(num=None, *args, **kwargs):
 
     Other Parameters
     ----------------
-    %(Project.close.parameters)s"""
+    %(Project.close.parameters)s
+
+    See Also
+    --------
+    Project.close"""
+    if args or kwargs:
+        warn('*args and *kwargs are depreciated since psyplot 0.2.18. Please '
+             'use the Project.close method if you need finer control!',
+             DeprecationWarning)
+    else:
+        args = (True, True),
+        kwargs = {}
     if num is None:
         project = gcp()
         scp(None)
@@ -1647,12 +1664,13 @@ def close(num=None, *args, **kwargs):
         project = [project for project in _open_projects
                    if project.num == num][0]
         _open_projects.remove(project)
+        project.close(*args, **kwargs)
+    if num is not None:
         if _open_projects:
             # set last opened project to the current
             scp(_open_projects[-1])
         else:
             _scp(None, True)  # set the current project to None
-        project.close(*args, **kwargs)
 
 
 docstrings.delete_params('Project._register_plotter.parameters', 'plotter_cls')
