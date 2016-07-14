@@ -1572,7 +1572,7 @@ defaultParams = {
         1000, validate_int,
         'Number of bootstrap resamples to estimate the confidence interval'],
     'plotter.linreg.ci': [
-        95, validate_float,
+        95, try_and_error(validate_none, validate_float),
         'Size of the confidence interval'],
     'plotter.linreg.bootstrap.random_seed': [
         None, try_and_error(validate_none, validate_int),
