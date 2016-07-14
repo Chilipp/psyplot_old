@@ -122,7 +122,6 @@ class LinearRegressionFit(Formatoption):
         mask = ~(np.isnan(x) | np.isnan(y))
         x = x[mask]
         y = y[mask]
-        print(x, y)
         if self.method == 'statsmodels':
             return self._statsmodel_fit(x, y, x_line, **kwargs)
         else:
