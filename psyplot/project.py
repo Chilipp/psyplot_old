@@ -1742,12 +1742,24 @@ registered_plotters = {  # these plotters are automatically registered
         'prefer_list': True,
         'default_slice': None,
         'summary': 'Make a line plot of one-dimensional data'},
+    'density': {
+        'module': 'psyplot.plotter.simple',
+        'plotter_name': 'DensityPlotter',
+        'prefer_list': False,
+        'default_slice': None,
+        'summary': 'Make a density plot of point data'},
     'linreg': {
         'module': 'psyplot.plotter.linreg',
         'plotter_name': 'LinRegPlotter',
         'prefer_list': True,
         'default_slice': None,
         'summary': 'Draw a fit from x to y'},
+    'densityreg': {
+        'module': 'psyplot.plotter.linreg',
+        'plotter_name': 'DensityRegPlotter',
+        'prefer_list': False,
+        'default_slice': None,
+        'summary': 'Make a density plot and draw a fit from x to y of points'},
     'barplot': {
         'module': 'psyplot.plotter.simple',
         'plotter_name': 'BarPlotter',
