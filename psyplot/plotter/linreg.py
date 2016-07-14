@@ -60,7 +60,7 @@ class LinearRegressionFit(Formatoption):
 
     priority = START
 
-    name = 'Disable or enable the fit'
+    name = 'Change the fit method'
 
     group = 'fit'
 
@@ -119,6 +119,10 @@ class LinearRegressionFit(Formatoption):
         return x, xname, y, yname
 
     def make_fit(self, x, y, x_line=None, **kwargs):
+        mask = ~(np.isnan(x) | np.isnan(y))
+        x = x[mask]
+        y = y[mask]
+        print(x, y)
         if self.method == 'statsmodels':
             return self._statsmodel_fit(x, y, x_line, **kwargs)
         else:
@@ -228,6 +232,8 @@ class NBoot(Formatoption):
     priority = START
 
     group = 'fit'
+    
+    name = 'Set the bootstrapping number to calculate the confidence interval'
 
     def update(self, value):
         """Does nothing. The work is done by the :class:`Ci` formatoption"""
@@ -283,6 +289,8 @@ class Ci(Formatoption):
     priority = START
 
     group = 'fit'
+    
+    name = 'Draw a confidence interval'
 
     def initialize_plot(self, *args, **kwargs):
         self.cis = []
