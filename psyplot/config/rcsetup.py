@@ -1176,7 +1176,7 @@ def validate_float(s):
     try:
         return float(s)
     except (ValueError, TypeError):
-        raise ValueError('Could not convert "%s" to float' % s)
+        raise ValueError('Could not convert "%s" to float' % str(s))
 
 
 def validate_iter(value):
@@ -1560,6 +1560,10 @@ defaultParams = {
         'fmt key to draw a legend'],
 
     # Linear regression
+    'plotter.linreg.xrange': [
+        'minmax', validate_limits, 'The fit limits of the line plot'],
+    'plotter.linreg.yrange': [
+        'minmax', validate_limits, 'The fit limits of the line plot'],
     'plotter.linreg.fix': [
         None, validate_fix,
         'fmt key to set a fix point for the linear regression fit'],
