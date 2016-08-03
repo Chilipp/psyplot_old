@@ -157,8 +157,15 @@ class TextBase(object):
         if self.project is not None:
             delimiter = next(filter(lambda d: d is not None, [
                 delimiter, self.delimiter, self.rc['delimiter']]))
-            ret = self.project.figs[self.ax.get_figure()].joined_attrs(
-                delimiter=delimiter)
+            figs = self.project.figs
+            fig = self.ax.get_figure()
+            if self.plotter._initialized and fig in figs:
+                ret = figs[fig].joined_attrs(delimiter=delimiter)
+            else:
+                ret = self.data.attrs
+                self.logger.debug(
+                    'Can not get the figure attributes because plot has not '
+                    'yet been initialized!')
             return ret
         else:
             return self.get_enhanced_attrs(self.plotter.data)
