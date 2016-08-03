@@ -37,7 +37,6 @@ def main():
         parser.update_arg('output', required=True)
         parser.create_arguments()
         parser.parse_to_func()
-    return parser
 
 
 @docstrings.get_sectionsf('make_plot')
