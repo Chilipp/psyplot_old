@@ -50,6 +50,7 @@ _current_subproject = None  # current subproject
 
 
 @docstrings.get_sectionsf('multiple_subplots')
+@docstrings.dedent
 def multiple_subplots(rows=1, cols=1, maxplots=None, n=1, delete=True,
                       for_maps=False, *args, **kwargs):
     """
@@ -776,7 +777,8 @@ class Project(ArrayList):
             plotter = arr.plotter
             d['plotter'] = {
                 'ax': _ProjectLoader.inspect_axes(plotter.ax),
-                'fmt': dict(plotter),
+                'fmt': {key: getattr(plotter, key).value2pickle
+                        for key in plotter},
                 'cls': (plotter.__class__.__module__,
                         plotter.__class__.__name__),
                 'shared': {}}
@@ -971,6 +973,8 @@ class Project(ArrayList):
                 obj.draw()
                 if rcParams['auto_show']:
                     obj.show()
+        if auto_update is None:
+            auto_update = rcParams['lists.auto_update']
         obj.no_auto_update = not auto_update
         if not obj.is_main:
             obj.main.extend(obj, new_name=True)
