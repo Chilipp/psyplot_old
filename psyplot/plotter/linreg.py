@@ -46,7 +46,21 @@ class XFitRange(psyps.Hist2DXRange):
     
     group = 'fit'
     
-    pass
+    def update(self, value):
+        if isinstance(self.raw_data, InteractiveList) and (
+                self.index_in_list is None):
+            self.range = [[] * len(self.raw_data)]
+            for i in range(len(self.raw_data)):
+                self.index_in_list = i
+                super(XFitRange, self).update(value)
+        else:
+            super(XFitRange, self).update(value)
+                
+    def set_limit(self, *args):
+        if self.index_in_list is None:
+            self.range = args
+        else:
+            self.range[self.index_in_list] = args
 
 
 class YFitRange(psyps.Hist2DYRange):
@@ -71,7 +85,21 @@ class YFitRange(psyps.Hist2DYRange):
     
     group = 'fit'
     
-    pass
+    def update(self, value):
+        if isinstance(self.raw_data, InteractiveList) and (
+                self.index_in_list is None):
+            self.range = [[] * len(self.raw_data)]
+            for i in range(len(self.raw_data)):
+                self.index_in_list = i
+                super(YFitRange, self).update(value)
+        else:
+            super(YFitRange, self).update(value)
+                
+    def set_limit(self, *args):
+        if self.index_in_list is None:
+            self.range = args
+        else:
+            self.range[self.index_in_list] = args
 
 
 class LinearRegressionFit(Formatoption):
@@ -133,7 +161,7 @@ class LinearRegressionFit(Formatoption):
         transpose = self.transpose.value
         for i, da in enumerate(self.iter_raw_data):
             kwargs = self.get_kwargs(i)
-            x, xname, y, yname = self.get_xy(da)
+            x, xname, y, yname = self.get_xy(i, da)
             x_line, y_line, attrs, fit = self.make_fit(x, y, **kwargs)
             if transpose:
                 x_line, y_line = y_line, x_line
@@ -157,7 +185,7 @@ class LinearRegressionFit(Formatoption):
             ret[key] = val[i]
         return ret
 
-    def get_xy(self, da):
+    def get_xy(self, i, da):
         if self.transpose.value:
             x = da.values
             xname = da.name
@@ -168,15 +196,19 @@ class LinearRegressionFit(Formatoption):
             xname = da.dims[0]
             y = da.values
             yname = da.name
-        return x, xname, y, yname
-
-    def make_fit(self, x, y, x_line=None, **kwargs):
-        xmin, xmax = self.xrange.range
-        ymin, ymax = self.yrange.range
+        xrange = np.array(self.xrange.range)
+        yrange = np.array(self.yrange.range)
+        if xrange.ndim == 1:
+            xmin, xmax = xrange
+            ymin, ymax = yrange
+        else:
+            xmin, xmax = xrange[i]
+            ymin, ymax = yrange[i]
         mask = ~(np.isnan(x) | np.isnan(y)) & (x >= xmin) & (x <= xmax) & (
             y >= ymin) & (y <= ymax)
-        x = x[mask]
-        y = y[mask]
+        return x[mask], xname, y[mask], yname
+
+    def make_fit(self, x, y, x_line=None, **kwargs):
         if self.method == 'statsmodels':
             return self._statsmodel_fit(x, y, x_line, **kwargs)
         else:
@@ -362,7 +394,7 @@ class Ci(Formatoption):
         nboot = self.nboot.value
         for i, (da, da_fit) in enumerate(zip(self.iter_raw_data,
                                              self.iter_data)):
-            x, xname, y, yname = fit_fmt.get_xy(da)
+            x, xname, y, yname = fit_fmt.get_xy(i, da)
             coord = da_fit.coords[da_fit.dims[0]]
             x_line = coord.values
             kwargs = self.fit.get_kwargs(i)
