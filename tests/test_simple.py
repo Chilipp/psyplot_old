@@ -91,6 +91,12 @@ class LinePlotterTest(tb.BasePlotterTest):
         sp.export(os.path.join(bt.ref_dir, self.get_ref_file('xticks')))
         if close:
             sp.close(True, True)
+            
+    def test_coord(self):
+        """Test whether we can use an alternative coordinate"""
+        self.update(coord='v', xlabel='%(name)s')
+        self.assertEqual(self.plotter.ax.get_xlabel(), 'v',
+                         msg='Did not update to the right coordinate!')
 
     def test_grid(self, *args):
         """Test grid formatoption"""
@@ -371,6 +377,10 @@ class ViolinPlotterTest(LinePlotterTest):
 
     def test_color(self):
         pass
+    
+    @unittest.skip('Not implemented for ViolinPlotter')
+    def test_coord(self):
+        pass
 
 
 class SingleViolinPlotterTest(ViolinPlotterTest):
@@ -595,6 +605,10 @@ class Simple2DPlotterTest(LinePlotterTest, References2D):
     @unittest.skip("color formatoption not implemented for 2D-Plotter")
     def test_color(self):
         pass
+    
+    @unittest.skip('Not implemented for 2D-Plotter')
+    def test_coord(self):
+        pass
 
     def test_ylabel(self):
         """Test ylabel formatoption"""
@@ -722,6 +736,12 @@ class LinePlotterTest2D(tb.TestBase2D, LinePlotterTest):
     def test_xticks(self, *args):
         """Test xticks, xticklabels, xtickprops formatoptions"""
         self._test_DataTicksCalculator()
+        
+    def test_coord(self):
+        """Test whether we can use an alternative coordinate"""
+        self.update(coord='v_2d', xlabel='%(name)s')
+        self.assertEqual(self.plotter.ax.get_xlabel(), 'v_2d',
+                         msg='Did not update to the right coordinate!')
 
 
 class Simple2DPlotterTest2D(tb.TestBase2D, Simple2DPlotterTest):
@@ -1206,7 +1226,8 @@ class DensityPlotterTest(bt.PsyPlotTestCase):
         x, y = np.random.multivariate_normal(mean, cov, 5000).T
         df = pd.DataFrame(y, columns=['y'], index=pd.Index(x, name='x'))
         ds = xarray.Dataset.from_dataframe(df)
-        return psyd.InteractiveArray(ds.y)
+        ds['v'] = xarray.Variable(('x', ), x)
+        return psyd.InteractiveArray(ds.y, base=ds)
 
     def test_bins(self):
         '''Test the bins formatoption'''
@@ -1254,6 +1275,12 @@ class DensityPlotterTest(bt.PsyPlotTestCase):
         area = ((a1 - a0) * (b1 - b0))
         self.assertAlmostEqual((self.plot_data.values * area).sum(),
                                1.0)
+        
+    def test_coord(self):
+        """Test whether we can use an alternative coordinate"""
+        self.update(coord='v', xlabel='%(name)s')
+        self.assertEqual(self.plotter.ax.get_xlabel(), 'v',
+                         msg='Did not update to the right coordinate!')
 
 
 class DensityPlotterTestKDE(DensityPlotterTest):

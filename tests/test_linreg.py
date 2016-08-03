@@ -62,10 +62,10 @@ class LinRegPlotterTest(unittest.TestCase):
         x = np.linspace(0, 10, n)
         y = intercept + slope * x
         y += y * np.random.randn(n) * scatter
-        da = psyd.InteractiveList([
-            psyd.InteractiveArray(y, name='y', dims=('x', ), coords={
-                'x': xarray.Coordinate('x', x)})])
-        return da
+        da = psyd.InteractiveArray(y, name='y', dims=('x', ), coords={
+            'x': xarray.Coordinate('x', x)})
+        da.base['v'] = da.x.variable
+        return psyd.InteractiveList([da])
 
     @classmethod
     def define_poly_data(cls, a=None, scatter=0.1, n=None, **kwargs):
