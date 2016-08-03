@@ -43,6 +43,15 @@ _cmapnames['w_RdBu'] = np.append(
 _cmapnames['w_RdBu_r'] = np.append(
     [[1., 1., 1., 1.]], mpl_get_cmap('RdBu_r')(_color_array), axis=0)
 
+_cmapnames['w_Reds'] = np.append(
+    [[1., 1., 1., 1.]], mpl_get_cmap('Reds')(_color_array), axis=0)
+
+_cmapnames['w_Blues'] = np.append(
+    [[1., 1., 1., 1.]], mpl_get_cmap('Blues')(_color_array), axis=0)
+
+_cmapnames['w_Greens'] = np.append(
+    [[1., 1., 1., 1.]], mpl_get_cmap('Greens')(_color_array), axis=0)
+
 
 docstrings.params['cmap_note'] = """
         Strings may be any valid colormap name suitable for the
