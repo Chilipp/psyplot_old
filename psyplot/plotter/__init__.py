@@ -385,6 +385,14 @@ class Formatoption(object):
         The value that is passed to shared formatoptions (by default, the
         :attr:`value` attribute)"""
         return self.value
+    
+    @property
+    @dedent
+    def value2pickle(self):
+        """
+        The value that can be used when pickling the information of the project
+        """
+        return self.value
 
     @docstrings.get_sectionsf('Formatoption')
     @dedent
