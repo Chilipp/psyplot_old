@@ -1477,6 +1477,9 @@ defaultParams = {
         'fmt key for the additional properties of the colorbar ticklabels'],
 
     # density plotter
+    'plotter.density.coord': [
+        None, try_and_error(validate_none, validate_str, validate_stringlist), 
+        'Alternative x-coordinate to use for DensityPlotter'],
     'plotter.density.xrange': [
         'minmax', validate_limits, 'The histogram limits of the density plot'],
     'plotter.density.yrange': [
@@ -1501,9 +1504,11 @@ defaultParams = {
         None, validate_axiscolor, 'fmt key to modify the color of the spines'],
 
     # SimplePlot
+    'plotter.line.coord': [
+        None, try_and_error(validate_none, validate_str, validate_stringlist), 
+        'Alternative x-coordinate to use for LinePlotter'],
     'plotter.line.plot': [
-        '-', try_and_error(validate_none, validate_str,
-                           validate_stringlist),
+        '-', try_and_error(validate_none, validate_str, validate_stringlist),
         'fmt key to modify the line style'],
     'plotter.line.error': [
         'fill', try_and_error(ValidateInStrings('error', ['fill'], True),
@@ -1511,6 +1516,9 @@ defaultParams = {
         'The visualization type of the errors for line plots'],
     'plotter.line.erroralpha': [
         0.15, validate_alpha, 'The alpha value of the error range'],
+    'plotter.bar.coord': [
+        None, try_and_error(validate_none, validate_str, validate_stringlist), 
+        'Alternative x-coordinate to use for BarPlotter'],
     'plotter.bar.plot': [
         'bar', try_and_error(validate_none, ValidateInStrings(
             'plot', ['bar', 'stacked'], True)),
