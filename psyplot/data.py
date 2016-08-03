@@ -1537,7 +1537,7 @@ class CFDecoder(object):
             ds = decoder_cls._decode_ds(ds, *args, **kwargs)
         return ds
 
-    def correct_dims(self, var, dims={}):
+    def correct_dims(self, var, dims={}, remove=True):
         """Expands the dimensions to match the dims in the variable
 
         Parameters
@@ -1545,7 +1545,10 @@ class CFDecoder(object):
         var: xarray.Variable
             The variable to get the data for
         dims: dict
-            a mapping from dimension to the slices"""
+            a mapping from dimension to the slices
+        remove: bool
+            If True, dimensions in `dims` that are not in the dimensions of
+            `var` are removed"""
         method_mapping = {'x': self.get_xname,
                           'z': self.get_zname, 't': self.get_tname}
         dims = dict(dims)
@@ -1563,11 +1566,12 @@ class CFDecoder(object):
                     if new_name is not None:
                         dims[new_name] = dims.pop(key)
         # now remove the unnecessary dimensions
-        for key in set(dims).difference(var.dims):
-            dims.pop(key)
-            self.logger.debug(
-                "Could not find a dimensions matching %s in variable %s!",
-                key, var)
+        if remove:
+            for key in set(dims).difference(var.dims):
+                dims.pop(key)
+                self.logger.debug(
+                    "Could not find a dimensions matching %s in variable %s!",
+                    key, var)
         return dims
 
     def standardize_dims(self, var, dims={}):
@@ -2892,9 +2896,10 @@ class ArrayList(list):
             If `alternative_paths` is a list (or any other iterable) is
             provided, the file names will be replaced as they appear in `d`
             (note that this is very unsafe if `d` is not and OrderedDict)
-        datasets: dict or None
+        datasets: dict or list or None
             A mapping from original filenames in `d` to the instances of
-            :class:`xarray.Dataset` to use.
+            :class:`xarray.Dataset` to use. If it is an iterable, the same
+            holds as for the `alternative_paths` parameter
         pwd: str
             Path to the working directory from where the data can be imported.
             If None, use the current working directory.
@@ -2919,7 +2924,7 @@ class ArrayList(list):
         pwd = pwd or getcwd()
         if not isinstance(alternative_paths, dict):
             it = iter(alternative_paths)
-            alternative_paths = defaultdict(partial(it.next, None))
+            alternative_paths = defaultdict(partial(next, it, None))
         # first open all datasets if not already done
         if datasets is None:
             names_and_stores = cls._get_dsnames(deepcopy(d))
@@ -2946,6 +2951,9 @@ class ArrayList(list):
             if alternative_paths is not None:
                 for fname in set(alternative_paths).difference(datasets):
                     datasets[fname] = _open_ds_from_store(fname, **kwargs)
+        elif not isinstance(datasets, dict):
+            it_datasets = iter(datasets)
+            datasets = defaultdict(partial(next, it_datasets, None))
         arrays = [0] * len(set(d) - {'attrs'})
         for i, (arr_name, info) in enumerate(six.iteritems(d)):
             if arr_name in ignore_keys:
@@ -2961,9 +2969,13 @@ class ArrayList(list):
                          "specified!" % arr_name)
                     arrays.pop(i)
                     continue
-                elif fname not in datasets:
+                try:  # in case, datasets is a defaultdict
+                    datasets[fname]
+                except KeyError:
+                    pass
+                if fname not in datasets:
                     warn("Could not open array %s because %s was not in the "
-                         "list of datasets!")
+                         "list of datasets!" % (arr_name, fname))
                     arrays.pop(i)
                     continue
                 arr = cls.from_dataset(
@@ -3220,7 +3232,7 @@ class ArrayList(list):
                 arr.plotter._figs2draw.clear()
         self.logger.debug("Done drawing.")
 
-    def __call__(self, types=None, method='isel', arr_name=None, **attrs):
+    def __call__(self, types=None, method='isel', **attrs):
         """Get the arrays specified by their attributes
 
         Parameters
@@ -3235,8 +3247,6 @@ class ArrayList(list):
             to integer values as they are found in the
             :attr:`InteractiveArray.idims` attribute.
             Otherwise the :meth:`xarray.DataArray.coords` attribute is used.
-        arr_name: None, str or list of str
-            If not None, the array name serves as a filter
         ``**attrs``
             Parameters may be any attribute of the arrays in this instance.
             Values may be iterables (e.g. lists) of the attributes to consider.
@@ -3268,7 +3278,7 @@ class ArrayList(list):
                     for key, val in six.iteritems(
                         attrs if isinstance(arr, InteractiveList) else
                         arr.decoder.correct_dims(next(six.itervalues(
-                            arr.base_variables)), attrs)))
+                            arr.base_variables)), attrs, remove=False)))
         else:
             def filter_by_attrs(arr):
                 if isinstance(arr, InteractiveList):
@@ -3276,19 +3286,16 @@ class ArrayList(list):
                         getattr(arr, key, _NODATA) in val
                         for key, val in six.iteritems(attrs))
                 return all(
-                    getattr(arr, key, _NODATA) if key not in arr.coords else (
-                        arr.idims.get(key, _NODATA)) in val
+                    (getattr(arr, key, _NODATA) if key not in arr.coords else 
+                     arr.idims.get(key, _NODATA)) in val
                     for key, val in six.iteritems(
                         arr.decoder.correct_dims(next(six.itervalues(
-                            arr.base_variables)), attrs)))
-        if arr_name is not None and isstring(arr_name):
-            arr_name = [arr_name]
+                            arr.base_variables)), attrs, remove=False)))
         attrs = dict(starmap(safe_item_list, six.iteritems(attrs)))
         return self.__class__(
             # iterable
             (arr for arr in self if
              (types is None or isinstance(arr.plotter, types)) and
-             (arr_name is None or arr.arr_name in arr_name) and
              filter_by_attrs(arr)),
             # give itself as base and the auto_update parameter
             auto_update=bool(self.auto_update))
