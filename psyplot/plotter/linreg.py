@@ -22,6 +22,56 @@ class LinRegTranspose(psyps.Transpose):
     __doc__ = psyps.Transpose.__doc__
 
     priority = START
+    
+    
+class XFitRange(psyps.Hist2DXRange):
+    """
+    Specify the range for the fit to use for the x-dimension
+
+    This formatoption specifies the minimum and maximum of the fit 
+    in the x-dimension
+
+    Possible types
+    --------------
+    %(LimitBase.possible_types.no_None)s
+
+    Notes
+    -----
+    This formatoption always acts on the coordinate, no matter what the
+    value of the :attr:`transpose` formatoption is
+
+    See also
+    --------
+    yrange"""
+    
+    group = 'fit'
+    
+    pass
+
+
+class YFitRange(psyps.Hist2DYRange):
+    """
+    Specify the range for the fit to use for the y-dimension
+
+    This formatoption specifies the minimum and maximum of the fit 
+    in the y-dimension
+
+    Possible types
+    --------------
+    %(LimitBase.possible_types.no_None)s
+
+    Notes
+    -----
+    This formatoption always acts on the coordinate, no matter what the
+    value of the :attr:`transpose` formatoption is
+
+    See also
+    --------
+    xrange"""
+    
+    group = 'fit'
+    
+    pass
 
 
 class LinearRegressionFit(Formatoption):
@@ -56,11 +106,13 @@ class LinearRegressionFit(Formatoption):
     fix
     """
 
-    dependencies = ['transpose', 'fix']
+    dependencies = ['transpose', 'fix', 'xrange', 'yrange']
 
     priority = START
 
     name = 'Change the fit method'
+    
+    data_dependent = True
 
     group = 'fit'
 
@@ -119,7 +171,10 @@ class LinearRegressionFit(Formatoption):
         return x, xname, y, yname
 
     def make_fit(self, x, y, x_line=None, **kwargs):
-        mask = ~(np.isnan(x) | np.isnan(y))
+        xmin, xmax = self.xrange.range
+        ymin, ymax = self.yrange.range
+        mask = ~(np.isnan(x) | np.isnan(y)) & (x >= xmin) & (x <= xmax) & (
+            y >= ymin) & (y <= ymax)
         x = x[mask]
         y = y[mask]
         if self.method == 'statsmodels':
@@ -137,6 +192,8 @@ class LinearRegressionFit(Formatoption):
         else:
             args = list(inspect.signature(self.model).parameters.keys())[1:]
             d = dict(zip(args, params))
+        if pcov.size == 1:
+            d[args[0] + '_err'] = np.sqrt(pcov)[0, 0]
         return x_line, self.model(x_line, *params), d, pcov
 
     def _statsmodel_fit(self, x, y, x_line=None, fix=None):
@@ -156,7 +213,7 @@ class LinearRegressionFit(Formatoption):
         d = dict(zip(['slope', 'intercept'], fit.params[::-1]))
         y_line = d.get('intercept', 0) + d['slope'] * x_line
         if adjust:
-            x_line += fix[0]
+            x_line = x_line + fix[0]  # not += to make sure that Ci works fine
             y_line += fix[1]
             d['intercept'] = fix[1] - d['slope'] * fix[0]
         elif fix is not None:
@@ -325,7 +382,7 @@ class Ci(Formatoption):
             self.set_data(new, i)
             new.attrs.update(da_fit.attrs)
             new.name = da.name
-
+            
 
 class LinRegPlotter(psyps.LinePlotter):
     """A plotter to visualize the fit on the data
@@ -341,6 +398,8 @@ class LinRegPlotter(psyps.LinePlotter):
     allowed_vars = 1
 
     transpose = LinRegTranspose('transpose')
+    xrange = XFitRange('xrange')
+    yrange = YFitRange('yrange')
     fit = LinearRegressionFit('fit')
     fix = FixPoint('fix')
     nboot = NBoot('nboot')
@@ -375,7 +434,7 @@ class DensityRegPlotter(psyps.ScalarCombinedBase, psyps.DensityPlotter,
     nboot = NBoot('nboot', index_in_list=1)
     ci = Ci('ci', index_in_list=1)
     lineplot = psyps.LinePlot('lineplot', index_in_list=1)
-    error = psyps.ErrorPlot('error', index_in_list=1)
+    error = psyps.ErrorPlot('error', index_in_list=1, plot='lineplot')
     erroralpha = psyps.ErrorAlpha('erroralpha', index_in_list=1)
     color = psyps.LineColors('color', index_in_list=1)
     legendlabels = psyps.LegendLabels('legendlabels', index_in_list=1)
