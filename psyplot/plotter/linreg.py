@@ -134,7 +134,7 @@ class LinearRegressionFit(Formatoption):
     fix
     """
 
-    dependencies = ['transpose', 'fix', 'xrange', 'yrange']
+    dependencies = ['transpose', 'fix', 'xrange', 'yrange', 'coord']
 
     priority = START
 
@@ -162,6 +162,8 @@ class LinearRegressionFit(Formatoption):
         for i, da in enumerate(self.iter_raw_data):
             kwargs = self.get_kwargs(i)
             x, xname, y, yname = self.get_xy(i, da)
+            if self.coord.value is not None:
+                da = self.coord.replace_coord(i)
             x_line, y_line, attrs, fit = self.make_fit(x, y, **kwargs)
             if transpose:
                 x_line, y_line = y_line, x_line
@@ -186,6 +188,8 @@ class LinearRegressionFit(Formatoption):
         return ret
 
     def get_xy(self, i, da):
+        if self.coord.value is not None:
+            da = self.coord.replace_coord(i)
         if self.transpose.value:
             x = da.values
             xname = da.name
@@ -220,10 +224,10 @@ class LinearRegressionFit(Formatoption):
         if x_line is None:
             x_line = np.linspace(x.min(), x.max(), 100)
         if six.PY2:
-            d = dict(zip(inspect.getargspec(self.model).args[1:], params))
+            args = inspect.getargspec(self.model).args[1:]
         else:
             args = list(inspect.signature(self.model).parameters.keys())[1:]
-            d = dict(zip(args, params))
+        d = dict(zip(args, params))
         if pcov.size == 1:
             d[args[0] + '_err'] = np.sqrt(pcov)[0, 0]
         return x_line, self.model(x_line, *params), d, pcov
