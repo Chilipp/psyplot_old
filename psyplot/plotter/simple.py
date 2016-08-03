@@ -1,6 +1,6 @@
 import six
 from abc import abstractproperty, abstractmethod
-from itertools import chain, starmap, cycle
+from itertools import chain, starmap, cycle, islice
 from pandas import date_range, datetools, to_datetime
 import xarray as xr
 import matplotlib as mpl
@@ -76,6 +76,90 @@ def round_to_05(n, exp=None, mode='s'):
         n2 = ntmp
     return np.where(n1 - n2 > 0.5, np.sign(n)*(nret + s*0.5)*10.**exp,
                     np.sign(n)*nret*10.**exp)
+    
+    
+class AlternativeXCoord(Formatoption):
+    """
+    Use an alternative variable as x-coordinate
+    
+    This formatoption let's you specify another variable in the base dataset
+    of the data array in case you want to use this as the x-coordinate instead
+    of the raw data
+    
+    Possible types
+    --------------
+    None
+        Use the default
+    str
+        The name of the variable to use in the base dataset
+        
+    Examples
+    --------
+    To see the difference, we create a simple test dataset::
+        >>> import xarray as xr
+        
+        >>> import numpy as np
+        
+        >>> import psyplot.project as psy
+        
+        >>> ds = xr.Dataset({
+        ...     'temp': xr.Variable(('time', ), np.arange(5)), 
+        ...     'std': xr.Variable(('time', ), np.arange(5, 10))})
+        >>> ds
+        <xarray.Dataset>
+        Dimensions:  (time: 5)
+        Coordinates:
+          * time     (time) int64 0 1 2 3 4
+        Data variables:
+            temp     (time) int64 0 1 2 3 4
+            std      (time) int64 5 6 7 8 9
+    If we create a plot with it, we get the ``'time'`` dimension on the 
+    x-axis::
+        >>> plotter = psy.plot.lineplot(ds, name=['temp']).plotters[0]
+        
+        >>> plotter.plot_data[0].dims
+        ('time',)
+    If we however set the ``'coord'`` keyword, we get::
+        >>> plotter = psy.plot.lineplot(
+        ...     ds, name=['temp'], coord='std').plotters[0]
+        
+        >>> plotter.plot_data[0].dims
+        ('std',)
+    and ``'std'`` is plotted on the x-axis."""
+    
+    name = 'Alternative X-Variable'
+    
+    group = 'data'
+    
+    priority = START
+    
+    data_dependent = True
+    
+    def update(self, value):
+        if value is not None:
+            for i, da in enumerate(self.iter_raw_data):
+                self.set_data(self.replace_coord(i), i)
+                
+    def replace_coord(self, i):
+        """Replace the coordinate for the data array at the given position
+        
+        Parameters
+        ----------
+        i: int
+            The number of the data array in the raw data (if the raw data is
+            not an interactive list, use 0)
+        
+        Returns
+        xarray.DataArray
+            The data array with the replaced coordinate"""
+        da = next(islice(self.iter_raw_data, i, i+1))
+        alternative_name = next(islice(cycle(safe_list(self.value)), i, i+1))
+        coord_da = InteractiveList.from_dataset(da.base, name=alternative_name,
+                                                dims=da.idims)[0]
+        coord = xr.Coordinate(coord_da.name, coord_da, coord_da.attrs)
+        return da.rename({da.dims[-1]: coord.name}).assign_coords(
+            **{coord.name: coord})
+                
 
 
 class Grid(Formatoption):
@@ -3594,10 +3678,13 @@ class Hist2DXRange(LimitBase):
     name = 'Range of the histogram in y-direction'
     
     data_dependent = True
+    
+    dependencies = ['coord']
 
     @property
     def array(self):
-        coord = self.raw_data.coords[self.raw_data.dims[0]].values
+        da = self.data if self.coord.value is not None else self.raw_data
+        coord = da.coords[da.dims[0]].values
         return coord[~np.isnan(coord)]
 
     def set_limit(self, *args):
@@ -3828,7 +3915,7 @@ class PointDensity(Formatoption):
 
     name = 'Type of the density plot'
 
-    dependencies = ['normed', 'bins', 'xrange', 'yrange', 'precision']
+    dependencies = ['normed', 'bins', 'xrange', 'yrange', 'precision', 'coord']
 
     group = 'data'
 
@@ -3843,7 +3930,10 @@ class PointDensity(Formatoption):
             self._kde()
 
     def _kde(self):
-        raw_da = self.raw_data
+        if self.coord.value is None:
+            raw_da = self.raw_data
+        else:
+            raw_da = self.coord.replace_coord(0)
         xyranges = [self.xrange.range, self.yrange.range]
         bws = self.precision.prec
         grid = self.bins.bins
@@ -3880,7 +3970,10 @@ class PointDensity(Formatoption):
         return x_support, y_support, z
 
     def _hist(self):
-        raw_da = self.raw_data
+        if self.coord.value is None:
+            raw_da = self.raw_data
+        else:
+            raw_da = self.coord.replace_coord(0)
         bins = self.bins.bins
         range_ = [self.xrange.range, self.yrange.range]
         z, x, y = self.normed.hist2d(raw_da, bins=bins, range=range_)
@@ -4030,6 +4123,8 @@ class LinePlotter(SimplePlotterBase):
     #: might have. We allow up to 3 variableswhere the second and third
     #: variable might be the errors (see the :attr:`error` formatoption)
     allowed_vars = 3
+    
+    coord = AlternativeXCoord('coord')
     plot = LinePlot('plot')
     error = ErrorPlot('error')
     erroralpha = ErrorAlpha('erroralpha')
@@ -4054,6 +4149,7 @@ class BarPlotter(SimplePlotterBase):
 
     _rcparams_string = ['plotter.bar.']
 
+    coord = AlternativeXCoord('coord')
     plot = BarPlot('plot')
     xlim = BarXlim('xlim')
     ylim = BarYlim('ylim')
@@ -4165,6 +4261,7 @@ class DensityPlotter(Simple2DPlotter):
 
     _rcparams_string = ['plotter.density.']
 
+    coord = AlternativeXCoord('coord')
     xrange = Hist2DXRange('xrange')
     yrange = Hist2DYRange('yrange')
     precision = DataPrecision('precision')
