@@ -1250,6 +1250,10 @@ class LineColors(Formatoption):
     priority = BEFOREPLOTTING
 
     name = 'Color cycle'
+    
+    @property
+    def value2pickle(self):
+        return self.colors
 
     def __init__(self, *args, **kwargs):
         super(LineColors, self).__init__(*args, **kwargs)
@@ -1389,7 +1393,7 @@ class ErrorPlot(Formatoption):
 
     priority = BEFOREPLOTTING
 
-    children = ['color', 'transpose']
+    children = ['color', 'transpose', 'plot']
 
     name = 'Error plot type'
 
@@ -1406,7 +1410,7 @@ class ErrorPlot(Formatoption):
         if self.value is not None:
             self._plot = []
             colors = iter(self.color.colors)
-            for da in self.iter_data:
+            for da, line in zip(self.iter_data, self.plot._plot):
                 if da.ndim == 2 and da.shape[0] > 1:
                     data = da[0].to_series()
                     error = da[1:, :]
@@ -1418,16 +1422,17 @@ class ErrorPlot(Formatoption):
                         max_range = error[1]
                     if self.value == 'fill':
                         self.plot_fill(data.index.values, min_range, max_range,
-                                       next(colors))
+                                       next(colors), zorder=line.zorder)
 
-    def plot_fill(self, index, min_range, max_range, c):
+    def plot_fill(self, index, min_range, max_range, c, **kwargs):
         if self.transpose.value:
             plot_method = self.ax.fill_betweenx
         else:
             plot_method = self.ax.fill_between
         self._plot.append(
             plot_method(index, min_range, max_range, facecolor=c,
-                        **self._kwargs))
+                        **dict(chain(*map(
+                            six.iteritems, [self._kwargs, kwargs])))))
 
     def remove(self):
         for artist in self._plot:
@@ -3503,15 +3508,19 @@ class LegendLabels(Formatoption, TextBase):
     name = 'Labels in the legend'
 
     def update(self, value):
+        def get1d(arr):
+            if arr.ndim > 1:
+                return arr[0]
+            return arr
         if isinstance(value, six.string_types):
             self.labels = [
                 self.replace(value, arr, self.get_enhanced_attrs(
-                    arr, replot=True))
+                    get1d(arr), replot=True))
                 for arr in self.iter_data]
         else:
             self.labels = [
                 self.replace(val, arr, self.get_enhanced_attrs(
-                    arr, replot=True)) for val, arr in zip(
+                    get1d(arr), replot=True)) for val, arr in zip(
                         value, self.iter_data)]
 
 
@@ -3560,10 +3569,10 @@ docstrings.delete_types('LimitBase.possible_types', 'no_None', 'None')
 
 class Hist2DXRange(LimitBase):
     """
-    Specify the of the histogram for the x-dimension
+    Specify the range of the histogram for the x-dimension
 
-    This formatoption specifies how much the histogram ranges in the x- and
-    y-dimension
+    This formatoption specifies the minimum and maximum of the histogram 
+    in the x-dimension
 
     Possible types
     --------------
@@ -3583,6 +3592,8 @@ class Hist2DXRange(LimitBase):
     group = 'data'
 
     name = 'Range of the histogram in y-direction'
+    
+    data_dependent = True
 
     @property
     def array(self):
@@ -3595,10 +3606,10 @@ class Hist2DXRange(LimitBase):
 
 class Hist2DYRange(Hist2DXRange):
     """
-    Specify the of the histogram for the x-dimension
+    Specify the range of the histogram for the x-dimension
 
-    This formatoption specifies how much the histogram ranges in the x- and
-    y-dimension
+    This formatoption specifies the minimum and maximum of the histogram 
+    in the x-dimension
 
     Possible types
     --------------
@@ -3614,6 +3625,8 @@ class Hist2DYRange(Hist2DXRange):
     xrange"""
 
     name = 'Range of the histogram in y-direction'
+    
+    data_dependent = True
 
     @property
     def array(self):
@@ -3643,6 +3656,12 @@ class DataPrecision(Formatoption):
     dependencies = ['xrange', 'yrange']
 
     connections = ['density']
+
+    group = 'data'
+
+    name = 'Precision of the visualized data'
+    
+    data_dependent = True
 
     def update(self, value):
         self.bins = [0, 0]
@@ -3698,6 +3717,12 @@ class HistBins(Formatoption):
 
     dependencies = ['precision']
 
+    group = 'data'
+
+    name = 'Number of bins of the histogram'
+    
+    data_dependent = True
+
     def update(self, value):
         self.bins = [0, 0]
         try:
@@ -3743,6 +3768,12 @@ class NormedHist2D(Formatoption):
     priority = START
 
     name = 'Specify how to normalize the histogram'
+    
+    group = 'data'
+
+    name = 'Normalize the histogram'
+    
+    data_dependent = True
 
     def update(self, value):
         pass  # nothing to do here
@@ -3798,6 +3829,12 @@ class PointDensity(Formatoption):
     name = 'Type of the density plot'
 
     dependencies = ['normed', 'bins', 'xrange', 'yrange', 'precision']
+
+    group = 'data'
+
+    name = 'Calculation of the point density'
+    
+    data_dependent = True
 
     def update(self, value):
         if value == 'hist':
