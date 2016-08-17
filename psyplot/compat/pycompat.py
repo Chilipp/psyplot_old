@@ -79,5 +79,6 @@ try:
 except ImportError:
     from UserDict import IterableUserDict as UserDict
 
+
 def isstring(s):
     return isinstance(s, six.string_types)
