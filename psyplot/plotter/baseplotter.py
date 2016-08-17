@@ -3,12 +3,12 @@ from abc import abstractmethod
 from collections import defaultdict
 import numpy as np
 import pandas as pd
-import matplotlib as mpl
 import matplotlib.pyplot as plt
 from psyplot.docstring import docstrings, safe_modulo, dedents, dedent
 from psyplot.data import InteractiveList
-from psyplot.compat.pycompat import zip, filter
-from psyplot.plotter import Plotter, Formatoption, rcParams, DictFormatoption, START
+from psyplot.compat.pycompat import filter
+from psyplot.plotter import (
+    Plotter, Formatoption, rcParams, START)
 
 docstrings.params['replace_note'] = dedents("""
     You can insert any meta key from the :attr:`xarray.DataArray.attrs` via a
@@ -24,11 +24,12 @@ docstrings.params['replace_note'] = dedents("""
     - any attribute of one of the above coordinates is inserted via
       ``axis + key`` (e.g. the name of the x-coordinate can be inserted via
       ``'%%(xname)s'``).
-    - Labels defined in the :class:`psyplot.rcParams` ``'texts.labels'`` key are
-      also replaced when enclosed by '{}'. The standard labels are
+    - Labels defined in the :class:`psyplot.rcParams` ``'texts.labels'`` key
+      are also replaced when enclosed by '{}'. The standard labels are
 
       - %s""" % '\n      - '.join(
-    '%s: ``%s``' % tuple(item) for item in six.iteritems(rcParams['texts.labels'])))
+    '%s: ``%s``' % tuple(item) for item in six.iteritems(
+        rcParams['texts.labels'])))
 
 docstrings.params['colors'] = dedents("""
     The following color abbreviations are supported:
@@ -202,8 +203,8 @@ def label_weight(base, label_name=None, children=[], parents=[],
     ----------
     base: Formatoption
         The base formatoption instance that is used in the
-        :class:`psyplot.Plotter` subclass to create the label. The instance must
-        have a ``texts`` attribute which stores all the
+        :class:`psyplot.Plotter` subclass to create the label. The instance
+        must have a ``texts`` attribute which stores all the
         :class:`matplotlib.text.Text` instances.
     label_name: str
         The name of the label to use in the documentation. If None,

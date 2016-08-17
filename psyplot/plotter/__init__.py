@@ -385,7 +385,7 @@ class Formatoption(object):
         The value that is passed to shared formatoptions (by default, the
         :attr:`value` attribute)"""
         return self.value
-    
+
     @property
     @dedent
     def value2pickle(self):
@@ -1604,8 +1604,8 @@ class Plotter(dict):
             help explorer). The given function must take a string as argument
         include_links: bool or None, optional
             Default False. If True, links (in restructured formats) are
-            included in the description. If None, the behaviour is determined by
-            the :attr:`psyplot.plotter.Plotter.include_links` attribute.
+            included in the description. If None, the behaviour is determined
+            by the :attr:`psyplot.plotter.Plotter.include_links` attribute.
         %(Plotter._enhance_keys.other_parameters)s
 
         Returns

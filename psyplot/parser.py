@@ -30,7 +30,7 @@ class FuncArgParser(ArgumentParser):
                 continue
             arg_doc = docstrings._keep_params(doc, [arg]) or \
                 docstrings._keep_types(doc, [arg])
-            args_dict[arg] = d = {'dest': arg, 'short': arg.replace('_', '-'), 
+            args_dict[arg] = d = {'dest': arg, 'short': arg.replace('_', '-'),
                                   'long': arg.replace('_', '-')}
             if arg_doc:
                 lines = arg_doc.splitlines()

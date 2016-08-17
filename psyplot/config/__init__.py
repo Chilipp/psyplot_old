@@ -9,6 +9,7 @@ from .logsetup import setup_logging
 #: :class:`str`. Path to the yaml logging configuration file
 logcfg_path = setup_logging()
 
+
 from .rcsetup import psyplot_fname
 
 
