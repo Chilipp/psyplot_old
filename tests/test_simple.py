@@ -91,7 +91,7 @@ class LinePlotterTest(tb.BasePlotterTest):
         sp.export(os.path.join(bt.ref_dir, self.get_ref_file('xticks')))
         if close:
             sp.close(True, True)
-            
+
     def test_coord(self):
         """Test whether we can use an alternative coordinate"""
         self.update(coord='v', xlabel='%(name)s')
@@ -377,7 +377,7 @@ class ViolinPlotterTest(LinePlotterTest):
 
     def test_color(self):
         pass
-    
+
     @unittest.skip('Not implemented for ViolinPlotter')
     def test_coord(self):
         pass
@@ -605,7 +605,7 @@ class Simple2DPlotterTest(LinePlotterTest, References2D):
     @unittest.skip("color formatoption not implemented for 2D-Plotter")
     def test_color(self):
         pass
-    
+
     @unittest.skip('Not implemented for 2D-Plotter')
     def test_coord(self):
         pass
@@ -736,7 +736,7 @@ class LinePlotterTest2D(tb.TestBase2D, LinePlotterTest):
     def test_xticks(self, *args):
         """Test xticks, xticklabels, xtickprops formatoptions"""
         self._test_DataTicksCalculator()
-        
+
     def test_coord(self):
         """Test whether we can use an alternative coordinate"""
         self.update(coord='v_2d', xlabel='%(name)s')
@@ -1275,7 +1275,7 @@ class DensityPlotterTest(bt.PsyPlotTestCase):
         area = ((a1 - a0) * (b1 - b0))
         self.assertAlmostEqual((self.plot_data.values * area).sum(),
                                1.0)
-        
+
     def test_coord(self):
         """Test whether we can use an alternative coordinate"""
         self.update(coord='v', xlabel='%(name)s')

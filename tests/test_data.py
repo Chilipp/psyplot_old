@@ -51,7 +51,7 @@ class DecoderTest(TestCase):
         ds.close()
 
     def _test_coord(self, func_name, name, uname=None, name2d=False,
-                      circ_name=None):
+                    circ_name=None):
         def check_ds(name):
             self.assertEqual(getattr(d, func_name)(ds.t2m).name, name)
             if name2d:
