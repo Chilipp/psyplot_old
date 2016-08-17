@@ -384,7 +384,8 @@ class Gallery(object):
         preprocess
             If True, all examples (except those specified in the
             `dont_preprocess` item) will be preprocessed when creating the rst
-            files. Otherwise it might be a list of files that shall be preprocessed.
+            files. Otherwise it might be a list of files that shall be
+            preprocessed.
         dont_preprocess
             If True, no example will be preprocessed when creating the rst
             files. Otherwise it might be a list of files that shall not be

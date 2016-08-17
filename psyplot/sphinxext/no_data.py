@@ -80,7 +80,7 @@ class NoDataAttributeDocumenter(AttributeDocumenter):
 
 
 def setup(app):
-    """setup function for using this module as a sphinx extension"""
+    """Setup then sphinx app for using this module as a sphinx extension."""
     try:
         app.add_config_value('autodata_content', 'both', True)
     except sphinx.errors.ExtensionError:  # already registered
