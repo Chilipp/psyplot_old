@@ -6,15 +6,15 @@ to fit a linear model to the data and visualize it."""
 from __future__ import division
 import six
 import inspect
-from itertools import islice, cycle
+from itertools import islice, cycle, repeat
 import numpy as np
 from xarray import Coordinate, DataArray
 import statsmodels.api as sm
 from psyplot import rcParams
-from psyplot.docstring import substitution_pattern
+from psyplot.docstring import substitution_pattern, docstrings
 from psyplot.compat.pycompat import range
-from psyplot.data import InteractiveArray, InteractiveList
-from psyplot.plotter import Formatoption, START, Plotter
+from psyplot.data import InteractiveArray, InteractiveList, safe_list
+from psyplot.plotter import Formatoption, START, Plotter, END
 import psyplot.plotter.simple as psyps
 
 
@@ -22,13 +22,13 @@ class LinRegTranspose(psyps.Transpose):
     __doc__ = psyps.Transpose.__doc__
 
     priority = START
-    
-    
+
+
 class XFitRange(psyps.Hist2DXRange):
     """
     Specify the range for the fit to use for the x-dimension
 
-    This formatoption specifies the minimum and maximum of the fit 
+    This formatoption specifies the minimum and maximum of the fit
     in the x-dimension
 
     Possible types
@@ -43,9 +43,9 @@ class XFitRange(psyps.Hist2DXRange):
     See also
     --------
     yrange"""
-    
+
     group = 'fit'
-    
+
     def update(self, value):
         if isinstance(self.raw_data, InteractiveList) and (
                 self.index_in_list is None):
@@ -55,7 +55,7 @@ class XFitRange(psyps.Hist2DXRange):
                 super(XFitRange, self).update(value)
         else:
             super(XFitRange, self).update(value)
-                
+
     def set_limit(self, *args):
         if self.index_in_list is None:
             self.range = args
@@ -67,7 +67,7 @@ class YFitRange(psyps.Hist2DYRange):
     """
     Specify the range for the fit to use for the y-dimension
 
-    This formatoption specifies the minimum and maximum of the fit 
+    This formatoption specifies the minimum and maximum of the fit
     in the y-dimension
 
     Possible types
@@ -82,9 +82,9 @@ class YFitRange(psyps.Hist2DYRange):
     See also
     --------
     xrange"""
-    
+
     group = 'fit'
-    
+
     def update(self, value):
         if isinstance(self.raw_data, InteractiveList) and (
                 self.index_in_list is None):
@@ -94,7 +94,7 @@ class YFitRange(psyps.Hist2DYRange):
                 super(YFitRange, self).update(value)
         else:
             super(YFitRange, self).update(value)
-                
+
     def set_limit(self, *args):
         if self.index_in_list is None:
             self.range = args
@@ -139,7 +139,7 @@ class LinearRegressionFit(Formatoption):
     priority = START
 
     name = 'Change the fit method'
-    
+
     data_dependent = True
 
     group = 'fit'
@@ -172,7 +172,8 @@ class LinearRegressionFit(Formatoption):
             da_fit = InteractiveArray(
                 data=y_line, dims=(xname, ), name=yname, attrs=attrs,
                 coords={xname: Coordinate(xname, x_line, attrs=coord_attrs)},
-                arr_name=da.arr_name)
+                arr_name=da.arr_name).assign_coords(**self._get_other_coords(
+                    da))
             self.fits[i] = fit
             da_fit.attrs.update(attrs)
             da_fit.attrs.update(da.attrs)
@@ -258,6 +259,99 @@ class LinearRegressionFit(Formatoption):
             d['rsquared'] = fit.rsquared
         return x_line, y_line, d, fit
 
+    def _get_other_coords(self, raw_da):
+        return {key: raw_da.coords[key]
+                for key in set(raw_da.coords).difference(raw_da.dims)}
+
+
+docstrings.delete_types('LineColors.possible_types', 'no_none', 'None')
+
+
+class IdealLineColor(psyps.LineColors):
+    """
+    The colors of the ideal lines
+
+    Possible types
+    --------------
+    None
+        Let it be determined by the color cycle of the :attr:`color`
+        formatoption
+    %(LineColors.possible_types.no_none)s
+
+    See Also
+    --------
+    ideal
+    """
+
+    parents = ['ideal']
+
+    dependencies = ['color']
+
+    priority = END
+
+    def update(self, value):
+        if self.ideal.value is not None:
+            if value is None:
+                value = self.color.color_cycle
+            super(IdealLineColor, self).update(value)
+
+
+class IdealLine(Formatoption):
+    """
+    Draw an ideal line of the fit
+
+    Possible types
+    --------------
+    None
+        Don't draw an ideal line
+    list of floats
+        The parameters for the line. If the :attr:`fit` formatoption is in
+        ``'robust'`` or ``'fit'``, then the first value corresponds to the
+        interception, the second to the slope. Otherwise the list corrensponds
+        to the parameters as used in the fit function of the lines
+    list of list of floats
+        The same as above but with the specification for each array
+
+    See Also
+    --------
+    id_color
+    """
+
+    dependencies = ['fit', 'id_color', 'plot']
+
+    def initialize_plot(self, *args, **kwargs):
+        self._plot = []
+        super(IdealLine, self).initialize_plot(*args, **kwargs)
+
+    def update(self, value):
+        self.remove()
+        if value is None:
+            return
+        # we update id_color here to make sure that the colors are only used
+        # if necessary
+        self.id_color.update(self.id_color.value)
+        self._plot = []
+        fit_type = self.fit.value
+        if self.plot.value is None:
+            linestyles = repeat('-')
+        else:
+            linestyles = cycle(safe_list(self.plot.value))
+        for vals, da, c, ls in zip(cycle(value), self.iter_data,
+                                   self.id_color.colors, linestyles):
+            if da.ndim > 1:
+                da = da[0]
+            x = da.to_series().index.values
+            if fit_type in ['robust', 'fit']:
+                y = vals[0] + vals[1] * x
+            else:
+                y = fit_type(x, *vals)
+            self._plot.extend(self.ax.plot(x, y, color=c, ls=ls))
+
+    def remove(self):
+        for artist in self._plot:
+            artist.remove()
+        self._plot = []
+
 
 class LinearRegressionFitCombined(LinearRegressionFit):
     __doc__ = substitution_pattern.sub('%\g<0>', LinearRegressionFit.__doc__)
@@ -324,7 +418,7 @@ class NBoot(Formatoption):
     priority = START
 
     group = 'fit'
-    
+
     name = 'Set the bootstrapping number to calculate the confidence interval'
 
     def update(self, value):
@@ -381,7 +475,7 @@ class Ci(Formatoption):
     priority = START
 
     group = 'fit'
-    
+
     name = 'Draw a confidence interval'
 
     def initialize_plot(self, *args, **kwargs):
@@ -414,11 +508,16 @@ class Ci(Formatoption):
                 max_range, coords={coord.name: coord}, dims=(coord.name, ),
                 name='max_err')
             new = InteractiveArray(ds.to_array(name=da.name), base=ds,
-                                   arr_name=da.arr_name)
+                                   arr_name=da.arr_name).assign_coords(
+                **self._get_other_coords(da_fit))
             self.set_data(new, i)
             new.attrs.update(da_fit.attrs)
             new.name = da.name
-            
+
+    def _get_other_coords(self, raw_da):
+        return {key: raw_da.coords[key]
+                for key in set(raw_da.coords).difference(raw_da.dims)}
+
 
 class LinRegPlotter(psyps.LinePlotter):
     """A plotter to visualize the fit on the data
@@ -440,6 +539,8 @@ class LinRegPlotter(psyps.LinePlotter):
     fix = FixPoint('fix')
     nboot = NBoot('nboot')
     ci = Ci('ci')
+    id_color = IdealLineColor('id_color')
+    ideal = IdealLine('ideal')
 
 
 class DensityRegPlotter(psyps.ScalarCombinedBase, psyps.DensityPlotter,
@@ -477,6 +578,8 @@ class DensityRegPlotter(psyps.ScalarCombinedBase, psyps.DensityPlotter,
     legend = psyps.Legend('legend', plot='lineplot', index_in_list=1)
     xlim = psyps.Xlim2D('xlim', index_in_list=0)
     ylim = psyps.Ylim2D('ylim', index_in_list=0)
+    id_color = IdealLineColor('id_color', index_in_list=1)
+    ideal = IdealLine('ideal', plot='lineplot', index_in_list=1)
 
 for fmt in psyps.XYTickPlotter._get_formatoptions():
     fmto_cls = getattr(psyps.XYTickPlotter, fmt).__class__

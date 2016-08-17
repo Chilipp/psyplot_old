@@ -14,7 +14,8 @@ import yaml
 from itertools import repeat
 import matplotlib as mpl
 from psyplot.warning import warn
-from psyplot.compat.pycompat import UserDict, DictMethods, getcwd, zip, isstring, map
+from psyplot.compat.pycompat import (
+    UserDict, DictMethods, getcwd, zip, isstring, map)
 from psyplot.compat.mplcompat import mpl_version
 from matplotlib.patches import ArrowStyle
 from numpy import asarray
@@ -1048,6 +1049,19 @@ validate_extend = ValidateInStrings('extend',
                                     ['neither', 'both', 'min', 'max'])
 
 
+def validate_ideal(val):
+    try:
+        return validate_none(val)
+    except ValueError:
+        val = asarray(val).astype(float)
+        if val.ndim == 1:
+            return val.reshape(1, val.size)
+        elif val.ndim == 2:
+            return val
+        raise ValueError(
+            "Only 1- and 2-dimensional arrays are allowed! Got %s" % (val, ))
+
+
 def validate_norm(val):
     """Validate a normalization
 
@@ -1374,6 +1388,15 @@ def validate_grid(val):
         return BoundsValidator('grid', bound_strings, True)(val)
 
 
+def validate_marker(val):
+    """Does not really make a validation because markers can be quite of
+    different types"""
+    if val is None:
+        return None
+    else:
+        return safe_list(val)
+
+
 bound_strings = ['data', 'mid', 'rounded', 'roundedsym', 'minmax', 'sym']
 
 tick_strings = bound_strings + ['hour', 'day', 'week', 'month', 'monthend',
@@ -1478,7 +1501,7 @@ defaultParams = {
 
     # density plotter
     'plotter.density.coord': [
-        None, try_and_error(validate_none, validate_str, validate_stringlist), 
+        None, try_and_error(validate_none, validate_str, validate_stringlist),
         'Alternative x-coordinate to use for DensityPlotter'],
     'plotter.density.xrange': [
         'minmax', validate_limits, 'The histogram limits of the density plot'],
@@ -1505,7 +1528,7 @@ defaultParams = {
 
     # SimplePlot
     'plotter.line.coord': [
-        None, try_and_error(validate_none, validate_str, validate_stringlist), 
+        None, try_and_error(validate_none, validate_str, validate_stringlist),
         'Alternative x-coordinate to use for LinePlotter'],
     'plotter.line.plot': [
         '-', try_and_error(validate_none, validate_str, validate_stringlist),
@@ -1514,10 +1537,12 @@ defaultParams = {
         'fill', try_and_error(ValidateInStrings('error', ['fill'], True),
                               validate_none),
         'The visualization type of the errors for line plots'],
+    'plotter.line.marker': [
+        None, validate_marker, 'The symbol of the marker'],
     'plotter.line.erroralpha': [
         0.15, validate_alpha, 'The alpha value of the error range'],
     'plotter.bar.coord': [
-        None, try_and_error(validate_none, validate_str, validate_stringlist), 
+        None, try_and_error(validate_none, validate_str, validate_stringlist),
         'Alternative x-coordinate to use for BarPlotter'],
     'plotter.bar.plot': [
         'bar', try_and_error(validate_none, ValidateInStrings(
@@ -1586,6 +1611,12 @@ defaultParams = {
     'plotter.linreg.ci': [
         95, try_and_error(validate_none, validate_float),
         'Size of the confidence interval'],
+    'plotter.linreg.id_color': [
+        None, try_and_error(validate_none, validate_cmap, validate_iter),
+        'fmt key to modify the color cycle of the ideal lines in a fit plot'],
+    'plotter.linreg.ideal': [
+        None, validate_ideal,
+        'The ideal lines to plot'],
     'plotter.linreg.bootstrap.random_seed': [
         None, try_and_error(validate_none, validate_int),
         'The seed to use for the bootstrap algorithm to estimate the '
@@ -1810,7 +1841,8 @@ defaultParams = {
         'boolean controlling whether the seaborn module shall be imported '
         'when importing the project module. If None, it is only tried to '
         'import the module.'],
-    'project.plotters': [{}, validate_dict,
+    'project.plotters': [
+        {}, validate_dict,
         'mapping from identifier to plotter definitions for the Project class.'
         ' See the :func:`psyplot.project.register_plotter` function for '
         'possible keywords and values. See '

@@ -166,6 +166,53 @@ class LinRegPlotterTest(unittest.TestCase):
         err = np.sqrt(plotter.fit.fits[0][0, 0])
         self.assertLess(err, 0.01)
 
+    def test_ideal_nonfixed(self):
+        """Test the ideal formatoption"""
+        self.test_nonfixed_fit()
+        self.plotter.update(ideal=[self.default_intercept, self.default_slope])
+        for i, da in enumerate(self.plotter.fit.iter_data):
+            if da.ndim > 1:
+                da = da[0]
+            y = list(self.plotter.ax.lines[i * 2 + 1].get_ydata())
+            ref = list(self.default_intercept + self.default_slope *
+                       da[da.dims[-1]].values)
+            self.assertEqual(y, ref, msg='Array %i (%s) disagrees' % (
+                i, da.arr_name))
+
+    def test_ideal_fix0(self):
+        """Test the ideal formatoption with fix point at 0"""
+        self.test_fix0()
+        self.plotter.update(ideal=[0, self.default_slope])
+        for i, da in enumerate(self.plotter.fit.iter_data):
+            if da.ndim > 1:
+                da = da[0]
+            y = list(self.plotter.ax.lines[i * 2 + 1].get_ydata())
+            ref = list(self.default_slope * da[da.dims[-1]].values)
+            self.assertEqual(y, ref, msg='Array %i (%s) disagrees' % (
+                i, da.arr_name))
+
+    def test_ideal_fix1(self):
+        """Test the ideal formatoption with fix point at 1"""
+        self.test_fix1()
+        self.plotter.update(ideal=[1, self.default_slope])
+        for i, da in enumerate(self.plotter.fit.iter_data):
+            if da.ndim > 1:
+                da = da[0]
+            y = list(self.plotter.ax.lines[i * 2 + 1].get_ydata())
+            ref = list(1 + self.default_slope * da[da.dims[-1]].values)
+            self.assertEqual(y, ref, msg='Array %i (%s) disagrees' % (
+                i, da.arr_name))
+
+    def test_id_color(self):
+        """Test the id_color formatoption"""
+        self.test_ideal_nonfixed()
+        ref_c = ['y']
+        self.plotter.update(id_color=ref_c)
+        for i, da in enumerate(self.plotter.fit.iter_data):
+            c = list(self.plotter.ax.lines[i * 2 + 1].get_color())
+            self.assertEqual(c, ref_c, msg='Array %i (%s) disagrees' % (
+                i, da.arr_name))
+
 
 class SingleLinRegPlotterTest(LinRegPlotterTest):
     """Test the :class:`psyplot.plotter.linreg.LinRegPlotter` with a single
@@ -178,7 +225,7 @@ class SingleLinRegPlotterTest(LinRegPlotterTest):
 
     @classmethod
     def define_poly_data(cls, *args, **kwargs):
-        da, func =  super(SingleLinRegPlotterTest, cls).define_poly_data(
+        da, func = super(SingleLinRegPlotterTest, cls).define_poly_data(
             *args, **kwargs)
         return da[0], func
 
