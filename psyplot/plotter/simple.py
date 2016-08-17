@@ -1,7 +1,7 @@
 import six
 from abc import abstractproperty, abstractmethod
-from itertools import chain, starmap, cycle, islice
-from pandas import date_range, datetools, to_datetime
+from itertools import chain, starmap, cycle, islice, repeat
+from pandas import date_range, datetools, to_datetime, DatetimeIndex
 import xarray as xr
 import matplotlib as mpl
 import matplotlib.axes
@@ -76,34 +76,34 @@ def round_to_05(n, exp=None, mode='s'):
         n2 = ntmp
     return np.where(n1 - n2 > 0.5, np.sign(n)*(nret + s*0.5)*10.**exp,
                     np.sign(n)*nret*10.**exp)
-    
-    
+
+
 class AlternativeXCoord(Formatoption):
     """
     Use an alternative variable as x-coordinate
-    
+
     This formatoption let's you specify another variable in the base dataset
     of the data array in case you want to use this as the x-coordinate instead
     of the raw data
-    
+
     Possible types
     --------------
     None
         Use the default
     str
         The name of the variable to use in the base dataset
-        
+
     Examples
     --------
     To see the difference, we create a simple test dataset::
         >>> import xarray as xr
-        
+
         >>> import numpy as np
-        
+
         >>> import psyplot.project as psy
-        
+
         >>> ds = xr.Dataset({
-        ...     'temp': xr.Variable(('time', ), np.arange(5)), 
+        ...     'temp': xr.Variable(('time', ), np.arange(5)),
         ...     'std': xr.Variable(('time', ), np.arange(5, 10))})
         >>> ds
         <xarray.Dataset>
@@ -113,42 +113,42 @@ class AlternativeXCoord(Formatoption):
         Data variables:
             temp     (time) int64 0 1 2 3 4
             std      (time) int64 5 6 7 8 9
-    If we create a plot with it, we get the ``'time'`` dimension on the 
+    If we create a plot with it, we get the ``'time'`` dimension on the
     x-axis::
         >>> plotter = psy.plot.lineplot(ds, name=['temp']).plotters[0]
-        
+
         >>> plotter.plot_data[0].dims
         ('time',)
     If we however set the ``'coord'`` keyword, we get::
         >>> plotter = psy.plot.lineplot(
         ...     ds, name=['temp'], coord='std').plotters[0]
-        
+
         >>> plotter.plot_data[0].dims
         ('std',)
     and ``'std'`` is plotted on the x-axis."""
-    
+
     name = 'Alternative X-Variable'
-    
+
     group = 'data'
-    
+
     priority = START
-    
+
     data_dependent = True
-    
+
     def update(self, value):
         if value is not None:
             for i, da in enumerate(self.iter_raw_data):
                 self.set_data(self.replace_coord(i), i)
-                
+
     def replace_coord(self, i):
         """Replace the coordinate for the data array at the given position
-        
+
         Parameters
         ----------
         i: int
             The number of the data array in the raw data (if the raw data is
             not an interactive list, use 0)
-        
+
         Returns
         xarray.DataArray
             The data array with the replaced coordinate"""
@@ -157,9 +157,11 @@ class AlternativeXCoord(Formatoption):
         coord_da = InteractiveList.from_dataset(da.base, name=alternative_name,
                                                 dims=da.idims)[0]
         coord = xr.Coordinate(coord_da.name, coord_da, coord_da.attrs)
-        return da.rename({da.dims[-1]: coord.name}).assign_coords(
-            **{coord.name: coord})
-                
+        other_coords = {key: da.coords[key]
+                        for key in set(da.coords).difference(da.dims)}
+        ret = da.rename({da.dims[-1]: coord.name}).assign_coords(
+            **{coord.name: coord}).assign_coords(**other_coords)
+        return ret
 
 
 class Grid(Formatoption):
@@ -1311,6 +1313,7 @@ class Transpose(Formatoption):
             return arr.coords[yname]
 
 
+@docstrings.get_sectionsf('LineColors')
 class LineColors(Formatoption):
     """
     Set the color coding
@@ -1334,7 +1337,7 @@ class LineColors(Formatoption):
     priority = BEFOREPLOTTING
 
     name = 'Color cycle'
-    
+
     @property
     def value2pickle(self):
         return self.colors
@@ -1375,6 +1378,28 @@ class LineColors(Formatoption):
             self.default_colors = self.colors
 
 
+class Marker(Formatoption):
+    """
+    Choose the marker for points
+
+    Possible types
+    --------------
+    None
+        Use the default from matplotlibs rcParams
+    str
+        A valid symbol for the matplotlib markers (see
+        :mod:`matplotlib.markers`)
+    """
+
+    priority = BEFOREPLOTTING
+
+    def update(self, value):
+        if value is None:
+            self.markers = repeat(mpl.rcParams['lines.marker'])
+        else:
+            self.markers = cycle(value)
+
+
 class LinePlot(Formatoption):
     """
     Choose the line style of the plot
@@ -1395,7 +1420,7 @@ class LinePlot(Formatoption):
 
     priority = BEFOREPLOTTING + 0.1
 
-    children = ['color', 'transpose']
+    children = ['color', 'transpose', 'marker']
 
     name = 'Line plot type'
 
@@ -1413,20 +1438,33 @@ class LinePlot(Formatoption):
         if self.value is not None:
             self._plot = list(chain(*starmap(self.plot_arr, zip(
                 self.iter_data, self.color.colors,
-                cycle(safe_list(self.value))))))
+                cycle(safe_list(self.value)), self.marker.markers))))
 
-    def plot_arr(self, arr, c, ls):
+    def plot_arr(self, arr, c, ls, m):
         # since date time objects are covered better by pandas,
         # we convert to a series
         if arr.ndim == 2:  # contains also error information
             arr = arr[0]
         df = arr.to_series()
-        if self.transpose.value:
-            return self.ax.plot(df.values, df.index.values,
-                                color=c, linestyle=ls, **self._kwargs)
+        try:
+            y = np.asarray(df.values).astype(float)
+        except ValueError:
+            y = np.arange(df.values.size)
+        if not isinstance(df.index, DatetimeIndex):
+            try:
+                x = np.asarray(df.index.values).astype(float)
+            except ValueError:
+                x = np.arange(df.index.values.size)
         else:
-            return self.ax.plot(df.index.values, df.values,
-                                color=c, linestyle=ls, **self._kwargs)
+            x = df.index.values
+        if self.transpose.value:
+            return self.ax.plot(y, x,
+                                color=c, linestyle=ls, marker=m,
+                                **self._kwargs)
+        else:
+            return self.ax.plot(x, y,
+                                color=c, linestyle=ls, marker=m,
+                                **self._kwargs)
 
     def remove(self):
         for artist in self._plot:
@@ -1855,9 +1893,14 @@ class Xlim(LimitBase):
             return arr
         df = InteractiveList(map(select_array, self.iter_data)).to_dataframe()
         if self.transpose.value:
-            return df.values[df.notnull().values]
+            arr = df.values[df.notnull().values]
         else:
-            return df.index.values
+            arr = df.index.values
+        try:
+            arr.astype(float)
+        except ValueError:
+            return np.arange(len(arr))
+        return arr
 
     def set_limit(self, *args):
         self.ax.set_xlim(*args)
@@ -1902,9 +1945,14 @@ class Ylim(LimitBase):
             return arr
         df = InteractiveList(map(select_array, self.iter_data)).to_dataframe()
         if self.transpose.value:
-            return df.index.values
+            arr = df.index.values
         else:
-            return df.values[df.notnull().values]
+            arr = df.values[df.notnull().values]
+        try:
+            arr.astype(float)
+        except ValueError:
+            return np.arange(len(arr))
+        return arr
 
     def set_limit(self, *args):
         self.ax.set_ylim(*args)
@@ -2339,7 +2387,6 @@ class Plot2D(Formatoption):
                 cmap=cmap, rasterized=True, **self._kwargs)
 
     def _tripcolor(self):
-        from matplotlib.tri import TriAnalyzer
         triangles = self.triangles
         arr = None
         try:
@@ -2549,6 +2596,7 @@ class YTicks2D(YTicks):
                 'Failed to concatenate the data, returning first object!',
                 exc_info=True)
             return data[0]
+
 
 class Extend(Formatoption):
     """
@@ -3628,7 +3676,7 @@ class Legend(Formatoption):
     --------
     labels"""
 
-    dependencies = ['legendlabels', 'plot']
+    dependencies = ['legendlabels', 'plot', 'color', 'marker']
 
     name = 'Properties of the legend'
 
@@ -3655,7 +3703,7 @@ class Hist2DXRange(LimitBase):
     """
     Specify the range of the histogram for the x-dimension
 
-    This formatoption specifies the minimum and maximum of the histogram 
+    This formatoption specifies the minimum and maximum of the histogram
     in the x-dimension
 
     Possible types
@@ -3676,9 +3724,9 @@ class Hist2DXRange(LimitBase):
     group = 'data'
 
     name = 'Range of the histogram in y-direction'
-    
+
     data_dependent = True
-    
+
     dependencies = ['coord']
 
     @property
@@ -3695,7 +3743,7 @@ class Hist2DYRange(Hist2DXRange):
     """
     Specify the range of the histogram for the x-dimension
 
-    This formatoption specifies the minimum and maximum of the histogram 
+    This formatoption specifies the minimum and maximum of the histogram
     in the x-dimension
 
     Possible types
@@ -3712,7 +3760,7 @@ class Hist2DYRange(Hist2DXRange):
     xrange"""
 
     name = 'Range of the histogram in y-direction'
-    
+
     data_dependent = True
 
     @property
@@ -3747,7 +3795,7 @@ class DataPrecision(Formatoption):
     group = 'data'
 
     name = 'Precision of the visualized data'
-    
+
     data_dependent = True
 
     def update(self, value):
@@ -3807,7 +3855,7 @@ class HistBins(Formatoption):
     group = 'data'
 
     name = 'Number of bins of the histogram'
-    
+
     data_dependent = True
 
     def update(self, value):
@@ -3855,11 +3903,11 @@ class NormedHist2D(Formatoption):
     priority = START
 
     name = 'Specify how to normalize the histogram'
-    
+
     group = 'data'
 
     name = 'Normalize the histogram'
-    
+
     data_dependent = True
 
     def update(self, value):
@@ -3920,7 +3968,7 @@ class PointDensity(Formatoption):
     group = 'data'
 
     name = 'Calculation of the point density'
-    
+
     data_dependent = True
 
     def update(self, value):
@@ -3950,6 +3998,7 @@ class PointDensity(Formatoption):
         ycent = xr.Coordinate(yname, y, attrs=raw_da.attrs.copy())
         var = xr.Variable((yname, xname), z, attrs=raw_da.base.attrs.copy())
         ds = xr.Dataset({'counts': var}, {xname: xcent, yname: ycent})
+        ds = ds.assign_coords(**self._get_other_coords(raw_da))
         self.decoder = CFDecoder(ds)
         self.data = InteractiveArray(ds.counts, base=ds, decoder=self.decoder)
 
@@ -3994,8 +4043,13 @@ class PointDensity(Formatoption):
         coords = {xcent.name: xcent, ycent.name: ycent,
                   xname + '_bnds': xbounds, yname + '_bnds': ybounds}
         ds = xr.Dataset(variables, coords)
+        ds = ds.assign_coords(**self._get_other_coords(raw_da))
         self.decoder = CFDecoder(ds)
         self.data = InteractiveArray(ds.counts, base=ds, decoder=self.decoder)
+
+    def _get_other_coords(self, raw_da):
+        return {key: raw_da.coords[key]
+                for key in set(raw_da.coords).difference(raw_da.dims)}
 
 
 class XYTickPlotter(Plotter):
@@ -4123,8 +4177,9 @@ class LinePlotter(SimplePlotterBase):
     #: might have. We allow up to 3 variableswhere the second and third
     #: variable might be the errors (see the :attr:`error` formatoption)
     allowed_vars = 3
-    
+
     coord = AlternativeXCoord('coord')
+    marker = Marker('marker')
     plot = LinePlot('plot')
     error = ErrorPlot('error')
     erroralpha = ErrorAlpha('erroralpha')
