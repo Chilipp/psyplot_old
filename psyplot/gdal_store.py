@@ -22,6 +22,7 @@ from collections import OrderedDict
 from xarray.core.utils import FrozenOrderedDict
 from xarray.backends.common import AbstractDataStore
 from psyplot.compat.pycompat import range
+from psyplot.warning import warn
 try:
     import gdal
     from osgeo import gdal_array
@@ -70,17 +71,19 @@ class GdalStore(AbstractDataStore):
         variables = OrderedDict()
         for iband in range(1, ds.RasterCount+1):
             if with_dask:
+                band = ds.GetRasterBand(iband)
                 dsk = {('x', 0, 0): (load, iband)}
-                dt = dtype(gdal_array.codes[ds.GetRasterBand(iband).DataType])
+                dt = dtype(gdal_array.codes[band.DataType])
                 arr = Array(dsk, 'x', chunks, shape=shape, dtype=dt)
             else:
                 arr = load(iband)
+            attrs = band.GetMetadata_Dict()
             try:
                 dt.type(nan)
-                attrs = {'_FillValue': nan}
+                attrs['_FillValue'] = nan
             except ValueError:
-                no_data = ds.GetRasterBand(iband).GetNoDataValue()
-                attrs = {'_FillValue': no_data} if no_data else {}
+                no_data = band.GetNoDataValue()
+                attrs.update({'_FillValue': no_data} if no_data else {})
             variables['band%i' % iband] = Variable(dims, arr, attrs)
         variables['lat'], variables['lon'] = self._load_GeoTransform()
         return FrozenOrderedDict(variables)
@@ -108,4 +111,13 @@ class GdalStore(AbstractDataStore):
         return Variable(('lat',), lat), Variable(('lon',), lon)
 
     def get_attrs(self):
-        return FrozenOrderedDict(self.ds.GetMetadata())
+        from osr import SpatialReference
+        attrs = self.ds.GetMetadata()
+        try:
+            sp = SpatialReference(wkt=self.ds.GetProjection())
+            proj4 = sp.ExportToProj4()
+        except:
+            warn('Could not identify projection')
+        else:
+            attrs['proj4'] = proj4
+        return FrozenOrderedDict(attrs)
