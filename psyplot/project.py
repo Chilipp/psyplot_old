@@ -25,7 +25,7 @@ from psyplot.warning import warn, critical
 from psyplot.docstring import docstrings, dedent, safe_modulo
 from psyplot.data import (
     ArrayList, open_dataset, open_mfdataset, sort_kwargs, _MissingModule,
-    to_netcdf, is_remote_url, Signal, CFDecoder, safe_list, is_slice)
+    to_netcdf, is_remote_url, Signal, CFDecoder, safe_list, InteractiveList)
 from psyplot.plotter import unique_everseen, Plotter
 from psyplot.plotter.colors import show_colormaps, get_cmap
 from psyplot.compat.pycompat import OrderedDict, range, getcwd
@@ -112,6 +112,7 @@ def multiple_subplots(rows=1, cols=1, maxplots=None, n=1, delete=True,
 
 def _is_slice(val):
     return isinstance(val, slice)
+
 
 def _only_main(func):
     """Call the given `func` only from the main project"""
@@ -335,7 +336,7 @@ class Project(ArrayList):
 
     @docstrings.get_sectionsf('Project.close')
     @dedent
-    def close(self, figs=True, data=False):
+    def close(self, figs=True, data=False, ds=False):
         """
         Close this project instance
 
@@ -344,7 +345,9 @@ class Project(ArrayList):
         figs: bool
             Close the figures
         data: bool
-            delete the arrays from the (main) project"""
+            delete the arrays from the (main) project
+        ds: bool
+            If True, close the dataset as well"""
         import matplotlib.pyplot as plt
         for arr in self[:]:
             if figs and arr.plotter is not None:
@@ -353,6 +356,14 @@ class Project(ArrayList):
                 self.remove(arr)
                 if not self.is_main:
                     self.main.remove(arr)
+            if ds:
+                if isinstance(arr, InteractiveList):
+                    for ds in [val['ds'] for val in six.itervalues(
+                               arr._get_ds_descriptions(
+                                    arr.array_info(ds_description=['ds'])))]:
+                        ds.close()
+                else:
+                    arr.base.close()
             arr.plotter = None
         if self.is_main and self is gcp(True):
             scp(None)
@@ -722,7 +733,12 @@ class Project(ArrayList):
         pack: bool
             If True, all datasets are packed into the folder of `fname`
             and will be used if the data is loaded
-        %(ArrayList.array_info.parameters.no_pwd)s"""
+        %(ArrayList.array_info.parameters.no_pwd)s
+
+        Notes
+        -----
+        You can also store the entire data in the pickled file by setting
+        ``ds_description={'ds'}``"""
         # store the figure informatoptions and array informations
         if fname is not None and pwd is None and not pack:
             pwd = os.path.dirname(fname)
@@ -1632,8 +1648,8 @@ def close(num=None, *args, **kwargs):
     """
     Close the project
 
-    This method closes the current project (figures and data) or the project
-    specified by `num`
+    This method closes the current project (figures, data and datasets) or the
+    project specified by `num`
 
     Parameters
     ----------
@@ -1654,8 +1670,10 @@ def close(num=None, *args, **kwargs):
              'use the Project.close method if you need finer control!',
              DeprecationWarning)
     else:
-        args = (True, True),
+        args = (True, True, True),
         kwargs = {}
+    cp_num = gcp(True).num
+    got_cp = False
     if num is None:
         project = gcp()
         scp(None)
@@ -1663,13 +1681,21 @@ def close(num=None, *args, **kwargs):
     elif num == 'all':
         for project in _open_projects[:]:
             project.close(*args, **kwargs)
+            got_cp = got_cp or project.main.num == cp_num
             del _open_projects[0]
     else:
-        project = [project for project in _open_projects
-                   if project.num == num][0]
-        _open_projects.remove(project)
+        if isinstance(num, Project):
+            project = project
+        else:
+            project = [project for project in _open_projects
+                       if project.num == num][0]
+        try:
+            _open_projects.remove(project)
+        except ValueError:
+            pass
         project.close(*args, **kwargs)
-    if num is not None:
+        got_cp = got_cp or project.main.num == cp_num
+    if got_cp:
         if _open_projects:
             # set last opened project to the current
             scp(_open_projects[-1])
