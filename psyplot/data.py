@@ -644,9 +644,9 @@ def get_filename_ds(ds, dump=True, paths=None, **kwargs):
             store_mod, store_cls = dump_nc()
     # check create a temporary file with the data if dump is True
     if fname is None:
-        fname = NamedTemporaryFile().name + '.nc'
         if not dump and paths is None:
             return None, None, None
+        fname = NamedTemporaryFile().name + '.nc'
         warn('Saving unsaved dataset to %s' % fname)
         store_mod, store_cls = dump_nc()
 
@@ -3122,6 +3122,8 @@ class ArrayList(list):
                                 d['fname'].append(f)
                         if isinstance(fname, six.string_types):
                             d['fname'] = d['fname'][0]
+                        else:
+                            d['fname'] = tuple(safe_list(fname))
                 if 'ds' in ds_description:
                     if full_ds:
                         d['ds'] = arr.base
