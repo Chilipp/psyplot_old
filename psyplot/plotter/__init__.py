@@ -2094,20 +2094,21 @@ class Plotter(dict):
             for dim, coord in six.iteritems(getattr(arr, 'coords', {})):
                 if coord.size == 1:
                     attrs[dim] = format_time(coord.values)
+            if isinstance(self.data, InteractiveList):
+                decoder = self.data[0].decoder
+            else:
+                decoder = self.data.decoder
             for dim in axes:
-                if isinstance(self.data, InteractiveList):
-                    decoder = self.data[0].decoder
-                else:
-                    decoder = self.data.decoder
-                coord = getattr(decoder, 'get_' + dim)(
-                    base_var, coords=getattr(arr, 'coords', None))
-                if coord is None:
-                    continue
-                if coord.size == 1:
-                    attrs[dim] = format_time(coord.values)
-                attrs[dim + 'name'] = coord.name
-                for key, val in six.iteritems(coord.attrs):
-                    attrs[dim + key] = val
+                for obj in [base_var, arr]:
+                    coord = getattr(decoder, 'get_' + dim)(
+                        obj, coords=getattr(arr, 'coords', None))
+                    if coord is None:
+                        continue
+                    if coord.size == 1:
+                        attrs[dim] = format_time(coord.values)
+                    attrs[dim + 'name'] = coord.name
+                    for key, val in six.iteritems(coord.attrs):
+                        attrs[dim + key] = val
         self._enhanced_attrs = attrs
         return attrs
 
