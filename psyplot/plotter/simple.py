@@ -96,6 +96,7 @@ class AlternativeXCoord(Formatoption):
     Examples
     --------
     To see the difference, we create a simple test dataset::
+
         >>> import xarray as xr
 
         >>> import numpy as np
@@ -113,18 +114,23 @@ class AlternativeXCoord(Formatoption):
         Data variables:
             temp     (time) int64 0 1 2 3 4
             std      (time) int64 5 6 7 8 9
+
     If we create a plot with it, we get the ``'time'`` dimension on the
     x-axis::
+
         >>> plotter = psy.plot.lineplot(ds, name=['temp']).plotters[0]
 
         >>> plotter.plot_data[0].dims
         ('time',)
+
     If we however set the ``'coord'`` keyword, we get::
+
         >>> plotter = psy.plot.lineplot(
         ...     ds, name=['temp'], coord='std').plotters[0]
 
         >>> plotter.plot_data[0].dims
         ('std',)
+
     and ``'std'`` is plotted on the x-axis."""
 
     name = 'Alternative X-Variable'
@@ -1479,9 +1485,10 @@ class ErrorPlot(Formatoption):
     This formatoption visualizes the error range. For this, you must provide a
     two-dimensional data array as input. The first dimension might be either of
     length
-        - 2 to provide the deviation from minimum and maximum error range from
-          the data
-        - 3 to provide the minimum and maximum error range explicitly
+
+    - 2 to provide the deviation from minimum and maximum error range from
+      the data
+    - 3 to provide the minimum and maximum error range explicitly
 
     Possible types
     --------------
@@ -3947,16 +3954,12 @@ class PointDensity(Formatoption):
             :attr:`normed` formatoption
         kde
             Fit a bivariate kernel density estimate to the data. Note that
-            this choice requires pythons statsmodels [1]_ module to be
+            this choice requires pythons [statsmodels]_ module to be
             installed
 
     References
     ----------
-    .. [1]: statsmodels
-
-    .. todo::
-
-        Check out statsmodels reference!!
+    .. [statsmodels] http://statsmodels.sourceforge.net/
     """
 
     priority = START
