@@ -161,9 +161,10 @@ class TextBase(object):
             figs = self.project.figs
             fig = self.ax.get_figure()
             if self.plotter._initialized and fig in figs:
-                ret = figs[fig].joined_attrs(delimiter=delimiter)
+                ret = figs[fig].joined_attrs(delimiter=delimiter,
+                                             plot_data=True)
             else:
-                ret = self.data.attrs
+                ret = self.plot_data.attrs
                 self.logger.debug(
                     'Can not get the figure attributes because plot has not '
                     'yet been initialized!')

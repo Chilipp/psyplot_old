@@ -507,7 +507,7 @@ class Project(ArrayList):
         import matplotlib.pyplot as plt
         plt.show(block=False)
 
-    def joined_attrs(self, delimiter=', ', enhanced=True):
+    def joined_attrs(self, delimiter=', ', enhanced=True, plot_data=False):
         """Join the attributes of the arrays in this project
 
         Parameters
@@ -519,6 +519,9 @@ class Project(ArrayList):
             If True, the :meth:`psyplot.plotter.Plotter.get_enhanced_attrs`
             method is used, otherwise the :attr:`xarray.DataArray.attrs`
             attribute is used.
+        plot_data: bool
+            It True, use the :attr:`psyplot.plotter.Plotter.plot_data`
+            attribute of the plotters rather than the raw data in this project
 
         Returns
         -------
@@ -527,10 +530,16 @@ class Project(ArrayList):
             either strings or (if there is only one attribute value), the
             data type of the corresponding value"""
         if enhanced:
-            all_attrs = [arr.plotter.get_enhanced_attrs(
-                arr.plotter.data) for arr in self]
+            all_attrs = [
+                arr.plotter.get_enhanced_attrs(
+                    getattr(arr.plotter, 'plot_data' if plot_data else 'data'))
+                for arr in self]
         else:
-            all_attrs = [arr.attrs for arr in self]
+            if plot_data:
+                all_attrs = [arr.plotter.plot_data.attrs for arr in
+                             filter(lambda arr: arr.plotter is not None, self)]
+            else:
+                all_attrs = [arr.attrs for arr in self]
         all_keys = set(chain(*(attrs.keys() for attrs in all_attrs)))
         ret = {}
         for key in all_keys:
