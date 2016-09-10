@@ -2,6 +2,7 @@ name: psyplot_py3.5_mpl1.5
 channels:
     - chilipp
     - scitools
+    - conda-forge
 dependencies:
     - python=3.5
     - matplotlib=1.5
@@ -12,6 +13,7 @@ dependencies:
     - seaborn
     - bottleneck
     - statsmodels
+    - gdal
     - pip:
         - cyordereddict
         - pytest
