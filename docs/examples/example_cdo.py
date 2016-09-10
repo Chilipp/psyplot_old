@@ -16,7 +16,7 @@ logging.getLogger('py.warnings').setLevel(logging.ERROR)
 # In[ ]:
 
 import psyplot.project as psy
-# get_ipython().magic(u'matplotlib inline')
+# get_ipython().magic('matplotlib inline')
 
 
 # In[ ]:

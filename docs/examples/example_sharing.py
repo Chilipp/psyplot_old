@@ -12,8 +12,8 @@
 # In[ ]:
 
 import psyplot.project as psy
-# get_ipython().magic(u'matplotlib inline')
-# get_ipython().magic(u'config InlineBackend.close_figures = False')
+# get_ipython().magic('matplotlib inline')
+# get_ipython().magic('config InlineBackend.close_figures = False')
 fname = 'sharing_demo.nc'
 
 

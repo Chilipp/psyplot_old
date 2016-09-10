@@ -248,11 +248,11 @@ that affect the vector color coding start with ``'v'``
 .. parsed-literal::
 
     +--------------+--------------+--------------+--------------+
-    | vcticksize   | color        | vbounds      | vctickprops  |
+    | vctickprops  | color        | vbounds      | vcticksize   |
     +--------------+--------------+--------------+--------------+
-    | bounds       | vcbar        | vcmap        | cbar         |
+    | vcbar        | vcmap        | vctickweight | vcbarspacing |
     +--------------+--------------+--------------+--------------+
-    | vctickweight | vcbarspacing | miss_color   | extend       |
+    | bounds       | cbar         | miss_color   | extend       |
     +--------------+--------------+--------------+--------------+
     | cbarspacing  | ctickprops   | ctickweight  | cticksize    |
     +--------------+--------------+--------------+--------------+

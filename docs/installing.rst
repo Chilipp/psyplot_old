@@ -135,17 +135,19 @@ Then build the docs via::
 
 .. note::
 
-    Since some of the examples are written as python 2 notebooks but the above
-    environment uses python 3.4, you may have to install the python2 kernel to
-    your jupyter settings. You can do this via::
+    The building of the docs always reprocesses the examples. You might want to
+    disable that by setting ``process_examples = False``. Otherwise please note
+    that the examples are written as python3 notebooks. So if you are using
+    python2, you may have to install the python3 kernel. Just create a new
+    environment ``'py35'`` and install it for IPython via::
 
-        conda create -n py27 python=2.7
-        source activate py27
+        conda create -n py35 python=3.5
+        source activate py35
         conda install notebook ipykernel
         ipython kernel install --user
 
-    Futhermore the building of the docs always reprocesses the examples. You
-    might disable that by setting ``process_examples = False``
+    You then have to install the necessary modules for each of the examples in
+    the new ``'py35'`` environment.
 
 .. _github: https://github.com/Chilipp/psyplot
 .. _pytest: https://pytest.org/latest/contents.html

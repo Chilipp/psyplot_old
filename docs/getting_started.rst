@@ -137,7 +137,8 @@ corresponding to March 1979 you can use
 
 .. ipython::
 
-    In [10]: maps = psy.plot.mapplot('demo.nc', name='t2m', t='1979-03', method='nearest')
+    In [10]: maps = psy.plot.mapplot('demo.nc', name='t2m', t='1979-03',
+       ....:                         method='nearest', z=100000)
 
     @suppress
     In [11]: maps.close(True, True)

@@ -69,7 +69,7 @@ templates_path = ['_templates']
 on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
 
 # boolean controlling wether to calculate the examples or not
-process_examples = False #not on_rtd
+process_examples = not on_rtd
 
 # The cdo example would require the installation of climate data operators
 # which is a bit of an overkill

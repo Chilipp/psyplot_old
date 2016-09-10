@@ -13,6 +13,17 @@ After downloading the ipython notebook, you can open it by typing::
 
 into the terminal and navigate to the file you downloaded.
 
+Note that the examples are python3 notebooks. If you are using python2, you
+might either open the notebook in an editor and rename ``'python3'`` in each of
+the files to ``'python3'``, or you create a new conda environment via::
+
+        conda create -n py35 python=3.5
+        source activate py35
+        conda install notebook ipykernel
+        ipython kernel install --user
+
+and install the necessary modules into that environment.
+
 
 
 .. toctree::
