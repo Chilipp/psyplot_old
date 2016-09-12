@@ -150,6 +150,37 @@ class LinePlotterTest(tb.BasePlotterTest):
             self.assertAlmostArrayEqual(self.plotter.ax.get_ylim(),
                                         np.percentile(arr, [25, 75]).tolist())
 
+    def test_sym_lims(self):
+        ax = self.plotter.ax
+        xrange = ax.get_xlim()
+        yrange = ax.get_ylim()
+        mins = [min(xrange[0], yrange[0]), min(xrange[1], yrange[1])]
+        maxs = [max(xrange[0], yrange[0]), max(xrange[1], yrange[1])]
+
+        self.update(sym_lims='min')
+        self.assertEqual(ax.get_xlim()[0], mins[0])
+        self.assertEqual(ax.get_xlim()[1], mins[1])
+        self.assertEqual(ax.get_ylim()[0], mins[0])
+        self.assertEqual(ax.get_ylim()[1], mins[1])
+
+        self.update(sym_lims='max')
+        self.assertEqual(ax.get_xlim()[0], maxs[0])
+        self.assertEqual(ax.get_xlim()[1], maxs[1])
+        self.assertEqual(ax.get_ylim()[0], maxs[0])
+        self.assertEqual(ax.get_ylim()[1], maxs[1])
+
+        self.update(sym_lims=['min', 'max'])
+        self.assertEqual(ax.get_xlim()[0], mins[0])
+        self.assertEqual(ax.get_xlim()[1], maxs[1])
+        self.assertEqual(ax.get_ylim()[0], mins[0])
+        self.assertEqual(ax.get_ylim()[1], maxs[1])
+
+        self.update(sym_lims=[None, 'max'])
+        self.assertEqual(ax.get_xlim()[0], xrange[0])
+        self.assertEqual(ax.get_xlim()[1], maxs[1])
+        self.assertEqual(ax.get_ylim()[0], yrange[0])
+        self.assertEqual(ax.get_ylim()[1], maxs[1])
+
     def test_color(self):
         colors = ['y', 'g'][:len(self.data)]
         current_colors = [l.get_color() for l in self.plotter.ax.lines]

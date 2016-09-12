@@ -1867,6 +1867,7 @@ class LimitBase(DataTicksCalculator):
                 for i, val in enumerate(value_lists):
                     if key in val:
                         value[i] = minmax[i]
+        self.range = value
         self.logger.debug('Setting %s with %s', self.key, value)
         self.set_limit(*value)
 
@@ -1887,6 +1888,8 @@ class Xlim(LimitBase):
     children = LimitBase.children + ['ylim']
 
     dependencies = ['xticks']
+
+    connections = LimitBase.connections + ['sym_lims']
 
     axisname = 'x'
 
@@ -1940,6 +1943,8 @@ class Ylim(LimitBase):
 
     dependencies = ['yticks']
 
+    connections = LimitBase.connections + ['sym_lims']
+
     axisname = 'y'
 
     name = 'y-axis limits'
@@ -1963,6 +1968,41 @@ class Ylim(LimitBase):
 
     def set_limit(self, *args):
         self.ax.set_ylim(*args)
+
+
+class SymmetricLimits(Formatoption):
+    """
+    Make x- and y-axis symmetric
+
+    Possible types
+    --------------
+    None
+        No symmetric type
+    'min'
+        Use the minimum of x- and y-limits
+    'max'
+        Use the maximum of x- and y-limits
+    [str, str]
+        A combination, ``None``, ``'min'`` and ``'max'`` specific for minimum
+        and maximum limit
+    """
+
+    dependencies = ['xlim', 'ylim']
+
+    name = 'Symmetric x- and y-axis limits'
+
+    def update(self, value):
+        if all(v is None for v in value):
+            return
+        xlim = self.xlim.range[:]
+        ylim = self.ylim.range[:]
+        for i, v in enumerate(value):
+            if v == 'min':
+                xlim[i] = ylim[i] = min(xlim[i], ylim[i])
+            elif v == 'max':
+                xlim[i] = ylim[i] = max(xlim[i], ylim[i])
+        self.xlim.set_limit(*xlim)
+        self.ylim.set_limit(*ylim)
 
 
 class ViolinXlim(Xlim):
@@ -4121,6 +4161,7 @@ class SimplePlotterBase(BasePlotter, XYTickPlotter):
     color = LineColors('color')
     xlim = Xlim('xlim')
     ylim = Ylim('ylim')
+    sym_lims = SymmetricLimits('sym_lims')
     legendlabels = LegendLabels('legendlabels')
     legend = Legend('legend')
 

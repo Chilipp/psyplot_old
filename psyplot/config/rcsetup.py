@@ -1397,6 +1397,18 @@ def validate_marker(val):
         return safe_list(val)
 
 
+def validate_sym_lims(val):
+    validator = try_and_error(validate_none, ValidateInStrings(
+        'sym_links', ['min', 'max'], True))
+    val = safe_list(val)
+    if len(val) != 2:
+        val = val + val
+    if not len(val) == 2:
+        raise ValueError("Need two values for the symmetric limits, not %i" % (
+            len(val)))
+    return list(map(validator, val))
+
+
 bound_strings = ['data', 'mid', 'rounded', 'roundedsym', 'minmax', 'sym']
 
 tick_strings = bound_strings + ['hour', 'day', 'week', 'month', 'monthend',
@@ -1560,6 +1572,9 @@ defaultParams = {
         'rounded', validate_limits, 'fmt key to specify the y-axis limits'],
     'plotter.simple.xlim': [
         'rounded', validate_limits, 'fmt key to specify the x-axis limits'],
+    'plotter.simple.sym_lims': [
+        None, validate_sym_lims,
+        'fmt key to make symmetric x- and y-axis limits'],
     'plotter.simple.xticks': [
         {'major': None, 'minor': None}, DictValValidator(
             'xticks', ['major', 'minor'], TicksValidator(
