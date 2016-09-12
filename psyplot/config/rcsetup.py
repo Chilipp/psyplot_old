@@ -1600,7 +1600,8 @@ defaultParams = {
         0, validate_float,
         'fmt key to modify the rotation of the x-axis ticklabels'],
     'plotter.simple.legendlabels': [
-        '%(arr_name)s', try_and_error(validate_str, validate_list(str)),
+        '%(arr_name)s', try_and_error(
+            validate_str, validate_list(six.text_type)),
         'fmt key to modify the legend labels'],
     'plotter.simple.legend': [
         True, try_and_error(
