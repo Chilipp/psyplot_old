@@ -164,7 +164,7 @@ class TextBase(object):
                 ret = figs[fig].joined_attrs(delimiter=delimiter,
                                              plot_data=True)
             else:
-                ret = self.plot_data.attrs
+                ret = self.data.attrs
                 self.logger.debug(
                     'Can not get the figure attributes because plot has not '
                     'yet been initialized!')
