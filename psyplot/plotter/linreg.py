@@ -46,6 +46,18 @@ class XFitRange(psyps.Hist2DXRange):
 
     group = 'fit'
 
+    @property
+    def range(self):
+        """The range for each of the curves"""
+        return self._range
+
+    @range.setter
+    def range(self, value):
+        if self.index_in_list is not None:
+            self._range[self.index_in_list] = value
+        else:
+            self._range = value
+
     def update(self, value):
         if isinstance(self.raw_data, InteractiveList) and (
                 self.index_in_list is None):
@@ -57,10 +69,7 @@ class XFitRange(psyps.Hist2DXRange):
             super(XFitRange, self).update(value)
 
     def set_limit(self, *args):
-        if self.index_in_list is None:
-            self.range = args
-        else:
-            self.range[self.index_in_list] = args
+        pass  # is set during update
 
 
 class YFitRange(psyps.Hist2DYRange):
@@ -85,6 +94,18 @@ class YFitRange(psyps.Hist2DYRange):
 
     group = 'fit'
 
+    @property
+    def range(self):
+        """The range for each of the curves"""
+        return self._range
+
+    @range.setter
+    def range(self, value):
+        if self.index_in_list is not None:
+            self._range[self.index_in_list] = value
+        else:
+            self._range = value
+
     def update(self, value):
         if isinstance(self.raw_data, InteractiveList) and (
                 self.index_in_list is None):
@@ -96,10 +117,7 @@ class YFitRange(psyps.Hist2DYRange):
             super(YFitRange, self).update(value)
 
     def set_limit(self, *args):
-        if self.index_in_list is None:
-            self.range = args
-        else:
-            self.range[self.index_in_list] = args
+        pass  # is set during update
 
 
 class LinearRegressionFit(Formatoption):
