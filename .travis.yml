@@ -29,7 +29,7 @@ install:
   - source activate psyplot_$ENVKEY
   # XXX Remove this when cartopy works fine with mpl1.5
   - if [[ "$MPL_VERSION" == "1.5" ]]; then
-      conda install -c scitools -f gdal;
+      conda install -c scitools cartopy;
     fi
   - pip install coveralls
   - pip install pytest-xdist

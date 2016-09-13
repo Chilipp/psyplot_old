@@ -9,7 +9,7 @@ dependencies:
     - dask
     - xarray
     - netCDF4
-    - cartopy
+    # don't install cartopy because it does not work from conda-forge - cartopy
     - seaborn
     - bottleneck
     - statsmodels
