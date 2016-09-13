@@ -29,8 +29,11 @@ install:
 
   - conda env create -f tests/envs/environment_$ENVKEY.yml
   - source activate psyplot_$ENVKEY
-  # cartopy may be overwritten by conda-forge
-  - conda install -c scitools -f cartopy
+  # TODO: Remove this
+  # cartopy may be overwritten by conda-forge and the 0.14.2 version does not
+  # really work
+  - conda install -c scitools -f cartopy=0.13
+  # TODO: Remove this
   - pip install coveralls
   - pip install pytest-xdist
   # the seaborn actual seaborn version on conda is 0.7.0
