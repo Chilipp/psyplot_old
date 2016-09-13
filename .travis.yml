@@ -35,7 +35,9 @@ install:
   - pip install pytest-xdist
   # the seaborn actual seaborn version on conda is 0.7.0
   - pip install --upgrade seaborn
-  - python setup.py install
+  - python setup.py install'
+  # export the environment for debugging
+  - conda env export -n psyplot_$ENVKEY
 
 before_script:
   - "export DISPLAY=:99.0"
