@@ -24,16 +24,9 @@ install:
   - conda update -q conda
   # Useful for debugging any issues with conda
   - conda info -a
-
   - 'ENVKEY=py"${TRAVIS_PYTHON_VERSION}"_mpl"${MPL_VERSION}"'
-
   - conda env create -f tests/envs/environment_$ENVKEY.yml
   - source activate psyplot_$ENVKEY
-  # TODO: Remove this
-  # cartopy may be overwritten by conda-forge and the 0.14.2 version does not
-  # really work
-  - conda install -c scitools -f cartopy=0.13
-  # TODO: Remove this
   - pip install coveralls
   - pip install pytest-xdist
   # the seaborn actual seaborn version on conda is 0.7.0
