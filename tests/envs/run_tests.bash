@@ -17,9 +17,6 @@ for f; do
     pip_bin=${envs_dir}/${env}/bin/pip
     conda_bin=${envs_dir}/${env}/bin/conda
     # try to import numpy and if it doesn't work (due to cartopy), update to current version
-    source activate ${env}
-    ${conda_bin} install -y -c scitools cartopy
-    source deactivate
     ${python_bin} -c "import numpy" > /dev/null
     if [[ $? == 1 ]]; then ${pip_bin} install --upgrade numpy; fi
     # check if psyplot already is installed

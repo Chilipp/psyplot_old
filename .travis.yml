@@ -27,14 +27,6 @@ install:
   - 'ENVKEY=py"${TRAVIS_PYTHON_VERSION}"_mpl"${MPL_VERSION}"'
   - conda env create -f tests/envs/environment_$ENVKEY.yml
   - source activate psyplot_$ENVKEY
-  # XXX Remove this when cartopy works fine with mpl1.5
-  - if [[ "$MPL_VERSION" == "1.5" ]]; then
-      conda install -c scitools cartopy;
-    fi
-  - pip install coveralls
-  - pip install pytest-xdist
-  # the seaborn actual seaborn version on conda is 0.7.0
-  - pip install --upgrade seaborn
   - python setup.py install
   # export the environment for debugging
   - conda env export -n psyplot_$ENVKEY

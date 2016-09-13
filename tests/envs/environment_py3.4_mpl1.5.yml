@@ -1,7 +1,6 @@
 name: psyplot_py3.4_mpl1.5
 channels:
     - chilipp
-    - scitools
     - conda-forge
 dependencies:
     - python=3.4
@@ -9,7 +8,7 @@ dependencies:
     - dask
     - xarray
     - netCDF4
-    # don't install cartopy because it does not work from conda-forge - cartopy
+    - cartopy
     - seaborn
     - bottleneck
     - statsmodels
