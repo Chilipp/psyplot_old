@@ -320,7 +320,8 @@ def setup_coords(arr_names=None, sort=[], dims={}, **kwargs):
         load"""
     try:
         return OrderedDict(arr_names)
-    except TypeError:
+    except (ValueError, TypeError):
+        # ValueError for cyordereddict, TypeError for collections.OrderedDict
         pass
     if arr_names is None:
         arr_names = repeat('arr{0}')
