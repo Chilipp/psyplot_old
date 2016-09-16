@@ -4,7 +4,7 @@ cartopy==0.13.1 # rq.filter: >=0.13, <0.14
 
 # Matplotlib
 #   https://github.com/matplotlib/matplotlib/blob/master/CHANGELOG
-matplotlib==1.5.1  # rq.filter: >=1.4, <2.0
+matplotlib==1.5.3  # rq.filter: >=1.4, <2.0
 
 # Seaborn
 #   http://stanford.edu/~mwaskom/software/seaborn/whatsnew.html
