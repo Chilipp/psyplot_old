@@ -1,7 +1,8 @@
 import six
 from abc import abstractproperty, abstractmethod
 from itertools import chain, starmap, cycle, islice, repeat
-from pandas import date_range, datetools, to_datetime, DatetimeIndex
+from pandas import date_range, to_datetime, DatetimeIndex
+from pandas.tseries import offsets
 import xarray as xr
 import matplotlib as mpl
 import matplotlib.axes
@@ -519,19 +520,19 @@ class DtTicksBase(TicksBase, TicksManager):
         self.calc_funcs.update({
             'hour': self._frequent_ticks('H'),
             'day': self._frequent_ticks('D'),
-            'week': self._frequent_ticks(datetools.Week()),
+            'week': self._frequent_ticks(offsets.Week()),
             'month': self._mid_dt_ticks('M'),
             'monthend': self._frequent_ticks(
-                datetools.MonthEnd(), onset=datetools.MonthBegin()),
+                offsets.MonthEnd(), onset=offsets.MonthBegin()),
             'monthbegin': self._frequent_ticks(
-                datetools.MonthBegin(), onset=datetools.MonthBegin(),
-                offset=datetools.MonthBegin()),
-            'year': self._mid_dt_ticks(datetools.YearBegin()),
+                offsets.MonthBegin(), onset=offsets.MonthBegin(),
+                offset=offsets.MonthBegin()),
+            'year': self._mid_dt_ticks(offsets.YearBegin()),
             'yearend': self._frequent_ticks(
-                datetools.YearEnd(), onset=datetools.YearBegin()),
+                offsets.YearEnd(), onset=offsets.YearBegin()),
             'yearbegin': self._frequent_ticks(
-                datetools.YearBegin(), onset=datetools.YearBegin(),
-                offset=datetools.YearBegin())})
+                offsets.YearBegin(), onset=offsets.YearBegin(),
+                offset=offsets.YearBegin())})
 
     def update(self, value):
         value = value or {'minor': None, 'major': None}
