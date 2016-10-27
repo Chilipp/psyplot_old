@@ -19,6 +19,7 @@ install:
   - touch matplotlibrc
   - bash miniconda.sh -b -p $HOME/miniconda
   - export PATH="$HOME/miniconda/bin:$PATH"
+  - pip install pyyaml  # is somehow not included in the current conda installation
   - hash -r
   - conda config --set always_yes yes --set changeps1 no
   - conda config --add channels chilipp
