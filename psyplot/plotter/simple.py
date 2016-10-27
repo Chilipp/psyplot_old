@@ -1407,6 +1407,52 @@ class Marker(Formatoption):
             self.markers = cycle(value)
 
 
+class MarkerSize(Formatoption):
+    """
+    Choose the size of the markers for points
+
+    Possible types
+    --------------
+    None
+        Use the default from matplotlibs rcParams
+    float
+        The size of the marker
+    """
+
+    connections = ['plot']
+
+    priority = BEFOREPLOTTING
+
+    def update(self, value):
+        if value is None:
+            self.plot._kwargs.pop('markersize', None)
+        else:
+            self.plot._kwargs['markersize'] = value
+
+
+class LineWidth(Formatoption):
+    """
+    Choose the width of the lines
+
+    Possible types
+    --------------
+    None
+        Use the default from matplotlibs rcParams
+    float
+        The width of the lines
+    """
+
+    connections = ['plot']
+
+    priority = BEFOREPLOTTING
+
+    def update(self, value):
+        if value is None:
+            self.plot._kwargs.pop('linewidth', None)
+        else:
+            self.plot._kwargs['linewidth'] = value
+
+
 class LinePlot(Formatoption):
     """
     Choose the line style of the plot
@@ -4146,11 +4192,7 @@ class Base2D(Plotter):
 
 
 class SimplePlotterBase(BasePlotter, XYTickPlotter):
-    """Base class for all simple plotters
-
-    There is no real difference between :class:`LinePlotter` and
-    :class:`LinePlotterBase` but we separate the for the sorting methods of the
-    :class:`psyplot.project.Project` class"""
+    """Base class for all simple plotters"""
 
     #: The number variables that one data array visualized by this plotter
     #: might have.
@@ -4225,6 +4267,8 @@ class LinePlotter(SimplePlotterBase):
 
     coord = AlternativeXCoord('coord')
     marker = Marker('marker')
+    markersize = MarkerSize('markersize')
+    linewidth = LineWidth('linewidth')
     plot = LinePlot('plot')
     error = ErrorPlot('error')
     erroralpha = ErrorAlpha('erroralpha')
