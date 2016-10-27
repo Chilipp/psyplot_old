@@ -1551,6 +1551,12 @@ defaultParams = {
         'The visualization type of the errors for line plots'],
     'plotter.line.marker': [
         None, validate_marker, 'The symbol of the marker'],
+    'plotter.line.markersize': [
+        None, try_and_error(validate_none, validate_float),
+        'The size of the marker'],
+    'plotter.line.linewidth': [
+        None, try_and_error(validate_none, validate_float),
+        'The widths of the lines'],
     'plotter.line.erroralpha': [
         0.15, validate_alpha, 'The alpha value of the error range'],
     'plotter.bar.coord': [
