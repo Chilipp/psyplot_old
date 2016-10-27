@@ -150,8 +150,6 @@ class LinePlotterTest(tb.BasePlotterTest):
             self.assertAlmostArrayEqual(self.plotter.ax.get_ylim(),
                                         np.percentile(arr, [25, 75]).tolist())
 
-    # TODO: Implement tests for marker, markersize and linewidth
-
     def test_sym_lims(self):
         ax = self.plotter.ax
         xrange = ax.get_xlim()
