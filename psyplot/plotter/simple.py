@@ -1349,6 +1349,10 @@ class LineColors(Formatoption):
     def value2pickle(self):
         return self.colors
 
+    @property
+    def value2share(self):
+        return self.colors
+
     def __init__(self, *args, **kwargs):
         super(LineColors, self).__init__(*args, **kwargs)
         self.colors = []
