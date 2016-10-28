@@ -807,6 +807,8 @@ class Project(ArrayList):
                 'cls': (plotter.__class__.__module__,
                         plotter.__class__.__name__),
                 'shared': {}}
+            d['plotter']['ax']['shared'] = set(
+                other.arr_name for other in self if other.ax == plotter.ax)
             shared = d['plotter']['shared']
             for fmto in plotter._fmtos:
                 if fmto.shared:
@@ -966,6 +968,7 @@ class Project(ArrayList):
             obj = project(None, obj)
         else:
             obj._main = gcp(True)
+        axes = {}
         for arr, arr_dict in zip(obj, six.itervalues(d['arrays'])):
             if not arr_dict.get('plotter'):
                 continue
@@ -979,7 +982,14 @@ class Project(ArrayList):
                 else:
                     ax = next(alternative_axes, None)
             if ax is None and 'ax' in plot_dict:
-                ax = _ProjectLoader.load_axes(plot_dict['ax'])
+                already_opened = plot_dict['ax'].get(
+                    'shared', set()).intersection(axes)
+                if already_opened:
+                    ax = axes[next(iter(already_opened))]
+                else:
+                    plot_dict['ax'].pop('shared', None)
+                    axes[arr.arr_name] = ax = _ProjectLoader.load_axes(
+                        plot_dict['ax'])
             plotter_cls(
                 arr, make_plot=False, draw=False, clear=False,
                 ax=ax, project=obj.main, **plot_dict['fmt'])
