@@ -1301,7 +1301,7 @@ class Plotter(dict):
         # False if any fmto has requires_clearing attribute set to True,
         # because this then has been cleared before
         self.initialize_plot(
-            self.data, self._ax, draw=draw, clear=clear or not any(
+            self.data, self._ax, draw=draw, clear=clear or any(
                 fmto.requires_clearing for fmto in self._fmtos),
             remove=True)
 
