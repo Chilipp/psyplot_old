@@ -22,8 +22,6 @@ install:
   - pip install pyyaml  # is somehow not included in the current conda installation
   - hash -r
   - conda config --set always_yes yes --set changeps1 no
-  - conda config --add channels chilipp
-  - conda config --add channels scitools
   - conda update -q conda
   # Useful for debugging any issues with conda
   - conda info -a
