@@ -1336,6 +1336,7 @@ for cls in tests2d:
         cls.__name__[:-2])
     for funcname in filter(lambda s: s.startswith('ref'), dir(cls)):
         setattr(cls, funcname, unittest.skip(skip_msg)(lambda self: None))
+del cls
 
 
 if __name__ == '__main__':
