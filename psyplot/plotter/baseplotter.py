@@ -164,13 +164,13 @@ class TextBase(object):
                 ret = figs[fig].joined_attrs(delimiter=delimiter,
                                              plot_data=True)
             else:
-                ret = self.data.attrs
+                ret = self.get_enhanced_attrs(self.plotter.plot_data)
                 self.logger.debug(
                     'Can not get the figure attributes because plot has not '
                     'yet been initialized!')
             return ret
         else:
-            return self.get_enhanced_attrs(self.plotter.data)
+            return self.get_enhanced_attrs(self.plotter.plot_data)
 
     def get_enhanced_attrs(self, *args, **kwargs):
         replot = kwargs.pop('replot', False)
