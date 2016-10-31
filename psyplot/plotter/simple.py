@@ -1029,12 +1029,18 @@ class Xlabel(TextBase, Formatoption):
         self.transpose.swap_funcs['labels'] = self._swap_labels
         arr = self.transpose.get_x(self.data)
         attrs = self.get_enhanced_attrs(arr)
+        arr_attrs = self.get_enhanced_attrs(self.data)
+        for attr, val in arr_attrs.items():
+            attrs.setdefault(attr, val)
         self._texts = [self.ax.set_xlabel(self.replace(
             value, self.data, attrs))]
 
     def update(self, value):
         arr = self.transpose.get_x(self.data)
         attrs = self.get_enhanced_attrs(arr)
+        arr_attrs = self.get_enhanced_attrs(self.data)
+        for attr, val in arr_attrs.items():
+            attrs.setdefault(attr, val)
         self._texts[0].set_text(self.replace(value, self.data,
                                              attrs))
 
@@ -1070,12 +1076,18 @@ class Ylabel(TextBase, Formatoption):
     def initialize_plot(self, value):
         arr = self.transpose.get_y(self.data)
         attrs = self.get_enhanced_attrs(arr)
+        arr_attrs = self.get_enhanced_attrs(self.data)
+        for attr, val in arr_attrs.items():
+            attrs.setdefault(attr, val)
         self._texts = [self.ax.set_ylabel(self.replace(
             value, self.data, attrs))]
 
     def update(self, value):
         arr = self.transpose.get_y(self.data)
         attrs = self.get_enhanced_attrs(arr)
+        arr_attrs = self.get_enhanced_attrs(self.data)
+        for attr, val in arr_attrs.items():
+            attrs.setdefault(attr, val)
         self._texts[0].set_text(self.replace(
             value, self.data, attrs))
 
