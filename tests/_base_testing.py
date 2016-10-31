@@ -117,7 +117,7 @@ class PsyPlotTestCase(TestCase):
             identifiers.append(self.grid_type)
         return "_".join(identifiers) + '.png'
 
-    def compare_figures(self, fname, tol=1, **kwargs):
+    def compare_figures(self, fname, tol=5, **kwargs):
         """Saves and compares the figure to the reference figure with the same
         name"""
         import matplotlib.pyplot as plt
