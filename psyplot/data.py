@@ -325,6 +325,8 @@ def setup_coords(arr_names=None, sort=[], dims={}, **kwargs):
         pass
     if arr_names is None:
         arr_names = repeat('arr{0}')
+    elif isstring(arr_names):
+        arr_names = repeat(arr_names)
     dims = OrderedDict(dims)
     for key, val in six.iteritems(kwargs):
         dims.setdefault(key, val)
