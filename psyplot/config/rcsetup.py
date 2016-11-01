@@ -1619,6 +1619,8 @@ defaultParams = {
         'minmax', validate_limits, 'The fit limits of the line plot'],
     'plotter.linreg.yrange': [
         'minmax', validate_limits, 'The fit limits of the line plot'],
+    'plotter.linreg.line_xlim': [
+        'minmax', validate_limits, 'The x-limits of the drawn best fit line'],
     'plotter.linreg.fix': [
         None, validate_fix,
         'fmt key to set a fix point for the linear regression fit'],
@@ -1893,4 +1895,3 @@ _rcparam_warn_str = ("Trying to set {key} to {value} via the {func} "
 #: :class:`~psyplot.config.rcsetup.RcParams` instance that stores default
 #: formatoptions and configuration settings.
 rcParams = RcParams(**{key: val[0] for key, val in defaultParams.items()})
-rcParams.load_from_file()
