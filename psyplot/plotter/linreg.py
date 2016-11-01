@@ -42,7 +42,7 @@ class XFitRange(psyps.Hist2DXRange):
 
     See also
     --------
-    yrange"""
+    yrange, line_xlim"""
 
     group = 'fit'
 
@@ -65,6 +65,10 @@ class XFitRange(psyps.Hist2DXRange):
             for i in range(len(self.raw_data)):
                 self.index_in_list = i
                 super(XFitRange, self).update(value)
+        elif not isinstance(self.raw_data, InteractiveList) and (
+                self.index_in_list is not None):
+            self._range = [[] * (self.index_in_list + 1)]
+            super(XFitRange, self).update(value)
         else:
             super(XFitRange, self).update(value)
 
@@ -120,6 +124,21 @@ class YFitRange(psyps.Hist2DYRange):
         pass  # is set during update
 
 
+class XLineRange(XFitRange):
+    """
+    Specify how wide the range for the plot should be
+
+    This formatoption specifies the range of the line to use
+
+    Possible types
+    --------------
+    %(LimitBase.possible_types.no_None)s
+
+    See Also
+    --------
+    xrange"""
+
+
 class LinearRegressionFit(Formatoption):
     """
     Choose the linear fitting method
@@ -152,7 +171,8 @@ class LinearRegressionFit(Formatoption):
     fix
     """
 
-    dependencies = ['transpose', 'fix', 'xrange', 'yrange', 'coord']
+    dependencies = ['transpose', 'fix', 'xrange', 'yrange', 'coord',
+                    'line_xlim']
 
     priority = START
 
@@ -180,9 +200,11 @@ class LinearRegressionFit(Formatoption):
         for i, da in enumerate(self.iter_raw_data):
             kwargs = self.get_kwargs(i)
             x, xname, y, yname = self.get_xy(i, da)
+            x_line = self.get_xline(i)
             if self.coord.value is not None:
                 da = self.coord.replace_coord(i)
-            x_line, y_line, attrs, fit = self.make_fit(x, y, **kwargs)
+            x_line, y_line, attrs, fit = self.make_fit(x, y, x_line=x_line,
+                                                       **kwargs)
             if transpose:
                 x_line, y_line = y_line, x_line
             attrs.update(da.attrs)
@@ -205,6 +227,15 @@ class LinearRegressionFit(Formatoption):
         for key, val in self._kwargs.items():
             ret[key] = val[i]
         return ret
+
+    def get_xline(self, i=0):
+        """Get the x-data for the best fit line"""
+        xrange = np.asarray(self.line_xlim.range)
+        if xrange.ndim == 2:
+            xmin, xmax = xrange[i]
+        else:
+            xmin, xmax = xrange
+        return np.linspace(xmin, xmax, 100)
 
     def get_xy(self, i, da):
         if self.coord.value is not None:
@@ -237,11 +268,9 @@ class LinearRegressionFit(Formatoption):
         else:
             return self._scipy_curve_fit(x, y, x_line, **kwargs)
 
-    def _scipy_curve_fit(self, x, y, x_line=None, **kwargs):
+    def _scipy_curve_fit(self, x, y, x_line, **kwargs):
         from scipy.optimize import curve_fit
         params, pcov = curve_fit(self.model, x, y, **kwargs)
-        if x_line is None:
-            x_line = np.linspace(x.min(), x.max(), 100)
         if six.PY2:
             args = inspect.getargspec(self.model).args[1:]
         else:
@@ -251,7 +280,7 @@ class LinearRegressionFit(Formatoption):
             d[args[0] + '_err'] = np.sqrt(pcov)[0, 0]
         return x_line, self.model(x_line, *params), d, pcov
 
-    def _statsmodel_fit(self, x, y, x_line=None, fix=None):
+    def _statsmodel_fit(self, x, y, x_line, fix=None):
         """Make a linear fit of x to y"""
         adjust = fix is not None and fix != [0, 0]
         if adjust:
@@ -264,7 +293,8 @@ class LinearRegressionFit(Formatoption):
         else:
             fit = self.model(y, x).fit()
         if x_line is None:
-            x_line = np.linspace(x.min(), x.max(), 100)
+            xmin, xmax = self.line_xlim.range
+            x_line = np.linspace(xmin, xmax, 100)
         d = dict(zip(['slope', 'intercept'], fit.params[::-1]))
         y_line = d.get('intercept', 0) + d['slope'] * x_line
         if adjust:
@@ -537,6 +567,11 @@ class Ci(Formatoption):
                 for key in set(raw_da.coords).difference(raw_da.dims)}
 
 
+class FitPointDensity(psyps.PointDensity):
+
+    children = psyps.PointDensity.children + ['line_xlim']
+
+
 class LinRegPlotter(psyps.LinePlotter):
     """A plotter to visualize the fit on the data
 
@@ -553,6 +588,7 @@ class LinRegPlotter(psyps.LinePlotter):
     transpose = LinRegTranspose('transpose')
     xrange = XFitRange('xrange')
     yrange = YFitRange('yrange')
+    line_xlim = XLineRange('line_xlim')
     fit = LinearRegressionFit('fit')
     fix = FixPoint('fix')
     nboot = NBoot('nboot')
@@ -578,10 +614,11 @@ class DensityRegPlotter(psyps.ScalarCombinedBase, psyps.DensityPlotter,
     plot = psyps.Plot2D('plot', index_in_list=0)
     xrange = psyps.Hist2DXRange('xrange', index_in_list=0)
     yrange = psyps.Hist2DYRange('yrange', index_in_list=0)
+    line_xlim = XLineRange('line_xlim', index_in_list=0)
     precision = psyps.DataPrecision('precision', index_in_list=0)
     bins = psyps.HistBins('bins', index_in_list=0)
     normed = psyps.NormedHist2D('normed', index_in_list=0)
-    density = psyps.PointDensity('density', index_in_list=0)
+    density = FitPointDensity('density', index_in_list=0)
 
     # line plot formatoptions
     fit = LinearRegressionFit('fit', index_in_list=1)

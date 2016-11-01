@@ -26,6 +26,10 @@ class LinRegPlotterTest(unittest.TestCase):
     def plot_data(self):
         return self.plotter.plot_data[0]
 
+    @property
+    def fit_plot_fmt(self):
+        return self.plotter.plot
+
     @classmethod
     def define_data(cls, slope=None, intercept=None, scatter=0.1,
                     n=None, **kwargs):
@@ -213,6 +217,25 @@ class LinRegPlotterTest(unittest.TestCase):
             self.assertEqual(c, ref_c, msg='Array %i (%s) disagrees' % (
                 i, da.arr_name))
 
+    def test_line_xlim(self):
+        """Test the line_xlim formatoption"""
+        self.test_ideal_nonfixed()
+        data = self.plot_data
+        coord = data[data.dims[1]]
+        plot_fmt = self.fit_plot_fmt
+
+        # test fixed limits
+        self.plotter.update(line_xlim=(-5, 5))
+        self.assertEqual(plot_fmt._plot[-1].get_xdata().min(), -5)
+        self.assertEqual(plot_fmt._plot[-1].get_xdata().max(), 5)
+
+        # test rounded limits
+        self.plotter.update(line_xlim=('rounded', 'rounded'))
+        vmin, vmax = self.plotter.xrange._round_min_max(coord.min().values,
+                                                        coord.max().values)
+        self.assertEqual(plot_fmt._plot[-1].get_xdata().min(), vmin)
+        self.assertEqual(plot_fmt._plot[-1].get_xdata().max(), vmax)
+
 
 class SingleLinRegPlotterTest(LinRegPlotterTest):
     """Test the :class:`psyplot.plotter.linreg.LinRegPlotter` with a single
@@ -261,6 +284,10 @@ class DensityRegPlotterTestFits(SingleLinRegPlotterTest):
     @property
     def plot_data(self):
         return self.plotter.plot_data[1]
+
+    @property
+    def fit_plot_fmt(self):
+        return self.plotter.lineplot
 
 
 if __name__ == '__main__':
