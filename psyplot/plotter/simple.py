@@ -1025,24 +1025,25 @@ class Xlabel(TextBase, Formatoption):
 
     name = 'x-axis label'
 
+    @property
+    def enhanced_attrs(self):
+        arr = self.transpose.get_x(self.data)
+        replot = self.plotter.replot or not hasattr(self, '_enhanced_attrs')
+        attrs = self.get_enhanced_attrs(arr, replot=replot)
+        arr_attrs = self.get_enhanced_attrs(self.data, replot=replot)
+        for attr, val in arr_attrs.items():
+            attrs.setdefault(attr, val)
+        self._enhanced_attrs = attrs
+        return attrs
+
     def initialize_plot(self, value):
         self.transpose.swap_funcs['labels'] = self._swap_labels
-        arr = self.transpose.get_x(self.data)
-        attrs = self.get_enhanced_attrs(arr)
-        arr_attrs = self.get_enhanced_attrs(self.data)
-        for attr, val in arr_attrs.items():
-            attrs.setdefault(attr, val)
         self._texts = [self.ax.set_xlabel(self.replace(
-            value, self.data, attrs))]
+            value, self.data, self.enhanced_attrs))]
 
     def update(self, value):
-        arr = self.transpose.get_x(self.data)
-        attrs = self.get_enhanced_attrs(arr)
-        arr_attrs = self.get_enhanced_attrs(self.data)
-        for attr, val in arr_attrs.items():
-            attrs.setdefault(attr, val)
         self._texts[0].set_text(self.replace(value, self.data,
-                                             attrs))
+                                             self.enhanced_attrs))
 
     def _swap_labels(self):
         plotter = self.plotter
@@ -1073,23 +1074,24 @@ class Ylabel(TextBase, Formatoption):
 
     name = 'y-axis label'
 
-    def initialize_plot(self, value):
+    @property
+    def enhanced_attrs(self):
         arr = self.transpose.get_y(self.data)
-        attrs = self.get_enhanced_attrs(arr)
-        arr_attrs = self.get_enhanced_attrs(self.data)
+        replot = self.plotter.replot or not hasattr(self, '_enhanced_attrs')
+        attrs = self.get_enhanced_attrs(arr, replot=replot)
+        arr_attrs = self.get_enhanced_attrs(self.data, replot=replot)
         for attr, val in arr_attrs.items():
             attrs.setdefault(attr, val)
+        self._enhanced_attrs = attrs
+        return attrs
+
+    def initialize_plot(self, value):
         self._texts = [self.ax.set_ylabel(self.replace(
-            value, self.data, attrs))]
+            value, self.data, self.enhanced_attrs))]
 
     def update(self, value):
-        arr = self.transpose.get_y(self.data)
-        attrs = self.get_enhanced_attrs(arr)
-        arr_attrs = self.get_enhanced_attrs(self.data)
-        for attr, val in arr_attrs.items():
-            attrs.setdefault(attr, val)
         self._texts[0].set_text(self.replace(
-            value, self.data, attrs))
+            value, self.data, self.enhanced_attrs))
 
 
 @docstrings.get_sectionsf('LabelOptions')
