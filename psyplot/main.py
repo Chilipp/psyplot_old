@@ -43,7 +43,7 @@ def main():
 @docstrings.dedent
 def make_plot(fnames=[], name=[], dims=None, plot_method=None,
               output=None, project=None, engine=None, formatoptions=None,
-              tight=False, rc_file=None):
+              tight=False, rc_file=None, encoding=None):
     """
     Eventually start the QApplication or only make a plot
 
@@ -77,6 +77,10 @@ def make_plot(fnames=[], name=[], dims=None, plot_method=None,
     rc_file: str
         The path to a yaml configuration file that can be used to update  the
         :attr:`psyplot.rcParams`
+    encoding: str
+        The encoding to use for loading the project. If None, it is
+        automatically determined by pickle. Note: Set this to ``'latin1'``
+        if using a project created with python2 on python3.
     """
 
     if project is not None and (name != [] or dims is not None):
@@ -106,7 +110,7 @@ def make_plot(fnames=[], name=[], dims=None, plot_method=None,
         alternative_paths.update([l for l in fnames if len(l) == 2])
         p = psy.Project.load_project(
             project, alternative_paths=alternative_paths,
-            engine=engine)
+            engine=engine, encoding=encoding)
         if formatoptions is not None:
             p.update(fmt=formatoptions)
         p.export(output, tight=tight)
@@ -203,6 +207,8 @@ def get_parser(create=True):
 
     parser.update_arg('rc_file', short='rc')
     parser.pop_key('rc_file', 'metavar')
+
+    parser.update_arg('encoding', short='e')
 
     if create:
         parser.create_arguments()

@@ -897,7 +897,8 @@ class Project(ArrayList):
     @docstrings.get_sectionsf('Project.load_project')
     @docstrings.dedent
     def load_project(cls, fname, auto_update=None, make_plot=True,
-                     draw=None, alternative_axes=None, main=False, **kwargs):
+                     draw=None, alternative_axes=None, main=False,
+                     encoding=None, **kwargs):
         """
         Load a project from a file or dict
 
@@ -933,6 +934,10 @@ class Project(ArrayList):
             If True, a new main project is created and returned.
             Otherwise (by default default) the data is added to the current
             main project.
+        encoding: str
+            The encoding to use for loading the project. If None, it is
+            automatically determined by pickle. Note: Set this to ``'latin1'``
+            if using a project created with python2 on python3.
         pwd: str or None, optional
             Path to the working directory from where the data can be imported.
             If None and `fname` is the path to a file, `pwd` is set to the
@@ -951,7 +956,8 @@ class Project(ArrayList):
         pwd = kwargs.pop('pwd', None)
         if isinstance(fname, six.string_types):
             with open(fname, 'rb') as f:
-                d = pickle.load(f)
+                pickle_kws = {} if not encoding else {'encoding': encoding}
+                d = pickle.load(f, **pickle_kws)
             pwd = pwd or os.path.dirname(fname)
         else:
             d = dict(fname)
