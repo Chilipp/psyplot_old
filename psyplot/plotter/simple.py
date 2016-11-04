@@ -3801,7 +3801,7 @@ class Legend(Formatoption):
             value == 'best'
         if not isinstance(value, dict):
             value = {'loc': value}
-        self.legend = self.ax.legend(labels, **value)
+        self.legend = self.ax.legend(self.plot._plot, labels, **value)
 
     def remove(self):
         if hasattr(self, 'legend'):
