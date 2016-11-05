@@ -3793,7 +3793,8 @@ class Legend(Formatoption):
     name = 'Properties of the legend'
 
     def update(self, value):
-        labels = self.legendlabels.labels
+        if self.shared_by is not None:
+            return
         self.remove()
         if not value:
             return
@@ -3801,7 +3802,16 @@ class Legend(Formatoption):
             value == 'best'
         if not isinstance(value, dict):
             value = {'loc': value}
-        self.legend = self.ax.legend(self.plot._plot, labels, **value)
+        artists = []
+        labels = []
+        for fmto in self.shared.union([self]):
+            this_artists, this_labels = fmto.get_artists_and_labels()
+            artists.extend(this_artists)
+            labels.extend(this_labels)
+        self.legend = self.ax.legend(artists, labels, **value)
+
+    def get_artists_and_labels(self):
+        return self.plot._plot, self.legendlabels.labels
 
     def remove(self):
         if hasattr(self, 'legend'):

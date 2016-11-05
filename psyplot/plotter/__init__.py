@@ -363,11 +363,19 @@ class Formatoption(object):
         return self.plotter.rc._get_val_and_base(self.key)[0]
 
     @property
+    def shared_by(self):
+        """None if the formatoption is not controlled by another formatoption
+        of another plotter, otherwise the corresponding :class:`Formatoption`
+        instance"""
+        return self.plotter._shared.get(self.key)
+
+    @property
     def value(self):
         """Value of the formatoption in the corresponding :attr:`plotter` or
         the shared value"""
-        if self.key in self.plotter._shared:
-            return self.plotter._shared[self.key].value2share
+        shared_by = self.shared_by
+        if shared_by:
+            return shared_by.value2share
         return self.plotter[self.key]
 
     @property

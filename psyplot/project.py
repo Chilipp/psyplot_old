@@ -192,6 +192,20 @@ class Project(ArrayList):
         return ret
 
     @property
+    def axes(self):
+        """A mapping from axes to data objects with the plotter in this axes
+        """
+        ret = OrderedDict()
+        for arr in self:
+            if arr.plotter:
+                ax = arr.plotter.ax
+                if ax in ret:
+                    ret[ax].append(arr)
+                else:
+                    ret[ax] = self.__class__([arr], main=self.main)
+        return ret
+
+    @property
     def is_main(self):
         """:class:`bool`. True if this :class:`Project` is a main project"""
         return self._main is None
@@ -668,10 +682,11 @@ class Project(ArrayList):
             save(fig)
         return close()
 
-    docstrings.delete_params('Plotter.share.parameters', 'plotters')
+    docstrings.keep_params('Plotter.share.parameters', 'keys')
+    docstrings.delete_params('Plotter.share.parameters', 'keys', 'plotters')
 
     @docstrings.dedent
-    def share(self, base=None, keys=None, **kwargs):
+    def share(self, base=None, keys=None, by=None, **kwargs):
         """
         Share the formatoptions of one plotter with all the others
 
@@ -685,22 +700,38 @@ class Project(ArrayList):
             others. It can be None (then the first instance in this project
             is used), a :class:`~psyplot.plotter.Plotter` or any data object
             with a *plotter* attribute
-        %(Plotter.share.parameters.no_plotters)s
+        %(Plotter.share.parameters.keys)s
+        by: {'figure', 'axes'}
+            Share the formatoptions only with the others on the same
+            ``'figure'`` or the same ``'axes'``. In this case, base must either
+            be ``None`` or a list of the types specified for `base`
+        %(Plotter.share.parameters.no_keys|plotters)s
 
         See Also
         --------
         psyplot.plotter.share"""
-        plotters = [arr.plotter for arr in self.with_plotter]
-        if not plotters:
-            return
-        if base is None:
-            if len(plotters) == 1:
-                return
-            base = plotters[0]
-            plotters = plotters[1:]
+        if by is not None:
+            if base is not None:
+                bases = {}
+                for arr in base:
+                    bases[arr.ax if by == 'axes' else arr.ax.figure] = arr
+            else:
+                bases = {}
+            projects = self.axes if by == 'axes' else self.figs
+            for obj, p in projects.items():
+                p.share(bases.get(obj), keys, **kwargs)
         else:
-            base = getattr(base, 'plotter', base)
-        base.share(plotters, keys=keys, **kwargs)
+            plotters = [arr.plotter for arr in self.with_plotter]
+            if not plotters:
+                return
+            if base is None:
+                if len(plotters) == 1:
+                    return
+                base = plotters[0]
+                plotters = plotters[1:]
+            else:
+                base = getattr(base, 'plotter', base)
+            base.share(plotters, keys=keys, **kwargs)
 
     @docstrings.dedent
     def unshare(self, **kwargs):
