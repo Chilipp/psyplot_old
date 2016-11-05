@@ -295,6 +295,8 @@ class LinearRegressionFit(Formatoption):
         if x_line is None:
             xmin, xmax = self.line_xlim.range
             x_line = np.linspace(xmin, xmax, 100)
+        elif adjust:
+            x_line = x_line - fix[0]
         d = dict(zip(['slope', 'intercept'], fit.params[::-1]))
         y_line = d.get('intercept', 0) + d['slope'] * x_line
         if adjust:
