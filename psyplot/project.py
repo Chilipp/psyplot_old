@@ -11,7 +11,6 @@ import os
 import six
 import logging
 from importlib import import_module
-import pickle
 from itertools import chain, repeat, cycle, count
 from collections import Iterable, defaultdict
 from functools import wraps
@@ -35,6 +34,13 @@ try:
 except ImportError as e:
     Cdo = _MissingModule(e)
     with_cdo = False
+
+try:
+    from cloudpickle import load as pickle_load, dump as pickle_dump
+except ImportError:
+    try:
+    from pickle import load as pickle_load, dump as pickle_dump
+
 
 if rcParams['project.import_seaborn'] is not False:
     try:
@@ -847,7 +853,7 @@ class Project(ArrayList):
                                         for other_fmto in fmto.shared]
         if fname is not None:
             with open(fname, 'wb') as f:
-                pickle.dump(ret, f)
+                pickle_dump(ret, f)
             return None
 
         return ret
@@ -988,7 +994,7 @@ class Project(ArrayList):
         if isinstance(fname, six.string_types):
             with open(fname, 'rb') as f:
                 pickle_kws = {} if not encoding else {'encoding': encoding}
-                d = pickle.load(f, **pickle_kws)
+                d = pickle_load(f, **pickle_kws)
             pwd = pwd or os.path.dirname(fname)
         else:
             d = dict(fname)
