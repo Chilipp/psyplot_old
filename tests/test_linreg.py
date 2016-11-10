@@ -72,7 +72,7 @@ class LinRegPlotterTest(unittest.TestCase):
         return psyd.InteractiveList([da])
 
     @classmethod
-    def define_poly_data(cls, a=None, scatter=0.1, n=None, **kwargs):
+    def define_curve_data(cls, a=None, scatter=0.1, n=None, **kwargs):
         """
         Set up the data
 
@@ -115,6 +115,41 @@ class LinRegPlotterTest(unittest.TestCase):
             psyd.InteractiveArray(y, name='y', dims=('x', ), coords={
                 'x': xarray.Coordinate('x', x)})])
         return da, func
+
+    @classmethod
+    def define_poly_data(cls, coeffs=[1, 2, 3], scatter=0.1, n=None, **kwargs):
+        """
+        Set up the data for a polynomial
+
+        Parameters
+        ----------
+        coeffs: list of float
+            The coefficients of the polynomial
+        scatter: float
+            The range for the random noise. Random noise will be like
+            ``y * rand * scatter`` where rand is a normally random number
+            between [-1, 1]
+        n: int
+            The number of data points. If None, defaults to the
+            :attr:`default_n` attribute
+
+        Returns
+        -------
+        psyplot.data.InteractiveArray
+            The array with the x- and y-data that can serve as an input for
+            the :class:`psyplot.plotter.linreg.LinRegPlotter`
+        int
+            The degree of the polynomial
+        """
+        if n is None:
+            n = cls.default_n
+        x = np.linspace(0, 1, n)
+        y = np.poly1d(coeffs)(x)
+        y += y * np.random.randn(n) * scatter
+        da = psyd.InteractiveList([
+            psyd.InteractiveArray(y, name='y', dims=('x', ), coords={
+                'x': xarray.Coordinate('x', x)})])
+        return da, len(coeffs)
 
     def test_nonfixed_fit(self):
         '''Test whether the fit works'''
@@ -163,12 +198,17 @@ class LinRegPlotterTest(unittest.TestCase):
         self.assertTrue(
             all(a in ax.collections for a in err_fmt._plot))
 
-    def test_poly(self):
+    def test_curve_fit(self):
         """Testing the fit of a polynom"""
-        da, func = self.define_poly_data()
+        da, func = self.define_curve_data()
         self.plotter = plotter = self.plotter_cls(da, fit=func)
         err = np.sqrt(plotter.fit.fits[0][0, 0])
         self.assertLess(err, 0.01)
+
+    def test_poly(self):
+        """Testing the fit of a polynom"""
+        da, deg = self.define_poly_data()
+        self.plotter = plotter = self.plotter_cls(da, fit='poly%i' % deg)
 
     def test_ideal_nonfixed(self):
         """Test the ideal formatoption"""
@@ -247,10 +287,16 @@ class SingleLinRegPlotterTest(LinRegPlotterTest):
             *args, **kwargs)[0]
 
     @classmethod
-    def define_poly_data(cls, *args, **kwargs):
-        da, func = super(SingleLinRegPlotterTest, cls).define_poly_data(
+    def define_curve_data(cls, *args, **kwargs):
+        da, func = super(SingleLinRegPlotterTest, cls).define_curve_data(
             *args, **kwargs)
         return da[0], func
+
+    @classmethod
+    def define_poly_data(cls, *args, **kwargs):
+        da, deg = super(SingleLinRegPlotterTest, cls).define_poly_data(
+            *args, **kwargs)
+        return da[0], deg
 
     @property
     def plot_data(self):

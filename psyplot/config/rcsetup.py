@@ -1409,6 +1409,20 @@ def validate_sym_lims(val):
     return list(map(validator, val))
 
 
+def validate_fit(val):
+    if isinstance(val, six.string_types) and val.startswith('poly'):
+        try:
+            int(val[4:])
+        except:
+            raise ValueError("Polynomials must be of the form 'poly<deg>' "
+                             "(e.g. 'poly3'), not %s!" % val)
+        else:
+            return val
+    return try_and_error(
+        validate_callable, validate_none,
+        ValidateInStrings('fit', ['fit', 'robust'], True))(val)
+
+
 bound_strings = ['data', 'mid', 'rounded', 'roundedsym', 'minmax', 'sym']
 
 tick_strings = bound_strings + ['hour', 'day', 'week', 'month', 'monthend',
@@ -1625,10 +1639,7 @@ defaultParams = {
         None, validate_fix,
         'fmt key to set a fix point for the linear regression fit'],
     'plotter.linreg.fit': [
-        'fit', try_and_error(
-            validate_callable, validate_none,
-            ValidateInStrings('fit', ['fit', 'robust'], True)),
-        'The model to use for fitting a model'],
+        'fit', validate_fit, 'The model to use for fitting a model'],
     'plotter.linreg.nboot': [
         1000, validate_int,
         'Number of bootstrap resamples to estimate the confidence interval'],

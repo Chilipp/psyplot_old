@@ -6,6 +6,7 @@ to fit a linear model to the data and visualize it."""
 from __future__ import division
 import six
 import inspect
+from functools import partial
 from itertools import islice, cycle, repeat
 import numpy as np
 from xarray import Coordinate, DataArray
@@ -151,6 +152,8 @@ class LinearRegressionFit(Formatoption):
         make a linear fit
     'robust'
         make a robust linear fit
+    'poly<deg>'
+        Make a polynomial fit of the order ``'<deg>'``
     function
         A callable function that takes an x-array and a y-array as input and
         can be used for the :func:`scipy.optimize.curve_fit` function
@@ -193,6 +196,9 @@ class LinearRegressionFit(Formatoption):
         elif callable(value):
             self.model = value
             self.method = 'curve_fit'
+        elif value.lower().startswith('poly'):
+            self.model = partial(np.polyfit, deg=int(value[4:]), cov=True)
+            self.method = 'poly'
         else:
             self.model = sm.RLM if value == 'robust' else sm.OLS
             self.method = 'statsmodels'
@@ -265,6 +271,8 @@ class LinearRegressionFit(Formatoption):
     def make_fit(self, x, y, x_line=None, **kwargs):
         if self.method == 'statsmodels':
             return self._statsmodel_fit(x, y, x_line, **kwargs)
+        elif self.method == 'poly':
+            return self._poly_fit(x, y, x_line, **kwargs)
         else:
             return self._scipy_curve_fit(x, y, x_line, **kwargs)
 
@@ -279,6 +287,14 @@ class LinearRegressionFit(Formatoption):
         if pcov.size == 1:
             d[args[0] + '_err'] = np.sqrt(pcov)[0, 0]
         return x_line, self.model(x_line, *params), d, pcov
+
+    def _poly_fit(self, x, y, x_line, **kwargs):
+        params, pcov = self.model(x, y)
+        d = dict(zip(('c%i' % i for i in range(1000)),
+                     params))
+        if pcov.size == 1:
+            d['c0_err'] = np.sqrt(pcov)[0, 0]
+        return x_line, np.poly1d(params)(x_line), d, pcov
 
     def _statsmodel_fit(self, x, y, x_line, fix=None):
         """Make a linear fit of x to y"""
