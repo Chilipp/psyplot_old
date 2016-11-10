@@ -38,7 +38,6 @@ except ImportError as e:
 try:
     from cloudpickle import load as pickle_load, dump as pickle_dump
 except ImportError:
-    try:
     from pickle import load as pickle_load, dump as pickle_dump
 
 
