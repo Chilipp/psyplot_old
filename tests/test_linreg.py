@@ -149,7 +149,7 @@ class LinRegPlotterTest(unittest.TestCase):
         da = psyd.InteractiveList([
             psyd.InteractiveArray(y, name='y', dims=('x', ), coords={
                 'x': xarray.Coordinate('x', x)})])
-        return da, len(coeffs)
+        return da, len(coeffs) - 1
 
     def test_nonfixed_fit(self):
         '''Test whether the fit works'''
