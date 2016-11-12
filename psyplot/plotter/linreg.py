@@ -290,8 +290,8 @@ class LinearRegressionFit(Formatoption):
 
     def _poly_fit(self, x, y, x_line, **kwargs):
         params, pcov = self.model(x, y)
-        d = dict(zip(('c%i' % i for i in range(1000)),
-                     params))
+        d = dict(zip(('c%i' % i for i in range(len(params))),
+                     params[::-1]))
         if pcov.size == 1:
             d['c0_err'] = np.sqrt(pcov)[0, 0]
         return x_line, np.poly1d(params)(x_line), d, pcov
