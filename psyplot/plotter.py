@@ -3,18 +3,7 @@
 This package defines the :class:`Plotter` and :class:`Formatoption` classes,
 the core of the visualization in the :mod:`psyplot` package. Each
 :class:`Plotter` combines a set of formatoption keys where each formatoption
-key is represented by a :class:`Formatoption` subclass.
-
-Important plotters are
-
-.. autosummary::
-
-    simple.LinePlotter
-    simple.Simple2DPlotter
-    simple.SimpleVectorPlotter
-    maps.FieldPlotter
-    maps.VectorPlotter
-    maps.CombinedPlotter"""
+key is represented by a :class:`Formatoption` subclass."""
 
 import six
 from abc import ABCMeta, abstractmethod
