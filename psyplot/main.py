@@ -2,13 +2,12 @@ import argparse
 import pickle
 import six
 from itertools import chain
-from functools import partial
 from collections import defaultdict
 import yaml
 import psyplot
 from psyplot.docstring import docstrings
 from psyplot.warning import warn
-from psyplot.parser import FuncArgParser
+from funcargparse import FuncArgParser
 import logging
 
 
@@ -30,13 +29,13 @@ def main():
         from psyplot_gui import get_parser as _get_parser
         parser = _get_parser(create=False)
         parser.create_arguments()
-        parser.parse_known_to_func()
+        parser.parse_known2func()
     except ImportError:
         logger.debug('Failed to import gui', exc_info=True)
         parser = get_parser(create=False)
         parser.update_arg('output', required=True)
         parser.create_arguments()
-        parser.parse_to_func()
+        parser.parse2func()
 
 
 @docstrings.get_sectionsf('make_plot')
