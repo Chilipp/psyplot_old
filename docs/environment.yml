@@ -1,5 +1,6 @@
 name: psyplot_docs
 dependencies:
+    - python=3.5
     - dask
     - xarray
     - netCDF4
