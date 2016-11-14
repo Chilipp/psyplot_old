@@ -38,10 +38,11 @@ setup(name='psyplot',
       packages=find_packages(exclude=['docs', 'tests*', 'examples']),
       install_requires=[
           'matplotlib',
+          'docrep',
+          'funcargparse',
           'xarray',
           'PyYAML'
       ],
-      package_data={'psyplot': ['psyplot/sphinxext/_static/*']},
       include_package_data=True,
       setup_requires=pytest_runner,
       tests_require=['pytest'],
