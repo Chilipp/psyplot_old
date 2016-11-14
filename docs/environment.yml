@@ -1,19 +1,13 @@
 name: psyplot_docs
-channels:
-    - chilipp
-    - scitools
 dependencies:
-    - psyplot
     - dask
     - xarray
     - netCDF4
     - matplotlib
-    - cartopy
     - seaborn
     - ipython
-    - nbconvert
     - sphinx
-    - statsmodels
     - pip:
         - sphinx-argparse
+        - autodocsumm
         - cdo
