@@ -56,9 +56,8 @@ extensions = [
     'IPython.sphinxext.ipython_directive',
     'sphinxarg.ext',
     'psyplot.sphinxext.extended_napoleon',
-    'psyplot.sphinxext.no_data',
-    'psyplot.sphinxext.extended_autodoc',
-    'psyplot.sphinxext.example_gallery',
+    'autodocsumm',
+#    'sphinx_nbexamples',
 ]
 
 # Add any paths that contain templates here, relative to this directory.
