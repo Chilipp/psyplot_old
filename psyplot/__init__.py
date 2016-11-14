@@ -1,3 +1,5 @@
+"""psyplot visualization framework
+"""
 import datetime as dt
 import logging as _logging
 from psyplot.warning import warn, critical, disable_warnings
@@ -6,7 +8,7 @@ import psyplot.config as config
 from psyplot.data import (
     ArrayList, InteractiveArray, InteractiveList, open_dataset, open_mfdataset)
 
-__version__ = "0.2.18"
+__version__ = "1.0.0.dev0"
 __author__ = "Philipp Sommer (philipp.sommer@unil.ch)"
 
 logger = _logging.getLogger(__name__)
