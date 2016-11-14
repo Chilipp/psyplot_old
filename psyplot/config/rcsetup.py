@@ -11,18 +11,11 @@ import sys
 import six
 import re
 import yaml
-from itertools import repeat
-import matplotlib as mpl
+from itertools import chain
+from collections import defaultdict
 from psyplot.warning import warn
 from psyplot.compat.pycompat import (
     UserDict, DictMethods, getcwd, zip, isstring, map)
-from psyplot.compat.mplcompat import mpl_version
-from matplotlib.patches import ArrowStyle
-from numpy import asarray
-from matplotlib.rcsetup import (
-    validate_bool, validate_color, validate_bool_maybe_none, validate_fontsize,
-    validate_nseq_float, ValidateInStrings, validate_int, validate_colorlist,
-    validate_path_exists, validate_legend_loc)
 from psyplot.docstring import docstrings, dedent, safe_modulo, dedents
 from psyplot.config.logsetup import _get_home
 
@@ -355,7 +348,7 @@ class RcParams(dict):
         """Dictionary with validation methods as values"""
         return dict((key, val[1]) for key, val in
                     six.iteritems(self.defaultParams)
-                    if key not in _all_deprecated)
+                    if key not in self._all_deprecated)
 
     @property
     def descriptions(self):
@@ -372,6 +365,9 @@ environment variable."""
     msg_depr = "%s is deprecated and replaced with %s; please use the latter."
     msg_depr_ignore = "%s is deprecated and ignored. Use %s"
 
+    #: possible connections that shall be called if the rcParams value change
+    _connections = defaultdict(list)
+
     @property
     def defaultParams(self):
         return getattr(self, '_defaultParams', defaultParams)
@@ -382,6 +378,9 @@ environment variable."""
 
     # validate values on the way in
     def __init__(self, *args, **kwargs):
+        self._all_deprecated = []
+        self._deprecated_map = {}
+        self._deprecated_ignore_map = {}
         for k, v in six.iteritems(dict(*args, **kwargs)):
             try:
                 self[k] = v
@@ -392,35 +391,47 @@ environment variable."""
                 dict.__setitem__(self, k, v)
 
     def __setitem__(self, key, val):
+        key, val = self._get_depreceated(key, val)
+        if key is None:
+            return
         try:
-            if key in _deprecated_map:
-                alt_key, alt_val = _deprecated_map[key]
-                warn(self.msg_depr % (key, alt_key))
-                key = alt_key
-                val = alt_val(val)
-            elif key in _deprecated_ignore_map:
-                alt = _deprecated_ignore_map[key]
-                warn(self.msg_depr_ignore % (key, alt))
-                return
-            try:
-                cval = self.validate[key](val)
-            except ValueError as ve:
-                raise ValueError("Key %s: %s" % (key, str(ve)))
-            dict.__setitem__(self, key, cval)
-        except KeyError:
-            raise KeyError('%s is not a valid rc parameter.\
-See rcParams.keys() for a list of valid parameters.' % (key,))
+            cval = self.validate[key](val)
+        except ValueError as ve:
+            raise ValueError("Key %s: %s" % (key, str(ve)))
+        dict.__setitem__(self, key, cval)
+        for func in self._connections.get(key, []):
+            func(cval)
 
-    def __getitem__(self, key):
-        if key in _deprecated_map:
-            alt_key, alt_val = _deprecated_map[key]
+    def _get_depreceated(self, key, *args):
+        if key in self._deprecated_map:
+            alt_key, alt_val = self._deprecated_map[key]
             warn(self.msg_depr % (key, alt_key))
             key = alt_key
-        elif key in _deprecated_ignore_map:
-            alt = _deprecated_ignore_map[key]
+            return key, alt_val(args[0]) if args else None
+        elif key in self._deprecated_ignore_map:
+            alt = self._deprecated_ignore_map[key]
             warn(self.msg_depr_ignore % (key, alt))
-            key = alt
-        return dict.__getitem__(self, key)
+            return None, None
+        elif key not in self.defaultParams:
+            raise KeyError(
+                '%s is not a valid rc parameter. See rcParams.keys() for a '
+                'list of valid parameters.' % (key,))
+        return key, args[0] if args else None
+
+    def __getitem__(self, key):
+        key = self._get_depreceated(key)[0]
+        if key is not None:
+            return dict.__getitem__(self, key)
+
+    def connect(self, key, func):
+        key = self._get_depreceated(key)[0]
+        if key is not None:
+            self._connections[key].append(func)
+
+    def remove(self, key, func):
+        key = self._get_depreceated(key)[0]
+        if key is not None:
+            self._connections[key].remove(func)
 
     # the default dict `update` does not use __setitem__
     # so rcParams.update(...) (such as in seaborn) side-steps
@@ -621,6 +632,75 @@ See rcParams.keys() for a list of valid parameters.' % (key,))
                 yaml.dump(d, f, **kwargs)
         return None
 
+    def load_plugins(self, group):
+        """
+        Load the plotters and defaultParams from the plugins
+
+        This method loads the `plotters` attribute and `defaultParams`
+        attribute from the plugins that use the entry point specified by
+        `group`. Entry points must be objects (or modules) that have a
+        `defaultParams` and a `plotters` attribute.
+
+        Parameters
+        ----------
+        group: str
+            The group of the entry point
+
+        Returns
+        -------
+        dict
+            The plotters configuration dictionaries from the plugins for the
+            :func:`psyplot.project.register_plotter` function"""
+        from pkg_resources import iter_entry_points
+        import logging
+        logger = logging.getLogger(__name__)
+        plotters = {}
+        def_plots = {}
+        defaultParams = self.defaultParams
+        def_keys = {'default': defaultParams}
+        # -- load plotters
+        for ep in iter_entry_points(group=group, name='plotters'):
+            logger.debug('Loading entrypoint %s', ep)
+            d = ep.load()
+            # -- check for intersection within the other plugins
+            already_defined = set(plotters).intersection(d)
+            if already_defined:
+                msg = ("Error while loading psyplot plugin %s! The "
+                       "following plotters have already been "
+                       "defined:") % ep
+                msg += '\n' + '\n'.join(chain.from_iterable(
+                    (('%s by %s' % (key, plugin)
+                      for plugin, keys in def_plots.items() if key in keys)
+                     for key in already_defined)))
+                raise ImportError(msg)
+
+            # if everything's okay, update the plotter plugins
+            plotters.update(d)
+            def_plots[ep] = d
+
+        # -- load defaultParams
+        for ep in iter_entry_points(group=group, name='defaultParams'):
+            logger.debug('Loading entrypoint %s', ep)
+            d = ep.load()
+            # -- check for intersection within the other plugins
+            already_defined = set(defaultParams).intersection(d)
+            if already_defined:
+                msg = ("Error while loading psyplot plugin %s! The "
+                       "following default keys have already been "
+                       "defined:") % ep
+                msg += '\n' + '\n'.join(chain.from_iterable(
+                    (('%s by %s' % (key, plugin)
+                      for plugin, keys in def_keys.items() if key in keys)
+                     for key in already_defined)))
+                raise ImportError(msg)
+
+            # if everything's okay, update the defaultParams and set the items
+            self.defaultParams.update(d)
+            for key, t in six.iteritems(d):
+                self[key] = t[0]
+            def_keys[ep] = d
+        return plotters
+
 
 def psyplot_fname(env_key='PSYPLOTRC', fname='psyplotrc.yaml'):
     """
@@ -722,198 +802,14 @@ def get_configdir():
     return p
 
 
-def try_and_error(*funcs):
-    """Apply multiple validation functions
-
-    Parameters
-    ----------
-    ``*funcs``
-        Validation functions to test
-
-    Returns
-    -------
-    function"""
-    def validate(value):
-        exc = None
-        for func in funcs:
-            try:
-                return func(value)
-            except (ValueError, TypeError) as e:
-                exc = e
-        raise exc
-    return validate
-
-
-def validate_none(b):
-    """Validate that None is given
-
-    Parameters
-    ----------
-    b: {None, 'none'}
-        None or string (the case is ignored)
-
-    Returns
-    -------
-    None
-
-    Raises
-    ------
-    ValueError"""
-    if isinstance(b, six.string_types):
-        b = b.lower()
-    if b is None or b == 'none':
+def validate_path_exists(s):
+    """If s is a path, return s, else False"""
+    if s is None:
         return None
+    if os.path.exists(s):
+        return s
     else:
-        raise ValueError('Could not convert "%s" to None' % b)
-
-
-def validate_axiscolor(value):
-    """Validate a dictionary containing axiscolor definitions
-
-    Parameters
-    ----------
-    value: dict
-        see :attr:`psyplot.plotter.baseplotter.axiscolor`
-
-    Returns
-    -------
-    dict
-
-    Raises
-    ------
-    ValueError"""
-    validate = try_and_error(validate_none, validate_color)
-    possible_keys = {'right', 'left', 'top', 'bottom'}
-    try:
-        value = dict(value)
-        false_keys = set(value) - possible_keys
-        if false_keys:
-            raise ValueError("Wrong keys (%s)!" % (', '.join(false_keys)))
-        for key, val in value.items():
-            value[key] = validate(val)
-    except:
-        value = dict(zip(possible_keys, repeat(validate(value))))
-    return value
-
-
-def validate_text(value):
-    """Validate a text formatoption
-
-    Parameters
-    ----------
-    value: see :attr:`psyplot.plotter.labelplotter.text`
-
-    Raises
-    ------
-    ValueError"""
-    possible_transform = ['axes', 'fig', 'data']
-    validate_transform = ValidateInStrings('transform', possible_transform,
-                                           True)
-    tests = [validate_float, validate_float, validate_str,
-             validate_transform, dict]
-    if isinstance(value, six.string_types):
-        xpos, ypos = rcParams['texts.default_position']
-        return [(xpos, ypos, value, 'axes', {'ha': 'right'})]
-    elif isinstance(value, tuple):
-        value = [value]
-    try:
-        value = list(value)[:]
-    except TypeError:
-        raise ValueError("Value must be string or list of tuples!")
-    for i, val in enumerate(value):
-        try:
-            val = tuple(val)
-        except TypeError:
-            raise ValueError(
-                "Text must be an iterable of the form "
-                "(x, y, s[, trans, params])!")
-        if len(val) < 3:
-            raise ValueError(
-                "Text tuple must at least be like [x, y, s], with floats x, "
-                "y and string s!")
-        elif len(val) == 3 or isinstance(val[3], dict):
-            val = list(val)
-            val.insert(3, 'data')
-            if len(val) == 4:
-                val += [{}]
-            val = tuple(val)
-        if len(val) > 5:
-            raise ValueError(
-                "Text tuple must not be longer then length 5. It can be "
-                "like (x, y, s[, trans, params])!")
-        value[i] = (validate(x) for validate, x in zip(tests, val))
-    return value
-
-
-validate_scale = ValidateInStrings('scale', ['logx', 'logy', 'logxy'], True)
-
-
-class validate_list(object):
-    """Validate a list of the specified `dtype`
-
-    Parameters
-    ----------
-    dtype: object
-        A datatype (e.g. :class:`float`) that shall be used for the conversion
-    """
-
-    def __init__(self, dtype=None, length=None, listtype=list):
-        """Initialization function"""
-        #: data type (e.g. :class:`float`) used for the conversion
-        self.dtype = dtype
-        self.length = length
-        self.listtype = list
-
-    def __call__(self, l):
-        """Validate whether `l` is a list with contents of :attr:`dtype`
-
-        Parameters
-        ----------
-        l: list-like
-
-        Returns
-        -------
-        list
-            list with values of dtype :attr:`dtype`
-
-        Raises
-        ------
-        ValueError"""
-        try:
-            if self.dtype is None:
-                l = self.listtype(l)
-            else:
-                l = self.listtype(map(self.dtype, l))
-        except TypeError:
-            if self.dtype is None:
-                raise ValueError(
-                    "Could not convert to list!")
-            else:
-                raise ValueError(
-                    "Could not convert to list of type %s!" % str(self.dtype))
-        if self.length is not None and len(l) != self.length:
-            raise ValueError('List with length %i is required! Not %i!' % (
-                self.length, len(l)))
-        return l
-
-
-def validate_str(s):
-    """Validate a string
-
-    Parameters
-    ----------
-    s: str
-
-    Returns
-    -------
-    str
-
-    Raises
-    ------
-    ValueError"""
-    if not isinstance(s, six.string_types):
-        raise ValueError("Did not found string!")
-    return six.text_type(s)
+        raise ValueError('"%s" should be a path but it does not exist' % s)
 
 
 def validate_dict(d):
@@ -941,85 +837,58 @@ def validate_dict(d):
             raise ValueError("Could not convert to dictionary!")
 
 
-def validate_cbarpos(value):
-    """Validate a colorbar position
+def validate_dict_yaml(s):
+    if isinstance(s, dict):
+        return s
+    validate_path_exists(s)
+    if s is not None:
+        with open(s) as f:
+            return yaml.load(f)
 
-    Parameters
-    ----------
-    value: bool or str
-        A string can be a combination of 'sh|sv|fl|fr|ft|fb|b|r'
 
-    Returns
-    -------
-    list
-        list of strings with possible colorbar positions
-
-    Raises
-    ------
-    ValueError"""
-    patt = 'sh|sv|fl|fr|ft|fb|b|r'
-    if value is True:
-        value = {'b'}
-    elif not value:
-        value = set()
-    elif isinstance(value, six.string_types):
-        for s in re.finditer('[^%s]+' % patt, value):
-            warn("Unknown colorbar position %s!" % s.group())
-        value = set(re.findall(patt, value))
+def validate_bool_maybe_none(b):
+    'Convert b to a boolean or raise'
+    if isinstance(b, six.string_types):
+        b = b.lower()
+    if b is None or b == 'none':
+        return None
+    if b in ('t', 'y', 'yes', 'on', 'true', '1', 1, True):
+        return True
+    elif b in ('f', 'n', 'no', 'off', 'false', '0', 0, False):
+        return False
     else:
-        value = validate_stringset(value)
-        for s in (s for s in value
-                  if not re.match(patt, s)):
-            warn("Unknown colorbar position %s!" % s)
-            value.remove(s)
-    return value
+        raise ValueError('Could not convert "%s" to boolean' % b)
 
 
-def validate_cmap(val):
-    """Validate a colormap
+def validate_bool(b):
+    """Convert b to a boolean or raise"""
+    if isinstance(b, six.string_types):
+        b = b.lower()
+    if b in ('t', 'y', 'yes', 'on', 'true', '1', 1, True):
+        return True
+    elif b in ('f', 'n', 'no', 'off', 'false', '0', 0, False):
+        return False
+    else:
+        raise ValueError('Could not convert "%s" to boolean' % b)
+
+
+def validate_str(s):
+    """Validate a string
 
     Parameters
     ----------
-    val: str or :class:`mpl.colors.Colormap`
+    s: str
 
     Returns
     -------
-    str or :class:`mpl.colors.Colormap`
+    str
 
     Raises
     ------
     ValueError"""
-    from matplotlib.colors import Colormap
-    try:
-        return validate_str(val)
-    except ValueError:
-        if not isinstance(val, Colormap):
-            raise ValueError(
-                "Could not find a valid colormap!")
-        return val
-
-
-def validate_cmaps(cmaps):
-    """Validate a dictionary of color lists
-
-    Parameters
-    ----------
-    cmaps: dict
-        a mapping from a colormap name to a list of colors
-
-    Raises
-    ------
-    ValueError
-        If one of the values in `cmaps` is not a color list
-
-    Notes
-    -----
-    For all items (listname, list) in `cmaps`, the reversed list is
-    automatically inserted with the ``listname + '_r'`` key."""
-    cmaps = {validate_str(key): validate_colorlist(val) for key, val in cmaps}
-    for key, val in six.iteritems(cmaps):
-        cmaps.setdefault(key + '_r', val[::-1])
-    return cmaps
+    if not isinstance(s, six.string_types):
+        raise ValueError("Did not found string!")
+    return six.text_type(s)
 
 
 def validate_stringlist(s):
@@ -1045,50 +914,33 @@ def validate_stringlist(s):
         except TypeError as e:
             raise ValueError(e.message)
 
-validate_extend = ValidateInStrings('extend',
-                                    ['neither', 'both', 'min', 'max'])
 
+class validate_nseq_float(object):
+    """Validate a list of `n` floats
+    """
+    def __init__(self, n):
+        """
+        Parameters
+        ----------
+        n: int
+            The length of the sequence"""
+        self.n = n
 
-def validate_ideal(val):
-    try:
-        return validate_none(val)
-    except ValueError:
-        val = asarray(val).astype(float)
-        if val.ndim == 1:
-            return val.reshape(1, val.size)
-        elif val.ndim == 2:
-            return val
-        raise ValueError(
-            "Only 1- and 2-dimensional arrays are allowed! Got %s" % (val, ))
+    def __call__(self, s):
+        """return a seq of n floats or raise"""
+        if isinstance(s, six.string_types):
+            s = s.split(',')
+            err_msg = _str_err_msg
+        else:
+            err_msg = _seq_err_msg
 
+        if len(s) != self.n:
+            raise ValueError(err_msg.format(n=self.n, num=len(s), s=s))
 
-def validate_norm(val):
-    """Validate a normalization
-
-    Parameters
-    ----------
-    val: str, None or :class:`mpl.colors.Normalize` instance
-        see :attr:`plotter.Plot2D.norm`
-
-    Returns
-    -------
-    list
-        list that can be used for :attr:`psyplot.plotter.Plot2D.norm`
-
-    Raises
-    ------
-    ValueError"""
-    if val == 'bounds':
-        return val
-    try:
-        return validate_none(val)
-    except ValueError:
-        pass
-    if not isinstance(val, mpl.colors.Normalize):
-        raise ValueError(
-            "Wrong value of norm! Can be either 'bounds', None or a "
-            "matplotlib.colors.Normalize instance!")
-    return val
+        try:
+            return [float(val) for val in s]
+        except ValueError:
+            raise ValueError('Could not convert all entries to floats')
 
 
 def validate_stringset(*args, **kwargs):
@@ -1109,688 +961,8 @@ def validate_stringset(*args, **kwargs):
     return set(validate_stringlist(*args, **kwargs))
 
 
-def validate_opacity(val):
-    """Validate a valid opacity value
-
-    Parameters
-    ----------
-    val: float or array
-        see :attr:`psyplot.plotter.Plot2D.opacity`
-
-    Returns
-    -------
-    float or array
-
-    Raises
-    ------
-    ValueError"""
-    from numpy import array
-
-    def validate_alpha(v):
-        if v < 0 or v > 1:
-            raise ValueError(
-                "Opacity float must not be smaller than 0 or greater than 1!")
-        return v
-    try:
-        return validate_alpha(validate_float(val))
-    except ValueError:
-        pass
-    val = array(val).astype(float)
-    if val.ndim == 0 or val.ndim > 2:
-        raise ValueError("Opacity arrays can only be one or two-dimensional!")
-    if val.ndim == 1:
-        if len(val.ndim) < 2:
-            raise ValueError(
-                "Need at least two values for one dimensional opacity array!")
-        map(validate_alpha, val)
-    else:
-        if val.shape[1] == 2:
-            raise ValueError(
-                "2-dimensional opacity arrays must be of shape (N, 2)! Found "
-                "{0}.".format(val.shape))
-        map(validate_alpha, val[:, 1])
-    return val
-
-
-def validate_shape_exists(p):
-    """Validate that a shapefile exists
-
-    Parameters
-    ----------
-    p: str
-        path to a shapefile suitable for a :class:`shapefile.Reader` instance
-
-    Returns
-    -------
-    str: the given input
-
-    Raises
-    ------
-    ValueError"""
-    if p is None:
-        return p
-    from shapefile import Reader
-    try:
-        Reader(p)
-    except:
-        raise ValueError("Could not open shapefile with {0}!".format(p))
-    return p
-
-
-def validate_float(s):
-    """convert `s` to float or raise
-
-    Returns
-    -------
-    s converted to a float: float
-
-    Raises
-    ------
-    ValueError"""
-    try:
-        return float(s)
-    except (ValueError, TypeError):
-        raise ValueError('Could not convert "%s" to float' % str(s))
-
-
-def validate_iter(value):
-    """Validate that the given value is an iterable"""
-    try:
-        return iter(value)
-    except TypeError:
-        raise ValueError("%s is not an iterable!" % repr(value))
-
-
-def validate_fontweight(value):
-    if value is None:
-        return None
-    elif isinstance(value, six.string_types):
-        return six.text_type(value)
-    elif mpl_version >= 1.5:
-        return validate_float(value)
-    raise ValueError("Font weights must be None or a string!")
-
-
-def validate_limits(value):
-    if value is None or isinstance(value, six.string_types):
-        return (value, value)
-    if not len(value) == 2:
-        raise ValueError("Limits must have length 2!")
-    return value
-
-
-class DictValValidator(object):
-
-    def __init__(self, key, valid, validators, default, ignorecase=False):
-        self.key = key
-        self.valid = valid
-        self.key_validator = ValidateInStrings(key, valid, ignorecase)
-        self.default = default
-        self.validate = validators
-
-    def __call__(self, value):
-        if isinstance(value, dict) and value and all(
-                isinstance(key, six.string_types) for key in value):
-            failed_key = False
-            for key, val in six.iteritems(value):
-                try:
-                    new_key = self.key_validator(key)
-                except ValueError:
-                    failed_key = True
-                    break
-                else:
-                    value[new_key] = self.validate(value.pop(key))
-            if failed_key:
-                if self.default is None:
-                    value = self.validate(value)
-                    value = dict(zip(self.valid, repeat(value)))
-                else:
-                    value = {self.default: self.validate(value)}
-        elif self.default is None:
-            value = self.validate(value)
-            value = dict(zip(self.valid, repeat(value)))
-        else:
-            value = {self.default: self.validate(value)}
-        return value
-
-
-class TicksValidator(ValidateInStrings):
-
-    def __call__(self, val):
-        # validate the ticks
-        # if None, int or tuple (defining min- and max-range), pass
-        if val is None or isinstance(val, int) or (
-                isinstance(val, tuple) and len(val) <= 3):
-            return val
-        # strings must be in the given list
-        elif isinstance(val, six.string_types):
-            return [ValidateInStrings.__call__(self, val), None]
-        elif isinstance(val[0], six.string_types):
-            return [ValidateInStrings.__call__(self, val[0])] + list(val[1:])
-        # otherwise we assume an array
-        else:
-            return validate_list()(val)
-
-
-class BoundsValidator(ValidateInStrings):
-
-    def __init__(self, *args, **kwargs):
-        """
-        For parameter description see
-        :class:`matplotlib.rcsetup.ValidateInStrings`.
-
-        Other Parameters
-        ----------------
-        inis: tuple
-            Tuple of object types that may pass the check
-        default: str
-            The default string to use for an integer (Default: 'rounded')"""
-        self.possible_instances = kwargs.pop('inis', None)
-        self.default = kwargs.pop('default', 'rounded')
-        ValidateInStrings.__init__(self, *args, **kwargs)
-
-    def instance_check(self, val):
-        if self.possible_instances:
-            return isinstance(val, self.possible_instances)
-        return False
-
-    def __call__(self, val):
-        if val is None or self.instance_check(val):
-            return val
-        elif isinstance(val, int):
-            return [self.default, val]
-        elif isinstance(val, six.string_types):
-            return [ValidateInStrings.__call__(self, val), None]
-        elif isinstance(val[0], six.string_types):
-            return [ValidateInStrings.__call__(self, val[0])] + list(val[1:])
-        # otherwise we assume an array
-        else:
-            return validate_list(float)(val)
-
-
-class ProjectionValidator(ValidateInStrings):
-
-    def __call__(self, val):
-        if isinstance(val, six.string_types):
-            return ValidateInStrings.__call__(self, val)
-        return val  # otherwise we skip the validation
-
-
-class LineWidthValidator(ValidateInStrings):
-
-    def __call__(self, val):
-        if val is None:
-            return val
-        elif isinstance(val, six.string_types):
-            return [ValidateInStrings.__call__(self, val), 1.0]
-        elif asarray(val).ndim and isinstance(val[0], six.string_types):
-            return [ValidateInStrings.__call__(self, val[0])] + list(val[1:])
-        # otherwise we assume an array
-        else:
-            return asarray(val, float)
-
-
-validate_ticklabels = try_and_error(validate_none, validate_str,
-                                    validate_stringlist)
-
-
-def validate_dict_yaml(s):
-    if isinstance(s, dict):
-        return s
-    validate_path_exists(s)
-    if s is not None:
-        with open(s) as f:
-            return yaml.load(f)
-
-
-def validate_fix(val):
-    if val is None:
-        return [None]
-    try:
-        val = validate_float(val)
-        return [[0, val]]
-    except ValueError:
-        pass
-    msg = 'Values for the fix formatoptions must be of length 2!'
-    validator = try_and_error(validate_none, validate_list(float))
-    try:
-        val = validator(val)
-    except ValueError:
-        val = list(map(validator, val))
-        if not all(v is None or len(v) == 2 for v in val):
-            raise ValueError(msg)
-    else:
-        if val is not None and len(val) != 2:
-            raise ValueError(msg)
-    return val
-
-
-def validate_callable(val):
-    if callable(val):
-        return val
-    raise ValueError('%s is not callable!' % str(val))
-
-
-def validate_alpha(val):
-    '''Validate an alpha value between 0 and 1'''
-    val = validate_float(val)
-    if val < 0 or val > 1:
-        raise ValueError('Alpha values must lay between 0 and 1!')
-    return val
-
-
-def validate_grid(val):
-    if isinstance(val, tuple) and len(val) in [2, 3]:
-        return val
-    try:
-        return validate_bool_maybe_none(val)
-    except ValueError:
-        return BoundsValidator('grid', bound_strings, True)(val)
-
-
-def validate_marker(val):
-    """Does not really make a validation because markers can be quite of
-    different types"""
-    if val is None:
-        return None
-    else:
-        return safe_list(val)
-
-
-def validate_sym_lims(val):
-    validator = try_and_error(validate_none, ValidateInStrings(
-        'sym_links', ['min', 'max'], True))
-    val = safe_list(val)
-    if len(val) != 2:
-        val = val + val
-    if not len(val) == 2:
-        raise ValueError("Need two values for the symmetric limits, not %i" % (
-            len(val)))
-    return list(map(validator, val))
-
-
-def validate_fit(val):
-    if isinstance(val, six.string_types) and val.startswith('poly'):
-        try:
-            int(val[4:])
-        except:
-            raise ValueError("Polynomials must be of the form 'poly<deg>' "
-                             "(e.g. 'poly3'), not %s!" % val)
-        else:
-            return val
-    return try_and_error(
-        validate_callable, validate_none,
-        ValidateInStrings('fit', ['fit', 'robust'], True))(val)
-
-
-bound_strings = ['data', 'mid', 'rounded', 'roundedsym', 'minmax', 'sym']
-
-tick_strings = bound_strings + ['hour', 'day', 'week', 'month', 'monthend',
-                                'monthbegin', 'year', 'yearend', 'yearbegin']
-
-
 #: :class:`dict` with default values and validation functions
 defaultParams = {
-    # BasePlot
-    'plotter.baseplotter.tight': [False, validate_bool,
-                                  'fmt key for tight layout of the plots'],
-    'plotter.simple.grid': [
-        False, try_and_error(validate_bool_maybe_none, validate_color),
-        'fmt key to visualize the grid on simple plots (i.e. without '
-        'projection)'],
-    # labels
-    'plotter.baseplotter.title': [
-        '', six.text_type, 'fmt key to control the title of the axes'],
-    'plotter.baseplotter.figtitle': [
-        '', six.text_type, 'fmt key to control the title of the axes'],
-    'plotter.baseplotter.text': [
-        [], validate_text, 'fmt key to show text anywhere on the plot'],
-    'plotter.simple.ylabel': [
-        '', six.text_type, 'fmt key to modify the y-axis label for simple'
-        'plot (i.e. plots withouth projection)'],
-    'plotter.simple.xlabel': [
-        '', six.text_type, 'fmt key to modify the y-axis label for simple'
-        'plot (i.e. plots withouth projection)'],
-    'plotter.plot2d.clabel': [
-        '', six.text_type, 'fmt key to modify the colorbar label for 2D'
-        'plots'],
-    # text sizes
-    'plotter.baseplotter.titlesize': [
-        'large', validate_fontsize,
-        'fmt key for the fontsize of the axes title'],
-    'plotter.baseplotter.figtitlesize': [
-        12, validate_fontsize, 'fmt key for the fontsize of the figure title'],
-    'plotter.simple.labelsize': [
-        'medium', DictValValidator(
-            'labelsize', ['x', 'y'], validate_fontsize, None, True),
-        'fmt key for the fontsize of the x- and y-l abel of simple plots '
-        '(i.e. without projection)'],
-    'plotter.simple.ticksize': [
-        'medium', DictValValidator(
-            'ticksize', ['major', 'minor'], validate_fontsize, 'major', True),
-        'fmt key for the fontsize of the ticklabels of x- and y-axis of '
-        'simple plots (i.e. without projection)'],
-    'plotter.plot2d.cticksize': [
-        'medium', validate_fontsize,
-        'fmt key for the fontsize of the ticklabels of the colorbar of 2D '
-        'plots'],
-    'plotter.plot2d.clabelsize': [
-        'medium', validate_fontsize,
-        'fmt key for the fontsize of the colorbar label'],
-    # text weights
-    'plotter.baseplotter.titleweight': [
-        None, validate_fontweight,
-        'fmt key for the fontweight of the axes title'],
-    'plotter.baseplotter.figtitleweight': [
-        None, validate_fontweight,
-        'fmt key for the fontweight of the figure title'],
-    'plotter.simple.labelweight': [
-        None, DictValValidator(
-            'labelweight', ['x', 'y'], validate_fontweight, None, True),
-        'fmt key for the fontweight of the x- and y-l abel of simple plots '
-        '(i.e. without projection)'],
-    'plotter.simple.tickweight': [None, DictValValidator(
-        'tickweight', ['major', 'minor'], validate_fontweight, 'major', True),
-        'fmt key for the fontweight of the ticklabels of x- and y-axis of '
-        'simple plots (i.e. without projection)'],
-    'plotter.plot2d.ctickweight': [
-        None, validate_fontweight,
-        'fmt key for the fontweight of the ticklabels of the colorbar of 2D '
-        'plots'],
-    'plotter.plot2d.clabelweight': [
-        None, validate_fontweight,
-        'fmt key for the fontweight of the colorbar label'],
-    # text properties
-    'plotter.baseplotter.titleprops': [
-        {}, validate_dict, 'fmt key for the additional properties of the title'
-        ],
-    'plotter.baseplotter.figtitleprops': [
-        {}, validate_dict,
-        'fmt key for the additional properties of the figure title'],
-    'plotter.simple.labelprops': [{}, DictValValidator(
-        'labelprops', ['x', 'y'], validate_dict, None, True),
-        'fmt key for the additional properties of the x- and y-label'],
-    'plotter.simple.xtickprops': [
-        {'major': {}, 'minor': {}}, DictValValidator(
-            'xtickprops', ['major', 'minor'], validate_dict, 'major', True),
-        'fmt key for the additional properties of the ticklabels of x-axis'],
-    'plotter.simple.ytickprops': [
-        {'major': {}, 'minor': {}}, DictValValidator(
-            'ytickprops', ['major', 'minor'], validate_dict, 'major', True),
-        'fmt key for the additional properties of the ticklabels of y-axis'],
-    'plotter.plot2d.clabelprops': [
-        {}, validate_dict,
-        'fmt key for the additional properties of the colorbar label'],
-    'plotter.plot2d.ctickprops': [
-        {}, validate_dict,
-        'fmt key for the additional properties of the colorbar ticklabels'],
-
-    # density plotter
-    'plotter.density.coord': [
-        None, try_and_error(validate_none, validate_str, validate_stringlist),
-        'Alternative x-coordinate to use for DensityPlotter'],
-    'plotter.density.xrange': [
-        'minmax', validate_limits, 'The histogram limits of the density plot'],
-    'plotter.density.yrange': [
-        'minmax', validate_limits, 'The histogram limits of the density plot'],
-    'plotter.density.precision': [
-        0, try_and_error(validate_float, validate_list(float, 2),
-                         validate_str, validate_list(str, 2)),
-        'The precision of the data to make sure that the bin width is not '
-        'below this value'],
-    'plotter.density.bins': [
-        10, try_and_error(validate_int, validate_list(int, 2)),
-        'The bins in x- and y-direction of the density plot'],
-    'plotter.density.normed': [
-        None, try_and_error(validate_none, ValidateInStrings(
-            'normed', ['area', 'counts'], True)),
-        'The normalization of the density histogram'],
-    'plotter.density.density': [
-        'hist', ValidateInStrings('density', ['hist', 'kde'], True)],
-
-    # axis color
-    'plotter.simple.axiscolor': [
-        None, validate_axiscolor, 'fmt key to modify the color of the spines'],
-
-    # SimplePlot
-    'plotter.line.coord': [
-        None, try_and_error(validate_none, validate_str, validate_stringlist),
-        'Alternative x-coordinate to use for LinePlotter'],
-    'plotter.line.plot': [
-        '-', try_and_error(validate_none, validate_str, validate_stringlist),
-        'fmt key to modify the line style'],
-    'plotter.line.error': [
-        'fill', try_and_error(ValidateInStrings('error', ['fill'], True),
-                              validate_none),
-        'The visualization type of the errors for line plots'],
-    'plotter.line.marker': [
-        None, validate_marker, 'The symbol of the marker'],
-    'plotter.line.markersize': [
-        None, try_and_error(validate_none, validate_float),
-        'The size of the marker'],
-    'plotter.line.linewidth': [
-        None, try_and_error(validate_none, validate_float),
-        'The widths of the lines'],
-    'plotter.line.erroralpha': [
-        0.15, validate_alpha, 'The alpha value of the error range'],
-    'plotter.bar.coord': [
-        None, try_and_error(validate_none, validate_str, validate_stringlist),
-        'Alternative x-coordinate to use for BarPlotter'],
-    'plotter.bar.plot': [
-        'bar', try_and_error(validate_none, ValidateInStrings(
-            'plot', ['bar', 'stacked'], True)),
-        'fmt key to modify whether bar plots shall be stacked or not'],
-    'plotter.violin.plot': [
-        True, validate_bool_maybe_none,
-        'fmt key to modify whether violin plots shall be drawn'],
-    'plotter.simple.transpose': [
-        False, validate_bool, 'fmt key to switch x- and y-axis'],
-    'plotter.simple.color': [
-        None, try_and_error(validate_none, validate_cmap, validate_iter),
-        'fmt key to modify the color cycle simple plots'],
-    'plotter.simple.ylim': [
-        'rounded', validate_limits, 'fmt key to specify the y-axis limits'],
-    'plotter.simple.xlim': [
-        'rounded', validate_limits, 'fmt key to specify the x-axis limits'],
-    'plotter.simple.sym_lims': [
-        None, validate_sym_lims,
-        'fmt key to make symmetric x- and y-axis limits'],
-    'plotter.simple.xticks': [
-        {'major': None, 'minor': None}, DictValValidator(
-            'xticks', ['major', 'minor'], TicksValidator(
-                'xticks', tick_strings, True), 'major', True),
-        'fmt key to modify the x-axis ticks'],
-    'plotter.simple.yticks': [
-        {'major': None, 'minor': None}, DictValValidator(
-            'yticks', ['major', 'minor'], TicksValidator(
-                'yticks', tick_strings, True), 'major', True),
-        'fmt key to modify the y-axis ticks'],
-    'plotter.simple.xticklabels': [
-        None, DictValValidator('xticklabels', ['major', 'minor'],
-                               validate_ticklabels, 'major', True),
-        'fmt key to modify the x-axis ticklabels'],
-    'plotter.simple.yticklabels': [
-        None, DictValValidator('yticklabels', ['major', 'minor'],
-                               validate_ticklabels, 'major', True),
-        'fmt key to modify the y-axis ticklabels'],
-    'plotter.simple.xrotation': [
-        0, validate_float,
-        'fmt key to modify the rotation of the x-axis ticklabels'],
-    'plotter.simple.yrotation': [
-        0, validate_float,
-        'fmt key to modify the rotation of the x-axis ticklabels'],
-    'plotter.simple.legendlabels': [
-        '%(arr_name)s', try_and_error(
-            validate_str, validate_list(six.text_type)),
-        'fmt key to modify the legend labels'],
-    'plotter.simple.legend': [
-        True, try_and_error(
-            validate_bool, validate_int, validate_dict, validate_legend_loc),
-        'fmt key to draw a legend'],
-
-    # Linear regression
-    'plotter.linreg.xrange': [
-        'minmax', validate_limits, 'The fit limits of the line plot'],
-    'plotter.linreg.yrange': [
-        'minmax', validate_limits, 'The fit limits of the line plot'],
-    'plotter.linreg.line_xlim': [
-        'minmax', validate_limits, 'The x-limits of the drawn best fit line'],
-    'plotter.linreg.fix': [
-        None, validate_fix,
-        'fmt key to set a fix point for the linear regression fit'],
-    'plotter.linreg.fit': [
-        'fit', validate_fit, 'The model to use for fitting a model'],
-    'plotter.linreg.nboot': [
-        1000, validate_int,
-        'Number of bootstrap resamples to estimate the confidence interval'],
-    'plotter.linreg.ci': [
-        95, try_and_error(validate_none, validate_float),
-        'Size of the confidence interval'],
-    'plotter.linreg.id_color': [
-        None, try_and_error(validate_none, validate_cmap, validate_iter),
-        'fmt key to modify the color cycle of the ideal lines in a fit plot'],
-    'plotter.linreg.ideal': [
-        None, validate_ideal,
-        'The ideal lines to plot'],
-    'plotter.linreg.bootstrap.random_seed': [
-        None, try_and_error(validate_none, validate_int),
-        'The seed to use for the bootstrap algorithm to estimate the '
-        'confidence interval'],
-
-    # combined density and linear regression plot
-    'plotter.densityreg.lineplot': [
-        '-', try_and_error(validate_none, validate_str,
-                           validate_stringlist),
-        'fmt key to modify the line style'],
-
-    # Plot2D
-    'plotter.plot2d.plot': [
-        'mesh', try_and_error(validate_none, ValidateInStrings(
-            '2d plot', ['mesh', 'tri'], True)),
-        'fmt key to specify the plot type of 2D scalar plots'],
-    'plotter.plot2d.cbar': [
-        ['b'], validate_cbarpos,
-        'fmt key to specify the position of the colorbar'],
-    'plotter.plot2d.cbarspacing': [
-        'uniform', validate_str,
-        'fmt key to specify the spacing of the colorbar'],
-    'plotter.plot2d.miss_color': [
-        None, try_and_error(validate_none, validate_color),
-        'fmt key to specify the color of missing values'],
-    'plotter.plot2d.cmap': [
-        'white_blue_red', validate_cmap, 'fmt key to specify the colormap'],
-    'plotter.plot2d.cticks': [
-        None, try_and_error(validate_none, BoundsValidator(
-            'bounds', ['bounds'] + bound_strings, True, default='bounds')),
-        'fmt key to specify the ticks of the colorbar'],
-    'plotter.plot2d.cticklabels': [
-        None, validate_ticklabels,
-        'fmt key to specify the ticklabels of the colorbar'],
-    'plotter.plot2d.extend': [
-        'neither', validate_extend,
-        'fmt key to specify the style of the colorbar on minimum and maximum'],
-    'plotter.plot2d.bounds': [
-        'rounded', BoundsValidator('bounds', bound_strings, True,
-                                   inis=mpl.colors.Normalize),
-        'fmt key to specify bounds and norm of the colorbar'],
-    # TODO: Implement opacity
-    # 'plotter.plot2d.opacity': [None, try_and_error(validate_none,
-    #                                                validate_opacity)],
-    'plotter.plot2d.datagrid': [
-        None, try_and_error(validate_none, validate_dict, validate_str),
-        'fmt key to plot the lines of the data grid'],
-
-    # MapBase
-    'plotter.maps.lonlatbox': [
-        None, try_and_error(validate_none, validate_str,
-                            validate_nseq_float(4)),
-        'fmt key to define the longitude latitude box of the data'],
-    'plotter.maps.map_extent': [
-        None, try_and_error(validate_none, validate_str,
-                            validate_nseq_float(4)),
-        'fmt key to define the extent of the map plot'],
-    'plotter.maps.clon': [
-        None, try_and_error(validate_none, validate_float, validate_str),
-        'fmt key to specify the center longitude of the projection'],
-    'plotter.maps.clat': [
-        None, try_and_error(validate_none, validate_float, validate_str),
-        'fmt key to specify the center latitude of the projection'],
-    # TODO: Implement the drawing of shape files on a map
-    # 'plotter.maps.lineshapes': [None, try_and_error(
-    #     validate_none, validate_dict, validate_str, validate_stringlist)],
-    'plotter.maps.grid_labels': [
-        None, validate_bool_maybe_none,
-        'fmt key to draw labels of the lat-lon-grid'],
-    'plotter.maps.grid_labelsize': [
-        12.0, validate_fontsize,
-        'fmt key to modify the fontsize of the lat-lon-grid labels'],
-    'plotter.maps.grid_color': [
-        'k', try_and_error(validate_none, validate_color),
-        'fmt key to modify the color of the lat-lon-grid'],
-    'plotter.maps.grid_settings': [
-        {}, validate_dict,
-        'fmt key for additional line properties for the lat-lon-grid'],
-    'plotter.maps.xgrid': [
-        True, validate_grid, 'fmt key for drawing meridians on the map'],
-    'plotter.maps.ygrid': [
-        True, validate_grid, 'fmt key for drawing parallels on the map'],
-    'plotter.maps.projection': [
-        'cyl', ProjectionValidator(
-            'projection', ['northpole', 'ortho', 'southpole', 'moll', 'geo',
-                           'robin', 'cyl'], True),
-        'fmt key to define the projection of the plot'],
-    'plotter.maps.transform': [
-        'cyl', ProjectionValidator(
-            'projection', ['northpole', 'ortho', 'southpole', 'moll', 'geo',
-                           'robin', 'cyl'], True),
-        'fmt key to define the native projection of the data'],
-    'plotter.maps.plot.min_circle_ratio': [
-        0.05, validate_float,
-        'fmt key to specify the min_circle_ratio that is used to mask very '
-        ' flat triangles in a triangular plot'],
-    'plotter.maps.lsm': [
-        True, try_and_error(validate_bool, validate_float),
-        'fmt key to draw a land sea mask'],
-    # TODO: Implement mask formatoption
-    # 'plotter.maps.mask': [None, lambda x: x],
-    'plotter.baseplotter.maskleq': [
-        None, try_and_error(validate_none, validate_float),
-        'fmt key to mask values less or equal than a certain threshold'],
-    'plotter.baseplotter.maskless': [
-        None, try_and_error(validate_none, validate_float),
-        'fmt key to mask values less than a certain threshold'],
-    'plotter.baseplotter.maskgreater': [
-        None, try_and_error(validate_none, validate_float),
-        'fmt key to mask values greater than a certain threshold'],
-    'plotter.baseplotter.maskgeq': [
-        None, try_and_error(validate_none, validate_float),
-        'fmt key to mask values greater than or equal to a certain threshold'],
-    'plotter.baseplotter.maskbetween': [
-        None, try_and_error(validate_none, validate_nseq_float(2)),
-        'fmt key to mask values between a certain range'],
-
-    # VectorPlot
-    'plotter.vector.plot': [
-        'quiver', try_and_error(validate_none, ValidateInStrings(
-            '2d plot', ['quiver', 'stream'], True)),
-        'fmt key for the plot type of vector plots'],
-    'plotter.vector.arrowsize': [
-        None, try_and_error(validate_none, validate_float),
-        'fmt key for the size of the arrows on vector plots'],
-    'plotter.vector.arrowstyle': [
-        '-|>', ValidateInStrings('arrowstyle', ArrowStyle._style_list),
-        'fmt key for the style of the arrows on stream plots'],
-    'plotter.vector.density': [
-        1.0, try_and_error(validate_float, validate_list(float, 2)),
-        'fmt key for the density of arrows on a vector plot'],
-    'plotter.vector.linewidth': [
-        None, LineWidthValidator('linewidth', ['absolute', 'u', 'v'], True),
-        'fmt key for the linewidths of the arrows'],
-    'plotter.vector.color': [
-        'k', try_and_error(validate_float, validate_color, ValidateInStrings(
-            'color', ['absolute', 'u', 'v'], True)),
-        'fmt key for the colors of the arrows'],
-
     # user defined plotter keys
     'plotter.user': [
         {}, validate_dict_yaml,
@@ -1825,38 +997,6 @@ defaultParams = {
     # data
     'datapath': [None, validate_path_exists, 'path for supplementary data'],
 
-    # default texts
-    'texts.labels': [{'tinfo': '%H:%M',
-                      'dtinfo': '%B %d, %Y. %H:%M',
-                      'dinfo': '%B %d, %Y',
-                      'desc': '%(long_name)s [%(units)s]',
-                      'sdesc': '%(name)s [%(units)s]'}, validate_dict,
-                     'labels that shall be replaced in TextBase formatoptions',
-                     ' (e.g. the title formatoption) when inserted within '
-                     'curly braces ({}))'],
-    'texts.default_position': [(1., 1.), validate_nseq_float(2),
-                               'default position for the text fmt key'],
-    'texts.delimiter': [', ', validate_str,
-                        'default delimiter to separate netCDF meta attributes '
-                        'when displayed on the plot'],
-    'ticks.which': ['major', ValidateInStrings(
-        'ticks.which', ['major', 'minor'], True),
-        'default tick that is used when using a x- or y-tick formatoption'],
-
-    # color lists for user-defined colormaps (see for example
-    # psyplot.plotter.colors._cmapnames)
-    'colors.cmaps': [
-        {}, validate_cmaps,
-        'User defined color lists that shall be accessible through the '
-        ':meth:`psyplot.plotter.colors.get_cmap` function'],
-
-    # yaml file that holds definitions of lonlatboxes
-    'lonlatbox.boxes': [
-        {}, validate_dict_yaml,
-        'longitude-latitude boxes that shall be accessible for the lonlatbox, '
-        'map_extent, etc. keywords. May be a dictionary or the path to a '
-        'yaml file'],
-
     # list settings
     'lists.auto_update': [True, validate_bool,
                           'default value (boolean) for the auto_update '
@@ -1884,25 +1024,20 @@ defaultParams = {
         ':attr:`psyplot.project.registered_plotters` for examples.'],
     }
 
-# add combinedplotter strings for windplot
-_subd = SubDict(defaultParams, ['plotter.vector.', 'plotter.plot2d.'])
-for _key in ['plot', 'cbar', 'cmap', 'bounds', 'cticksize', 'cbarspacing',
-             'ctickweight', 'ctickprops', 'clabel', 'cticks', 'cticklabels',
-             'clabelsize', 'clabelprops', 'clabelweight']:
-    defaultParams['plotter.combinedsimple.v%s' % _key] = _subd[_key]
-defaultParams['plotter.combinedsimple.plot'] = defaultParams[
-    'plotter.plot2d.plot']
-del _key, _subd
-
-
-_all_deprecated = []
-_deprecated_map = {}
-_deprecated_ignore_map = {}
-
 
 _rcparam_warn_str = ("Trying to set {key} to {value} via the {func} "
                      "method of RcParams which does not validate cleanly. ")
 
+
+_seq_err_msg = ('You must supply exactly {n:d} values, you provided '
+                '{num:d} values: {s}')
+
+
+_str_err_msg = ('You must supply exactly {n:d} comma-separated values, '
+                'you provided '
+                '{num:d} comma-separated values: {s}')
+
 #: :class:`~psyplot.config.rcsetup.RcParams` instance that stores default
 #: formatoptions and configuration settings.
 rcParams = RcParams(**{key: val[0] for key, val in defaultParams.items()})
+rcParams.load_from_file()
