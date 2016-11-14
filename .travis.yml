@@ -31,6 +31,7 @@ install:
   - 'ENVKEY=py"${TRAVIS_PYTHON_VERSION}"_mpl"${MPL_VERSION}"'
   - conda env create -f tests/envs/environment_$ENVKEY.yml
   - source activate psyplot_$ENVKEY
+  - pip install coveralls
   - python setup.py install
   # export the environment for debugging
   - conda env export -n psyplot_$ENVKEY
