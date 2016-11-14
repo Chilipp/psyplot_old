@@ -1,6 +1,6 @@
 """Test module of the basic functionality in the :mod:`psyplot.plotter` module
 """
-import _base_testing as bt
+import unittest
 from psyplot.plotter import Plotter, Formatoption, docstrings
 from psyplot.data import InteractiveArray
 
@@ -72,7 +72,7 @@ class TestPlotter(Plotter):
     fmt3 = SimpleFmt3('fmt3')
 
 
-class PlotterTest(bt.PsyPlotTestCase):
+class PlotterTest(unittest.TestCase):
     """TestCase for testing the Plotter-Formatoption framework"""
 
     def test_docstring(self):
@@ -112,4 +112,4 @@ class PlotterTest(bt.PsyPlotTestCase):
 
 
 if __name__ == '__main__':
-    bt.RefTestProgram()
+    unittest.main()
