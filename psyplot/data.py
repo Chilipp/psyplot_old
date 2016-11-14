@@ -1777,7 +1777,8 @@ class UGridDecoder(CFDecoder):
 
     @docstrings.dedent
     def get_x(self, var, coords=None):
-        """Get the centers of the triangles in the x-dimension
+        """
+        Get the centers of the triangles in the x-dimension
 
         Parameters
         ----------
