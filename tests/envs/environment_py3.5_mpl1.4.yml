@@ -1,0 +1,10 @@
+name: psyplot_py3.5_mpl1.4
+dependencies:
+    - python=3.5
+    - matplotlib=1.4
+    - dask
+    - xarray
+    - netCDF4
+    - seaborn
+    - pip:
+        - pytest
