@@ -27,7 +27,6 @@ from psyplot.data import (
     ArrayList, open_dataset, open_mfdataset, sort_kwargs, _MissingModule,
     to_netcdf, is_remote_url, Signal, CFDecoder, safe_list, InteractiveList)
 from psyplot.plotter import unique_everseen, Plotter
-from psyplot.plotter.colors import show_colormaps, get_cmap
 from psyplot.compat.pycompat import OrderedDict, range, getcwd
 try:
     from cdo import Cdo as _CdoBase
@@ -1818,101 +1817,7 @@ def register_plotter(identifier, module, plotter_name, sorter=True,
     return
 
 
-registered_plotters = {  # these plotters are automatically registered
-    'simple': {
-        'module': 'psyplot.plotter.simple',
-        'plotter_name': 'SimplePlotterBase',
-        'plot_func': False},
-    'lineplot': {
-        'module': 'psyplot.plotter.simple',
-        'plotter_name': 'LinePlotter',
-        'prefer_list': True,
-        'default_slice': None,
-        'summary': 'Make a line plot of one-dimensional data'},
-    'density': {
-        'module': 'psyplot.plotter.simple',
-        'plotter_name': 'DensityPlotter',
-        'prefer_list': False,
-        'default_slice': None,
-        'summary': 'Make a density plot of point data'},
-    'linreg': {
-        'module': 'psyplot.plotter.linreg',
-        'plotter_name': 'LinRegPlotter',
-        'prefer_list': True,
-        'default_slice': None,
-        'summary': 'Draw a fit from x to y'},
-    'densityreg': {
-        'module': 'psyplot.plotter.linreg',
-        'plotter_name': 'DensityRegPlotter',
-        'prefer_list': False,
-        'default_slice': None,
-        'summary': 'Make a density plot and draw a fit from x to y of points'},
-    'barplot': {
-        'module': 'psyplot.plotter.simple',
-        'plotter_name': 'BarPlotter',
-        'prefer_list': True,
-        'default_slice': None,
-        'summary': 'Make a bar plot of one-dimensional data'},
-    'violinplot': {
-        'module': 'psyplot.plotter.simple',
-        'plotter_name': 'ViolinPlotter',
-        'prefer_list': True,
-        'default_slice': None,
-        'summary': 'Make a violin plot of your data'},
-    'plot2d': {
-        'module': 'psyplot.plotter.simple',
-        'plotter_name': 'Simple2DPlotter',
-        'prefer_list': False,
-        'default_slice': 0,
-        'default_dims': {'x': slice(None), 'y': slice(None)},
-        'summary': 'Make a simple plot of a 2D scalar field'},
-    'vector': {
-        'module': 'psyplot.plotter.simple',
-        'plotter_name': 'SimpleVectorPlotter',
-        'prefer_list': False,
-        'default_slice': 0,
-        'default_dims': {'x': slice(None), 'y': slice(None)},
-        'summary': 'Make a simple plot of a 2D vector field',
-        'example_call': "filename, name=[['u_var', 'v_var']], ..."},
-    'combined': {
-        'module': 'psyplot.plotter.simple',
-        'plotter_name': 'CombinedSimplePlotter',
-        'prefer_list': True,
-        'default_slice': 0,
-        'default_dims': {'x': slice(None), 'y': slice(None)},
-        'summary': 'Plot a 2D scalar field with an overlying vector field',
-        'example_call': (
-            "filename, name=[['my_variable', ['u_var', 'v_var']]], ...")},
-    'maps': {
-        'module': 'psyplot.plotter.maps',
-        'plotter_name': 'MapPlotter',
-        'plot_func': False},
-    'mapplot': {
-        'module': 'psyplot.plotter.maps',
-        'plotter_name': 'FieldPlotter',
-        'prefer_list': False,
-        'default_slice': 0,
-        'default_dims': {'x': slice(None), 'y': slice(None)},
-        'summary': 'Plot a 2D scalar field on a map'},
-    'mapvector': {
-        'module': 'psyplot.plotter.maps',
-        'plotter_name': 'VectorPlotter',
-        'prefer_list': False,
-        'default_slice': 0,
-        'default_dims': {'x': slice(None), 'y': slice(None)},
-        'summary': 'Plot a 2D vector field on a map',
-        'example_call': "filename, name=[['u_var', 'v_var']], ..."},
-    'mapcombined': {
-        'module': 'psyplot.plotter.maps',
-        'plotter_name': 'CombinedPlotter',
-        'prefer_list': True,
-        'default_slice': 0,
-        'default_dims': {'x': slice(None), 'y': slice(None)},
-        'summary': ('Plot a 2D scalar field with an overlying vector field'
-                    'on a map'),
-        'example_call': (
-            "filename, name=[['my_variable', ['u_var', 'v_var']]], ...")},
-    }
+registered_plotters = {}
 
 registered_plotters.update(rcParams['project.plotters'])
 
