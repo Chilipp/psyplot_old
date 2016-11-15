@@ -2187,26 +2187,28 @@ class InteractiveBase(object):
 class InteractiveArray(InteractiveBase):
     """Interactive psyplot accessor for the data array
 
-    This class keeps reference to the base :class:`xarray.Dataset` where it
-    originates from and enables to switch between the coordinates in this
-    array. Furthermore it has a :attr:`plotter` attribute to enable interactive
-    plotting via an :class:`psyplot.plotter.Plotter` instance."""
+    This class keeps reference to the base :class:`xarray.Dataset` where the
+    :class:`array.DataArray` originates from and enables to switch between the
+    coordinates in the array. Furthermore it has a :attr:`plotter` attribute to
+    enable interactive plotting via an :class:`psyplot.plotter.Plotter`
+    instance."""
 
     @property
     def base(self):
         """Base dataset this instance gets its data from"""
         if self._base is None:
-            if 'variable' in self.dims:
+            if 'variable' in self.arr.dims:
                 def to_dataset(i):
                     return self.isel(variable=i).drop('variable').to_dataset(
-                        name=self.coords['variable'].values[i])
+                        name=self.arr.coords['variable'].values[i])
                 ds = to_dataset(0)
-                if len(self.coords['variable']) > 1:
-                    for i in range(1, len(self.coords['variable'])):
+                if len(self.arr.coords['variable']) > 1:
+                    for i in range(1, len(self.arr.coords['variable'])):
                         ds.merge(to_dataset(i), inplace=True)
                 self._base = ds
             else:
-                self._base = self.to_dataset(name=self.name or self.arr_name)
+                self._base = self.arr.to_dataset(
+                    name=self.arr.name or self.arr_name)
             self.onbasechange.emit()
         return self._base
 
@@ -2221,7 +2223,7 @@ class InteractiveArray(InteractiveBase):
         try:
             return self._decoder
         except AttributeError:
-            self._decoder = CFDecoder.get_decoder(self.base, self)
+            self._decoder = CFDecoder.get_decoder(self.base, self.arr)
         return self._decoder
 
     @decoder.setter
@@ -2236,7 +2238,7 @@ class InteractiveArray(InteractiveBase):
         array to an integer, slice or an array of integer that represent the
         coordinates in the :attr:`base` dataset"""
         if self._idims is None:
-            self._idims = self.decoder.get_idims(self)
+            self._idims = self.decoder.get_idims(self.arr)
         return self._idims
 
     @idims.setter
@@ -2308,11 +2310,9 @@ class InteractiveArray(InteractiveBase):
             The decoder of this object
         %(InteractiveBase.parameters)s
         """
-        base = kwargs.pop('base', None)
         if base is not None:
             self.base = base
-        self.idims = kwargs.pop('idims', None)
-        decoder = kwargs.pop('decoder', None)
+        self.idims = idims
         if decoder is not None:
             self.decoder = decoder
         super(InteractiveArray, self).__init__(*args, **kwargs)
