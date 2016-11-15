@@ -18,6 +18,7 @@ Subpackages
 
     psyplot.compat
     psyplot.config
+    psyplot.plotter
     psyplot.sphinxext
 
 Submodules
@@ -29,8 +30,6 @@ Submodules
    psyplot.docstring
    psyplot.gdal_store
    psyplot.main
-   psyplot.parser
-   psyplot.plotter
    psyplot.project
    psyplot.warning
 
