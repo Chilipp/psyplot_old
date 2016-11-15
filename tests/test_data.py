@@ -112,8 +112,9 @@ class DecoderTest(TestCase):
 
     def test_idims(self):
         ds = psyd.open_dataset(os.path.join(bt.test_dir, 'test-t2m-u-v.nc'))
-        arr = psyd.InteractiveArray(ds.t2m[1:, 1], base=ds)
-        dims = arr.idims
+        arr = ds.t2m[1:, 1]
+        arr.psy.init_accessor(base=ds)
+        dims = arr.psy.idims
         for dim in ['time', 'lev', 'lat', 'lon']:
             self.assertEqual(
                 psyd.safe_list(ds[dim][dims[dim]]),
