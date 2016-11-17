@@ -289,9 +289,12 @@ base rcParams dictionary."""
             except KeyError:
                 pass
         if not found:
-            raise
-        else:
-            raise KeyError("{0} does not match the specified pattern!".format(
+            try:
+                raise
+            # no active Exception found, error was already captured
+            except RuntimeError:
+                pass
+        raise KeyError("{0} does not match the specified pattern!".format(
                             key))
 
     def _iter_base_and_pattern(self, key):
