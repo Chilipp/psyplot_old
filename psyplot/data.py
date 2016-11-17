@@ -2323,7 +2323,10 @@ class InteractiveArray(InteractiveBase):
         if 'variable' in self.arr.coords:
             return (self.base.variables[name] for name in safe_list(
                 self.arr.coords['variable'].values.tolist()))
-        return iter([self.base.variables[self.arr.name]])
+        name = self.arr.name
+        if name is None:
+            return iter([self.arr._variable])
+        return iter([self.base.variables[name]])
 
     @property
     def base_variables(self):
@@ -2333,7 +2336,11 @@ class InteractiveArray(InteractiveBase):
             return OrderedDict([
                 (name, self.base.variables[name]) for name in safe_list(
                     self.arr.coords['variable'].values.tolist())])
-        return {self.arr.name: self.base.variables[self.arr.name]}
+        name = self.arr.name
+        if name is None:
+            return {name: self.arr._variable}
+        else:
+            return {self.arr.name: self.base.variables[self.arr.name]}
 
     docstrings.keep_params('setup_coords.parameters', 'dims')
 
