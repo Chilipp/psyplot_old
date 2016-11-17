@@ -3,6 +3,7 @@
 import unittest
 import os.path as osp
 from psyplot.compat.pycompat import OrderedDict
+import psyplot.data as psyd
 import xarray as xr
 from psyplot.plotter import Plotter, Formatoption, docstrings, rcParams
 from psyplot.config import setup_logging
@@ -216,6 +217,38 @@ class PlotterTest(unittest.TestCase):
         self.assertEqual(list(plotter._sorted_by_priority(
                              [plotter.fmt1, plotter.fmt2, plotter.fmt3])),
                          [plotter.fmt3, plotter.fmt2, plotter.fmt1])
+
+    def test_data_props_array(self):
+        """Test the data properties of Formatoptions with a DataArray"""
+        data = xr.DataArray([])
+        plot_data = data.copy(True)
+        plotter = TestPlotter(data)
+        plotter.plot_data = plot_data
+
+        self.assertIs(plotter.fmt1.raw_data, data)
+        self.assertIs(plotter.fmt1.data, plot_data)
+
+    def test_data_props_list(self):
+        """Test the data properties of Formatoptions with an InteractiveList"""
+        data = psyd.InteractiveList([xr.DataArray([]), xr.DataArray([])])
+        plot_data = data.copy(True)
+        plot_data.extend([xr.DataArray([]), xr.DataArray([])],
+                         new_name=True)
+        plotter = TestPlotter(data)
+        plotter.plot_data = plot_data
+        plot_data = plotter.plot_data  # the data might have been copied
+
+        self.assertIs(plotter.fmt1.raw_data, data)
+        self.assertIs(plotter.fmt1.data, plot_data)
+
+        # test with index in list
+        plotter.fmt1.index_in_list = 1
+        self.assertIs(plotter.fmt1.raw_data, data[1])
+        self.assertIs(plotter.fmt1.data, plot_data[1])
+
+        # test with index in list of plot_data outside raw_data
+        plotter.fmt1.index_in_list = 3
+        self.assertIs(plotter.fmt1.data, plot_data[3])
 
 
 if __name__ == '__main__':
