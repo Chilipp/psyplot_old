@@ -275,13 +275,16 @@ class Formatoption(object):
             else:
                 return self.plotter.plot_data_decoder
         data = self.raw_data
-        if isinstance(data, InteractiveList):
-            return data[0].decoder
-        return data.decoder
+        check = isinstance(data, InteractiveList)
+        while check:
+            data = data[0]
+            check = isinstance(data, InteractiveList)
+        return data.psy.decoder
 
     @decoder.setter
     def decoder(self, value):
         # we do not modify the raw data but instead set it on the plotter
+        # TODO: This is not safe for encapsulated InteractiveList instances!
         if self.index_in_list is not None and isinstance(
                 self.plotter.plot_data, InteractiveList):
             n = len(self.plotter.plot_data)
@@ -753,18 +756,18 @@ class Plotter(dict):
         """A mapping from the base_variable names to the variables"""
         if isinstance(self.data, InteractiveList):
             return dict(chain(*map(
-                lambda arr: six.iteritems(arr.base_variables),
+                lambda arr: six.iteritems(arr.psy.base_variables),
                 self.data)))
         else:
-            return self.data.base_variables
+            return self.data.psy.base_variables
 
     @property
     def iter_base_variables(self):
         """A mapping from the base_variable names to the variables"""
         if isinstance(self.data, InteractiveList):
-            return chain(*(arr.iter_base_variables for arr in self.data))
+            return chain(*(arr.psy.iter_base_variables for arr in self.data))
         else:
-            return self.data.iter_base_variables
+            return self.data.psy.iter_base_variables
 
     no_auto_update = property(_no_auto_update_getter,
                               doc=_no_auto_update_getter.__doc__)
@@ -856,7 +859,7 @@ class Plotter(dict):
     def logger(self):
         """:class:`logging.Logger` of this plotter"""
         try:
-            return self.data.logger.getChild(self.__class__.__name__)
+            return self.data.psy.logger.getChild(self.__class__.__name__)
         except AttributeError:
             name = '%s.%s' % (self.__module__, self.__class__.__name__)
             return logging.getLogger(name)
@@ -1061,7 +1064,7 @@ class Plotter(dict):
             return
         self.no_auto_update = not (
             not self.no_auto_update or not data.no_auto_update)
-        data.plotter = self
+        data.psy.plotter = self
         if not make_plot:  # stop here if we shall not plot
             return
         self.logger.debug("Initializing plot...")
