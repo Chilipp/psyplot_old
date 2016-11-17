@@ -294,6 +294,9 @@ base rcParams dictionary."""
             # no active Exception found, error was already captured
             except RuntimeError:
                 pass
+            except TypeError:  # python2 gives a TypeError instead
+                if not six.PY2:
+                    raise
         raise KeyError("{0} does not match the specified pattern!".format(
                             key))
 
