@@ -69,6 +69,7 @@ class SubDictTest(unittest.TestCase):
 class RcParamsTest(unittest.TestCase):
     """Test the functionality of RcParams"""
 
+    @unittest.skipIf(six.PY2, "Missing necessary unittest methods")
     def test_dump(self):
         """Test the dumping of the rcParams"""
         rc = RcParams(defaultParams={
@@ -118,17 +119,32 @@ class RcParamsTest(unittest.TestCase):
         rc.update_from_defaultParams()
         self.assertEqual(rc.find_all('other'), {'some.other_test': 2})
 
+    @unittest.skipIf(six.PY2, "Missing necessary unittest methods")
     def test_plugin(self):
         """Test whether the plugin interface works"""
+
         try:
-            import psyplot_test
+            from psyplot_test.plugin import rcParams as test_rc
         except ImportError:
             self.skipTest("Could not install the psyplot_test package")
-        else:
-            rc = psyplot.rcParams.copy()
-            rc.load_plugins('psyplot_test')
-            self.assertIn('test', rc)
-            self.assertEqual(rc['test'], 1)
+            return
+        rc = psyplot.rcParams.copy()
+        rc.load_plugins('psyplot_test')
+        self.assertIn('test', rc)
+        self.assertEqual(rc['test'], 1)
+        with self.assertRaisesRegex(
+                ImportError, "plotters have already been defined"):
+            rc.load_plugins('psyplot_test', True)
+        plotters = test_rc.pop('project.plotters')
+        try:
+            with self.assertRaisesRegex(
+                    ImportError, "default keys have already been defined"):
+                rc.load_plugins('psyplot_test', True)
+        except:
+            raise
+        finally:
+            test_rc['project.plotters'] = plotters
+
 
 
 if __name__ == '__main__':
