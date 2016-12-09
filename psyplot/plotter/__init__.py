@@ -22,7 +22,7 @@ from psyplot.config.rcsetup import defaultParams, SubDict
 from psyplot.docstring import docstrings, dedent
 from psyplot.data import (
     InteractiveList, _TempBool, _no_auto_update_getter, check_key,
-    unique_everseen, _temp_bool_prop)
+    unique_everseen, _temp_bool_prop, CFDecoder)
 
 #: the default function to use when printing formatoption infos (the default is
 #: use print or in the gui, use the help explorer)
@@ -292,6 +292,9 @@ class Formatoption(object):
             decoders[self.index_in_list] = value
             self.plotter.plot_data_decoder = decoders
         else:
+            if (isinstance(self.plotter.plot_data, InteractiveList) and
+                    isinstance(value, CFDecoder)):
+                value = [value] * len(self.plotter.plot_data)
             self.plotter.plot_data_decoder = value
 
     @property
