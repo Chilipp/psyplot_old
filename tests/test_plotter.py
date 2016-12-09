@@ -250,6 +250,59 @@ class PlotterTest(unittest.TestCase):
         plotter.fmt1.index_in_list = 3
         self.assertIs(plotter.fmt1.data, plot_data[3])
 
+    def test_decoder(self):
+        """Test the decoder property of Formatoptions with a DataArray"""
+        data = xr.DataArray([])
+        data.psy.init_accessor(decoder=psyd.CFDecoder(data.psy.base))
+        plot_data = data.copy(True)
+        plotter = TestPlotter(data)
+        plotter.plot_data = plot_data
+
+        self.assertIsInstance(plotter.fmt1.decoder, psyd.CFDecoder)
+        self.assertIs(plotter.fmt1.decoder, data.psy.decoder)
+
+        # test with index in list of plot_data outside raw_data
+        plotter.plot_data_decoder = decoder = psyd.CFDecoder(data.psy.base)
+        self.assertIsInstance(plotter.fmt1.decoder, psyd.CFDecoder)
+        self.assertIs(plotter.fmt1.decoder, decoder)
+
+    def test_decoder_list(self):
+        """Test the decoder property with an InteractiveList"""
+        data = psyd.InteractiveList([xr.DataArray([]), xr.DataArray([])])
+        plot_data = data.copy(True)
+        plot_data.extend([xr.DataArray([]), xr.DataArray([])],
+                         new_name=True)
+        for arr in data:
+            arr.psy.init_accessor(decoder=psyd.CFDecoder(arr.psy.base))
+        plotter = TestPlotter(data)
+        plotter.plot_data = plot_data
+        plot_data = plotter.plot_data  # the data might have been copied
+
+        self.assertIsInstance(plotter.fmt1.decoder, psyd.CFDecoder)
+        self.assertIs(plotter.fmt1.decoder, data[0].psy.decoder)
+
+        # test with index in list
+        plotter.fmt1.index_in_list = 1
+        self.assertIsInstance(plotter.fmt1.decoder, psyd.CFDecoder)
+        self.assertIs(plotter.fmt1.decoder, data[1].psy.decoder)
+
+        # test without index in list
+        decoder = psyd.CFDecoder(data[0].psy.base)
+        plotter.fmt2.decoder = decoder
+        for i, d2 in enumerate(plotter.plot_data_decoder):
+            self.assertIs(d2, decoder,
+                          msg='Decoder %i has been set wrong!' % i)
+
+        # test with index in list of plot_data outside raw_data
+        plotter.fmt1.index_in_list = 3
+        decoder2 = psyd.CFDecoder(data[0].psy.base)
+        plotter.fmt1.decoder = decoder2
+        for i, d2 in enumerate(plotter.plot_data_decoder):
+            self.assertIs(d2, decoder if i != 3 else decoder2,
+                          msg='Decoder %i has been set wrong!' % i)
+        self.assertIsInstance(plotter.fmt1.decoder, psyd.CFDecoder)
+        self.assertIs(plotter.fmt1.decoder, plotter.plot_data_decoder[3])
+
 
 if __name__ == '__main__':
     unittest.main()
