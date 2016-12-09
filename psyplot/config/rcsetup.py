@@ -352,9 +352,10 @@ class RcParams(dict):
     @property
     def validate(self):
         """Dictionary with validation methods as values"""
+        depr = self._all_deprecated
         return dict((key, val[1]) for key, val in
                     six.iteritems(self.defaultParams)
-                    if key not in self._all_deprecated)
+                    if key not in depr)
 
     @property
     def descriptions(self):
@@ -375,6 +376,10 @@ environment variable."""
     _connections = defaultdict(list)
 
     @property
+    def _all_deprecated(self):
+        return set(chain(self._deprecated_ignore_map, self._deprecated_map))
+
+    @property
     def defaultParams(self):
         return getattr(self, '_defaultParams', defaultParams)
 
@@ -384,7 +389,22 @@ environment variable."""
 
     # validate values on the way in
     def __init__(self, *args, **kwargs):
-        self._all_deprecated = []
+        """
+        Parameters
+        ----------
+        defaultParams: dict
+            The defaultParams to use (see the :attr:`defaultParams` attribute).
+            By default, the :attr:`psyplot.config.rcsetup.defaultParams`
+            dictionary is used
+
+        Other Parameters
+        ----------------
+        ``*args, **kwargs``
+            Any key-value pair for the initialization of the dictionary
+        """
+        defaultParams = kwargs.pop('defaultParams', None)
+        if defaultParams is not None:
+            self.defaultParams = defaultParams
         self._deprecated_map = {}
         self._deprecated_ignore_map = {}
         for k, v in six.iteritems(dict(*args, **kwargs)):
@@ -452,6 +472,12 @@ environment variable."""
                 warn(_rcparam_warn_str.format(key=repr(k), value=repr(v),
                                               func='update'))
                 dict.__setitem__(self, k, v)
+
+    def update_from_defaultParams(self, defaultParams=None):
+        """Update from the a dictionary like the :attr:`defaultParams`"""
+        if defaultParams is None:
+            defaultParams = self.defaultParams
+        self.update({key: val[0] for key, val in defaultParams.items()})
 
     def __repr__(self):
         import pprint
@@ -574,13 +600,14 @@ environment variable."""
                 self.update(yaml.load(f))
 
     def dump(self, fname=None, overwrite=True, include_keys=None,
-             exclude_keys=['project.plotters'], include_descriptions=True):
+             exclude_keys=['project.plotters'], include_descriptions=True,
+             **kwargs):
         """Dump this instance to a yaml file
 
         Parameters
         ----------
         fname: str or None
-            file name to write to. If Non, the string that would be written
+            file name to write to. If None, the string that would be written
             to a file is returned
         overwrite: bool
             If True and `fname` already exists, it will be overwritten
@@ -589,6 +616,11 @@ environment variable."""
             included
         exclude_keys: list of str
             Keys from the :class:`RcParams` instance to be excluded
+
+        Other Parameters
+        ----------------
+        ``**kwargs``
+            Any other parameter for the :func:`yaml.dump` function
 
         Returns
         -------
@@ -608,7 +640,8 @@ environment variable."""
             raise IOError(
                 '%s already exists! Set overwrite=True to overwrite it!' % (
                     fname))
-        kwargs = dict(encoding='utf-8') if six.PY2 else {}
+        if six.PY2:
+            kwargs.setdefault('encoding', 'utf-8')
         d = {key: val for key, val in six.iteritems(self) if (
                 include_keys is None or key in include_keys) and
              key not in exclude_keys}
@@ -616,9 +649,10 @@ environment variable."""
             s = yaml.dump(d, **kwargs)
             desc = self.descriptions
             i = 2
-            lines = ['\n'.join('# ' + l for l in self.HEADER.splitlines()),
-                     '\nCreated with python\n%s\n\n' % sys.version] + \
-                s.splitlines()
+            header = self.HEADER.splitlines() + [
+                '', 'Created with python', ''] + sys.version.splitlines() + [
+                    '', '']
+            lines = ['# ' + l for l in header] + s.splitlines()
             for l in lines[2:]:
                 key = l.split(':')[0]
                 if key in desc:
@@ -638,7 +672,7 @@ environment variable."""
                 yaml.dump(d, f, **kwargs)
         return None
 
-    def load_plugins(self, group):
+    def load_plugins(self, group='psyplot', raise_error=False):
         """
         Load the plotters and defaultParams from the plugins
 
@@ -651,6 +685,9 @@ environment variable."""
         ----------
         group: str
             The group of the entry point
+        raise_error: bool
+            If True, an error is raised when multiple plugins define the same
+            plotter or rcParams key. Otherwise only a warning is raised
 
         Returns
         -------
@@ -660,16 +697,18 @@ environment variable."""
         from pkg_resources import iter_entry_points
         import logging
         logger = logging.getLogger(__name__)
-        plotters = {}
+        plotters = self['project.plotters']
         def_plots = {}
         defaultParams = self.defaultParams
         def_keys = {'default': defaultParams}
-        # -- load plotters
-        for ep in iter_entry_points(group=group, name='plotters'):
+
+        for ep in iter_entry_points(group=group, name='rcParams'):
             logger.debug('Loading entrypoint %s', ep)
-            d = ep.load()
-            # -- check for intersection within the other plugins
-            already_defined = set(plotters).intersection(d)
+            rc = ep.load()
+
+            # load the plotters
+            plugin_plotters = rc.get('project.plotters', {})
+            already_defined = set(plotters).intersection(plugin_plotters)
             if already_defined:
                 msg = ("Error while loading psyplot plugin %s! The "
                        "following plotters have already been "
@@ -678,18 +717,16 @@ environment variable."""
                     (('%s by %s' % (key, plugin)
                       for plugin, keys in def_plots.items() if key in keys)
                      for key in already_defined)))
-                raise ImportError(msg)
+                if raise_error:
+                    raise ImportError(msg)
+                else:
+                    warn(msg)
+            plotters.update(plugin_plotters)
 
-            # if everything's okay, update the plotter plugins
-            plotters.update(d)
-            def_plots[ep] = d
-
-        # -- load defaultParams
-        for ep in iter_entry_points(group=group, name='defaultParams'):
-            logger.debug('Loading entrypoint %s', ep)
-            d = ep.load()
-            # -- check for intersection within the other plugins
-            already_defined = set(defaultParams).intersection(d)
+            # load the defaultParams keys
+            plugin_defaultParams = rc.defaultParams
+            already_defined = set(defaultParams).intersection(
+                plugin_defaultParams) - {'project.plotters'}
             if already_defined:
                 msg = ("Error while loading psyplot plugin %s! The "
                        "following default keys have already been "
@@ -698,14 +735,25 @@ environment variable."""
                     (('%s by %s' % (key, plugin)
                       for plugin, keys in def_keys.items() if key in keys)
                      for key in already_defined)))
-                raise ImportError(msg)
+                if raise_error:
+                    raise ImportError(msg)
+                else:
+                    warn(msg)
+            update_keys = set(plugin_defaultParams) - {'project.plotters'}
+            def_keys[ep] = update_keys
+            self.defaultParams.update(
+                {key: plugin_defaultParams[key] for key in update_keys})
 
-            # if everything's okay, update the defaultParams and set the items
-            self.defaultParams.update(d)
-            for key, t in six.iteritems(d):
-                self[key] = t[0]
-            def_keys[ep] = d
-        return plotters
+            # load the rcParams (without validation)
+            super(RcParams, self).update({key: rc[key] for key in update_keys})
+
+            # add the deprecated keys
+            self._deprecated_ignore_map.update(rc._deprecated_ignore_map)
+            self._deprecated_map.update(rc._deprecated_map)
+
+    def copy(self):
+        """Make sure, the right class is retained"""
+        return RcParams(self)
 
 
 def psyplot_fname(env_key='PSYPLOTRC', fname='psyplotrc.yaml'):
@@ -1045,5 +1093,6 @@ _str_err_msg = ('You must supply exactly {n:d} comma-separated values, '
 
 #: :class:`~psyplot.config.rcsetup.RcParams` instance that stores default
 #: formatoptions and configuration settings.
-rcParams = RcParams(**{key: val[0] for key, val in defaultParams.items()})
+rcParams = RcParams()
+rcParams.update_from_defaultParams()
 rcParams.load_from_file()

@@ -65,7 +65,7 @@ def setup_logging(default_path=None, default_level=logging.INFO,
     Function taken from
     http://victorlin.me/posts/2012/08/26/good-logging-practice-in-python"""
     path = default_path or os.path.join(
-        os.path.dirname(__file__), 'logging.yaml')
+        os.path.dirname(__file__), 'logging.yml')
     value = os.getenv(env_key, None)
     home = _get_home()
     if value:
