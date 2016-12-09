@@ -84,6 +84,7 @@ Documentation
     api/psyplot
     examples/index
     todos
+    changelog
 
 
 Acknowledgment
