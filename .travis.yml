@@ -29,6 +29,8 @@ install:
   - conda env create -f tests/envs/environment_$ENVKEY.yml
   - source activate psyplot_$ENVKEY
   - pip install coveralls
+  # install the test plugin
+  - cd tests/psyplot_test && python setup.py install && cd ../../
   - python setup.py install
   # export the environment for debugging
   - conda env export -n psyplot_$ENVKEY
