@@ -884,20 +884,12 @@ def validate_dict(d):
     try:
         return dict(d)
     except TypeError:
+        d = validate_path_exists(d)
         try:
-            d = validate_path_exists(d)
-            return dict(yaml.load(d))
+            with open(d) as f:
+                return dict(yaml.load(f))
         except:
-            raise ValueError("Could not convert to dictionary!")
-
-
-def validate_dict_yaml(s):
-    if isinstance(s, dict):
-        return s
-    validate_path_exists(s)
-    if s is not None:
-        with open(s) as f:
-            return yaml.load(f)
+            raise ValueError("Could not convert {} to dictionary!".format(d))
 
 
 def validate_bool_maybe_none(b):
@@ -906,12 +898,7 @@ def validate_bool_maybe_none(b):
         b = b.lower()
     if b is None or b == 'none':
         return None
-    if b in ('t', 'y', 'yes', 'on', 'true', '1', 1, True):
-        return True
-    elif b in ('f', 'n', 'no', 'off', 'false', '0', 0, False):
-        return False
-    else:
-        raise ValueError('Could not convert "%s" to boolean' % b)
+    return validate_bool(b)
 
 
 def validate_bool(b):
@@ -964,37 +951,9 @@ def validate_stringlist(s):
         return [six.text_type(v.strip()) for v in s.split(',') if v.strip()]
     else:
         try:
-            return [six.text_type(v) for v in s if v]
+            return list(map(validate_str, s))
         except TypeError as e:
             raise ValueError(e.message)
-
-
-class validate_nseq_float(object):
-    """Validate a list of `n` floats
-    """
-    def __init__(self, n):
-        """
-        Parameters
-        ----------
-        n: int
-            The length of the sequence"""
-        self.n = n
-
-    def __call__(self, s):
-        """return a seq of n floats or raise"""
-        if isinstance(s, six.string_types):
-            s = s.split(',')
-            err_msg = _str_err_msg
-        else:
-            err_msg = _seq_err_msg
-
-        if len(s) != self.n:
-            raise ValueError(err_msg.format(n=self.n, num=len(s), s=s))
-
-        try:
-            return [float(val) for val in s]
-        except ValueError:
-            raise ValueError('Could not convert all entries to floats')
 
 
 def validate_stringset(*args, **kwargs):
@@ -1019,7 +978,7 @@ def validate_stringset(*args, **kwargs):
 defaultParams = {
     # user defined plotter keys
     'plotter.user': [
-        {}, validate_dict_yaml,
+        {}, validate_dict,
         dedents("""
         formatoption keys and values that are defined by the user to be used by
         the specified plotters. For example to modify the title of all
