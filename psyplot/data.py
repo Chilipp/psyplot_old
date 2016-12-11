@@ -368,7 +368,7 @@ def is_slice(arr):
         return slice(arr[0], arr[0] + 1)
     step = np.unique(arr[1:] - arr[:-1])
     if len(step) == 1:
-        return slice(arr[0], arr[-1] + 1, step[0])
+        return slice(arr[0], arr[-1] + step, step[0])
 
 
 def get_index_from_coord(coord, base_index):
@@ -674,10 +674,10 @@ class CFDecoder(object):
 
     def __init__(self, ds=None, x=None, y=None, z=None, t=None):
         self.ds = ds
-        self.x = rcParams['decoder.x'] if x is None else set(x)
-        self.y = rcParams['decoder.y'] if x is None else set(y)
-        self.z = rcParams['decoder.z'] if x is None else set(z)
-        self.t = rcParams['decoder.t'] if x is None else set(t)
+        self.x = rcParams['decoder.x'].copy() if x is None else set(x)
+        self.y = rcParams['decoder.y'].copy() if x is None else set(y)
+        self.z = rcParams['decoder.z'].copy() if x is None else set(z)
+        self.t = rcParams['decoder.t'].copy() if x is None else set(t)
 
     @staticmethod
     def register_decoder(decoder_class, pos=0):
@@ -928,6 +928,12 @@ class CFDecoder(object):
             The coordinate for `var` that matches the given `axis` or None if
             no coordinate with the right `axis` could be found.
 
+        Notes
+        -----
+        This is a rather low-level function that only interpretes the
+        CFConvention. It is used by the :meth:`get_x`,
+        :meth:`get_y`, :meth:`get_z` and :meth:`get_t` methods
+
         Warning
         -------
         If None of the coordinates have an ``'axis'`` attribute, we use the
@@ -943,11 +949,10 @@ class CFDecoder(object):
         See Also
         --------
         get_x, get_y, get_z, get_t"""
-
-        if not isinstance(axis, six.string_types) or not axis:
+        axis = axis.lower()
+        if axis not in list('xyzt'):
             raise ValueError("Axis must be one of X, Y, Z, T, not {0}".format(
                 axis))
-        axis = axis.lower()
         # we first check for the dimensions and then for the coordinates
         # attribute
         coords = coords or self.ds.coords
@@ -956,17 +961,20 @@ class CFDecoder(object):
             return
         for coord in map(lambda dim: coords[dim], filter(
                 lambda dim: dim in coords, chain(
-                    var.dims, coord_names))):
-            if coord.attrs.get('axis', '').lower() == axis:
+                    coord_names, var.dims))):
+            # check for the axis attribute or whether the coordinate is in the
+            # list of possible coordinate names
+            if (coord.attrs.get('axis', '').lower() == axis or
+                    coord.name in getattr(self, axis)):
                 return coord
-        # If the coordinates is specified but the coordinate
+        # If the coordinates attribute is specified but the coordinate
         # variables themselves have no 'axis' attribute, we interpret the
         # coordinates such that x: -1, y: -2, z: -3
         # Since however the CF Conventions do not determine the order on how
         # the coordinates shall be saved, we try to use a pattern matching
         # for latitude and longitude. This is not very nice, hence it is
         # better to specify the :attr:`x` and :attr:`y` attribute
-        tname = next(iter(self.t.intersection(coord_names)), None)
+        tnames = self.t.intersection(coord_names)
         if axis == 'x':
             for cname in filter(lambda cname: re.search('lon', cname),
                                 coord_names):
@@ -978,9 +986,14 @@ class CFDecoder(object):
                 return coords[cname]
             return coords.get(coord_names[-2])
         elif (axis == 'z' and len(coord_names) >= 3 and
-              coord_names[-3] != tname):
+              coord_names[-3] not in tnames):
             return coords.get(coord_names[-3])
-        elif axis == 't' and tname:
+        elif axis == 't' and tnames:
+            tname = next(iter(tnames))
+            if len(tnames) > 1:
+                warn("Found multiple matches for time coordinate in the "
+                     "coordinates: %s. I use %s" % (', '.join(tnames), tname),
+                     PsyPlotRuntimeWarning)
             return coords.get(tname)
 
     @docstrings.get_sectionsf("CFDecoder.get_x", sections=[
@@ -1581,7 +1594,12 @@ class CFDecoder(object):
         var: xarray.Variable
             The variable to use the dimensions of
         dims: dict
-            The dictionary to use for replacing the original dimensions"""
+            The dictionary to use for replacing the original dimensions
+
+        Returns
+        -------
+        dict
+            The dictionary with replaced dimensions"""
         dims = dict(dims)
         name_map = {self.get_xname(var, self.ds.coords): 'x',
                     self.get_yname(var, self.ds.coords): 'y',
@@ -2049,22 +2067,6 @@ class InteractiveBase(object):
             if queue is not None:
                 for i in range(n):
                     queue.task_done()
-
-    def interactive_plot(self, plotter=None):
-        """Makes the interactive plot
-
-        Parameters
-        ----------
-        plotter: Plotter
-            Interactive plotter that makes the plot via formatoption keywords.
-            If None, whatever is found in the :attr:`plotter` attribute is
-            used.
-        """
-        self.plotter = plotter or self.plotter
-        if self.plotter is None:
-            raise ValueError(
-                "Found no plotter in the InteractiveArray instance!")
-        self.plotter.initialize_plot(self)
 
     @docstrings.get_sectionsf('InteractiveBase._register_update')
     @dedent
@@ -3284,10 +3286,11 @@ class ArrayList(list):
             Otherwise the :meth:`xarray.DataArray.coords` attribute is used.
         ``**attrs``
             Parameters may be any attribute of the arrays in this instance.
-            Values may be iterables (e.g. lists) of the attributes to consider.
-            If the value is a string, it will be put into a list."""
+            Values may be iterables (e.g. lists) of the attributes to consider
+            or callable functions that accept the attribute as a value. If the
+            value is a string, it will be put into a list."""
         def safe_item_list(key, val):
-            return key, safe_list(val)
+            return key, val if callable(val) else safe_list(val)
 
         def filter_list(arr):
             other_attrs = attrs.copy()
@@ -3313,16 +3316,19 @@ class ArrayList(list):
                             attr = getattr(arr, key)
                         except AttributeError:
                             return False
+                    if np.ndim(attr):  # do not filter for multiple items
+                        return False
                     if hasattr(arr.psy, 'decoder') and (
-                            arr[attr].name == tname):
+                            attr.name == tname):
                         try:
                             vals = np.asarray(vals, dtype=np.datetime64)
                         except ValueError:
                             pass
                         else:
                             return attr.values.astype(vals.dtype) in vals
+                    if callable(vals):
+                        return vals(attr)
                     return getattr(attr, 'values', attr) in vals
-
                 return all(
                     check_values(arr, key, val)
                     for key, val in six.iteritems(
@@ -3333,12 +3339,16 @@ class ArrayList(list):
                 if key == 'arr_name':
                     attr = arr.psy.arr_name
                 elif key in arr.coords:
-                    attr = arr.idims[key]
+                    attr = arr.psy.idims[key]
                 else:
                     try:
                         attr = getattr(arr, key)
                     except AttributeError:
                         return False
+                if np.ndim(attr):  # do not filter for multiple items
+                    return False
+                if callable(vals):
+                    return vals(attr)
                 return attr in vals
 
             def filter_by_attrs(arr):
