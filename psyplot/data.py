@@ -2722,17 +2722,21 @@ class ArrayList(list):
             that hold a reference to the given `base`"""
         def iter_dims(dims):
             """Split the given dictionary into multiples and iterate over it"""
-            dims = OrderedDict(dims)
-            keys = dims.keys()
-            for vals in zip(*map(cycle, map(safe_list, dims.values()))):
-                yield dict(zip(keys, vals))
+            if not dims:
+                while 1:
+                    yield {}
+            else:
+                dims = OrderedDict(dims)
+                keys = dims.keys()
+                for vals in zip(*map(cycle, map(safe_list, dims.values()))):
+                    yield dict(zip(keys, vals))
 
         def recursive_selection(key, dims, names):
             names = safe_list(names)
             if len(names) > 1 and prefer_list:
                 keys = ('arr%i' % i for i in range(len(names)))
-                return InteractiveList(starmap(
-                    sel_method, zip(keys, iter_dims(dims), names)),
+                return InteractiveList(
+                    starmap(sel_method, zip(keys, iter_dims(dims), names)),
                     auto_update=auto_update, arr_name=key)
             elif len(names) > 1:
                 return sel_method(key, dims, tuple(names))
@@ -2826,6 +2830,7 @@ class ArrayList(list):
             else:  # put everything into one single interactive list
                 instance = cls([InteractiveList(instance, attrs=base.attrs,
                                                 auto_update=auto_update)])
+                instance[0].psy.arr_name = instance[0][0].psy.arr_name
         if attrs is not None:
             for arr in instance:
                 arr.attrs.update(attrs)
@@ -3295,7 +3300,9 @@ class ArrayList(list):
         def filter_list(arr):
             other_attrs = attrs.copy()
             arr_names = other_attrs.pop('arr_name', None)
-            return ((arr_names is None or arr.psy.arr_name in arr_names) and
+            return ((arr_names is None or (
+                        arr_names(arr.psy.arr_name) if callable(arr_names)
+                        else arr.psy.arr_name in arr_names)) and
                     len(arr) == len(arr(types=types, method=method,
                                         **other_attrs)))
         if not attrs:
@@ -3563,6 +3570,37 @@ class ArrayList(list):
                 return
         raise ValueError(
             "No array found with name {0}".format(name))
+
+
+@xr.register_dataset_accessor('psy')
+class DatasetAccessor(object):
+    """A dataset accessor to interface with the psyplot package"""
+
+    def __init__(self, ds):
+        self.ds = ds
+
+    @docstrings.dedent
+    def create_list(self, *args, **kwargs):
+        """
+        Create a :class:`psyplot.data.ArrayList` with arrays from this dataset
+
+        Parameters
+        ----------
+        %(ArrayList.from_dataset.parameters)s
+
+        Other Parameters
+        ----------------
+        %(ArrayList.from_dataset.other_parameters)s
+
+        Returns
+        -------
+        %(ArrayList.from_dataset.returns)s
+
+        See Also
+        --------
+        psyplot.data.ArrayList.from_dataset"""
+        return ArrayList.from_dataset(self.ds, *args, **kwargs)
+
 
 
 class InteractiveList(ArrayList, InteractiveBase):
