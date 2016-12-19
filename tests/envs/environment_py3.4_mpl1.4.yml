@@ -1,4 +1,6 @@
 name: psyplot_py3.4_mpl1.4
+channels:
+    - conda-forge
 dependencies:
     - python=3.4
     - matplotlib=1.4

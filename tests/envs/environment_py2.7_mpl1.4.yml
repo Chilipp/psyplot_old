@@ -1,5 +1,5 @@
 name: psyplot_py2.7_mpl1.4
-channel:
+channels:
     - conda-forge
 dependencies:
     - python=2.7
