@@ -709,8 +709,9 @@ class AbsoluteTimeTest(unittest.TestCase):
         with nc.Dataset(fname) as nco:
             self.assertAlmostArrayEqual(
                 nco.variables['time'][:], [19790101.5, 19790101.75,
-                                           19790101.75 + 30 / (24 * 60.)],
+                                           19790101.75 + 30.0 / (24.0 * 60.)],
                 rtol=0, atol=1e-5)
+            print(nco.variables['time'][:], 19790101.75 + 30.0 / (24.0 * 60.))
             self.assertEqual(nco.variables['time'].units, 'day as %Y%m%d.%f')
         return fname
 
