@@ -750,6 +750,7 @@ class FilenamesTest(unittest.TestCase):
         ds.close()
         ds2.close()
 
+    @unittest.skipIf(not with_nio, 'Nio module not installed')
     def test_nio(self):
         self._test_engine('pynio')
 
