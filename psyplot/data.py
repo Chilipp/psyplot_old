@@ -14,7 +14,7 @@ from xarray.core.formatting import first_n_items, format_item
 import xarray.backends.api as xarray_api
 from pandas import to_datetime
 import numpy as np
-from datetime import datetime, timedelta
+import datetime as dt
 import logging
 from psyplot.config.rcsetup import rcParams, safe_list
 from psyplot.docstring import dedent, docstrings, dedents
@@ -443,7 +443,6 @@ def get_tdata(t_format, files):
     def median(arr):
         return arr.min() + (arr.max() - arr.min())/2
     import re
-    import datetime as dt
     from pandas import Index
     t_pattern = t_format
     for fmt, patt in t_patterns.items():
@@ -486,10 +485,11 @@ def to_netcdf(ds, *args, **kwargs):
         if units == 'day as %Y%m%d.%f' and np.issubdtype(
                 obj.dtype, np.datetime64):
             to_update[v] = xr.Variable(
-                obj.dims, AbsoluteTimeEncoder(obj), attrs=obj.attrs,
+                obj.dims, AbsoluteTimeEncoder(obj), attrs=obj.attrs.copy(),
                 encoding=obj.encoding)
+            to_update[v].attrs['units'] = units
     if to_update:
-        ds = ds.update(to_update)
+        ds = ds.update(to_update, inplace=False)
     return xarray_api.to_netcdf(ds, *args, **kwargs)
 
 
@@ -3784,8 +3784,11 @@ def _open_ds_from_store(fname, store_mod=None, store_cls=None, **kwargs):
 def decode_absolute_time(times):
     def decode(t):
         day, sub = re.findall('(\d+)(\.\d+)', t)[0]
-        return np.datetime64(
-            datetime.strptime(day, "%Y%m%d") + timedelta(days=float(sub)))
+        rest = dt.timedelta(days=float(sub))
+        # round microseconds
+        if rest.microseconds:
+            rest += dt.timedelta(microseconds=1e6 - rest.microseconds)
+        return np.datetime64(dt.datetime.strptime(day, "%Y%m%d") + rest)
     times = np.asarray(times, dtype=str)
     return np.vectorize(decode, [np.datetime64])(times)
 
@@ -3794,7 +3797,7 @@ def encode_absolute_time(times):
     def encode(t):
         t = to_datetime(t)
         return float(t.strftime('%Y%m%d')) + (
-            t - datetime(t.year, t.month, t.day)).total_seconds() / 86400.
+            t - dt.datetime(t.year, t.month, t.day)).total_seconds() / 86400.
     return np.vectorize(encode, [float])(times)
 
 
