@@ -765,8 +765,19 @@ class FilenamesTest(unittest.TestCase):
         ds2.close()
         ds.psy.filename = None
         dumped_fname, dumped_store_mod, dumped_store = psyd.get_filename_ds(
-            ds, dump=True, engine=engine)
-        self.assertIsNotNone(dumped_fname)
+            ds, dump=True, engine=engine, paths=True)
+        self.assertTrue(dumped_fname)
+        self.assertTrue(osp.exists(dumped_fname),
+                        msg='Missing %s' % fname)
+        self.assertEqual(dumped_store_mod, store_mod)
+        self.assertEqual(dumped_store, store)
+        ds.close()
+        ds.psy.filename = None
+        os.remove(dumped_fname)
+
+        dumped_fname, dumped_store_mod, dumped_store = psyd.get_filename_ds(
+            ds, dump=True, engine=engine, paths=dumped_fname)
+        self.assertTrue(dumped_fname)
         self.assertTrue(osp.exists(dumped_fname),
                         msg='Missing %s' % fname)
         self.assertEqual(dumped_store_mod, store_mod)
