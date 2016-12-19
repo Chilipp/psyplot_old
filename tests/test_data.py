@@ -755,7 +755,7 @@ class FilenamesTest(unittest.TestCase):
     def _test_engine(self, engine):
         from importlib import import_module
         fname = self.fname
-        ds = psyd.open_dataset(fname, engine=engine)
+        ds = psyd.open_dataset(fname, engine=engine).load()
         self.assertEqual(ds.psy.filename, fname)
         store_mod, store = ds.psy.data_store
         # try to load the dataset
@@ -763,6 +763,16 @@ class FilenamesTest(unittest.TestCase):
         ds2 = psyd.open_dataset(getattr(mod, store)(fname))
         ds.close()
         ds2.close()
+        ds.psy.filename = None
+        dumped_fname, dumped_store_mod, dumped_store = psyd.get_filename_ds(
+            ds, dump=True, engine=engine)
+        self.assertIsNotNone(dumped_fname)
+        self.assertTrue(osp.exists(dumped_fname),
+                        msg='Missing %s' % fname)
+        self.assertEqual(dumped_store_mod, store_mod)
+        self.assertEqual(dumped_store, store)
+        ds.close()
+        os.remove(dumped_fname)
 
     @unittest.skipIf(not with_nio, 'Nio module not installed')
     def test_nio(self):
