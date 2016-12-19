@@ -17,6 +17,20 @@ except ImportError as e:
     PyNio = psyd._MissingModule(e)
     with_nio = False
 
+try:
+    import netCDF4 as nc
+    with_netcdf4 = True
+except ImportError as e:
+    nc = psyd._MissingModule(e)
+    with_netcdf4 = False
+
+try:
+    import scipy
+    with_scipy = True
+except ImportError as e:
+    scipy = psyd._MissingModule(e)
+    with_scipy = False
+
 
 class DecoderTest(unittest.TestCase):
     """Test the :class:`psyplot.data.CFDecoder` class"""
@@ -753,6 +767,15 @@ class FilenamesTest(unittest.TestCase):
     @unittest.skipIf(not with_nio, 'Nio module not installed')
     def test_nio(self):
         self._test_engine('pynio')
+
+    @unittest.skipIf(not with_netcdf4, 'netCDF4 module not installed')
+    def test_netcdf4(self):
+        self._test_engine('netcdf4')
+
+    @unittest.skipIf(not with_scipy, 'scipy module not installed')
+    def test_scipy(self):
+        self._test_engine('scipy')
+
 
 if __name__ == '__main__':
     unittest.main()
