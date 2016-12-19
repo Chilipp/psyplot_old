@@ -8,6 +8,7 @@ dependencies:
     - xarray
     - netCDF4
     - seaborn
+    - scipy  # necessary for scipy engine test
     - pynio
     - pyngl
     - pip:
