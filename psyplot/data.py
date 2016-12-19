@@ -3785,14 +3785,15 @@ def _open_ds_from_store(fname, store_mod=None, store_cls=None, **kwargs):
 
 def decode_absolute_time(times):
     def decode(t):
-        day = np.floor(t)
+        day = np.floor(t).astype(int)
         sub = t - day
-        rest = dt.timedelta(days=float(sub))
+        rest = dt.timedelta(days=sub)
         # round microseconds
         print(rest.microseconds, day, sub, rest)
         if rest.microseconds:
             rest += dt.timedelta(microseconds=1e6 - rest.microseconds)
-        return np.datetime64(dt.datetime.strptime(day, "%Y%m%d") + rest)
+        return np.datetime64(dt.datetime.strptime(
+            "%i" % day, "%Y%m%d") + rest)
     return np.vectorize(decode, [np.datetime64])(times)
 
 
