@@ -716,8 +716,11 @@ class AbsoluteTimeTest(unittest.TestCase):
         return fname
 
     def test_open_dataset(self):
+        import netCDF4 as nc
         fname = self.test_to_netcdf()
         ref_ds = self._test_ds
+        with nc.Dataset(fname) as nco:
+            print(nco.variables['time'][:])
         ds = psyd.open_dataset(fname)
         self.assertEqual(
             pd.to_datetime(ds.time.values).tolist(),
