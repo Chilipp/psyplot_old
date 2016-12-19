@@ -1,5 +1,5 @@
 name: psyplot_py3.5_mpl1.4
-channel:
+channels:
     - conda-forge
 dependencies:
     - python=3.5
