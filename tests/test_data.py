@@ -655,5 +655,71 @@ class TestArrayList(unittest.TestCase):
         self.assertEqual(len(l[1]), 2)
 
 
+class AbsoluteTimeTest(unittest.TestCase):
+    """TestCase for loading and storing absolute times"""
+
+    def assertAlmostArrayEqual(self, actual, desired, rtol=1e-07, atol=0,
+                               msg=None, **kwargs):
+        """Asserts that the two given arrays are almost the same
+
+        This method uses the :func:`numpy.testing.assert_allclose` function
+        to compare the two given arrays.
+
+        Parameters
+        ----------
+        actual : array_like
+            Array obtained.
+        desired : array_like
+            Array desired.
+        rtol : float, optional
+            Relative tolerance.
+        atol : float, optional
+            Absolute tolerance.
+        equal_nan : bool, optional.
+            If True, NaNs will compare equal.
+        err_msg : str, optional
+            The error message to be printed in case of failure.
+        verbose : bool, optional
+            If True, the conflicting values are appended to the error message.
+        """
+        try:
+            np.testing.assert_allclose(actual, desired, rtol=rtol, atol=atol,
+                                       err_msg=msg or '', **kwargs)
+        except AssertionError as e:
+            self.fail(e if six.PY3 else e.message)
+
+    @property
+    def _test_ds(self):
+        import xarray as xr
+        import pandas as pd
+        time = xr.Coordinate('time', pd.to_datetime(
+            ['1979-01-01T12:00:00', '1979-01-01T18:00:00',
+             '1979-01-01T18:30:00']),
+            encoding={'units': 'day as %Y%m%d.%f'})
+        var = xr.Variable(('time', 'x'), np.zeros((len(time), 5)))
+        return xr.Dataset({'test': var}, {'time': time})
+
+    def test_to_netcdf(self):
+        """Test whether the data is stored correctly"""
+        import netCDF4 as nc
+        import tempfile
+        ds = self._test_ds
+        fname = tempfile.NamedTemporaryFile().name
+        psyd.to_netcdf(ds, fname)
+        with nc.Dataset(fname) as nco:
+            self.assertAlmostArrayEqual(
+                nco.variables['time'][:], [19790101.5, 19790101.75,
+                                           19790101.75 + 30 / (24 * 60.)])
+            self.assertEqual(nco.variables['time'].units, 'day as %Y%m%d.%f')
+        return fname
+
+    def test_open_dataset(self):
+        fname = self.test_to_netcdf()
+        ref_ds = self._test_ds
+        ds = psyd.open_dataset(fname)
+        self.assertEqual(
+            pd.to_datetime(ds.time.values).tolist(),
+            pd.to_datetime(ref_ds.time.values).tolist())
+
 if __name__ == '__main__':
     unittest.main()
