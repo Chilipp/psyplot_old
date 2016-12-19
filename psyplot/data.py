@@ -3789,7 +3789,6 @@ def decode_absolute_time(times):
         sub = t - day
         rest = dt.timedelta(days=sub)
         # round microseconds
-        print(rest.microseconds, day, sub, rest)
         if rest.microseconds:
             rest += dt.timedelta(microseconds=1e6 - rest.microseconds)
         return np.datetime64(dt.datetime.strptime(

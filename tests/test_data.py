@@ -711,16 +711,12 @@ class AbsoluteTimeTest(unittest.TestCase):
                 nco.variables['time'][:], [19790101.5, 19790101.75,
                                            19790101.75 + 30.0 / (24.0 * 60.)],
                 rtol=0, atol=1e-5)
-            print(nco.variables['time'][:], 19790101.75 + 30.0 / (24.0 * 60.))
             self.assertEqual(nco.variables['time'].units, 'day as %Y%m%d.%f')
         return fname
 
     def test_open_dataset(self):
-        import netCDF4 as nc
         fname = self.test_to_netcdf()
         ref_ds = self._test_ds
-        with nc.Dataset(fname) as nco:
-            print(nco.variables['time'][:])
         ds = psyd.open_dataset(fname)
         self.assertEqual(
             pd.to_datetime(ds.time.values).tolist(),
