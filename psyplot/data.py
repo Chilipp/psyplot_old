@@ -514,12 +514,10 @@ def _get_fname_nio(store):
         f = store.ds.file
     except AttributeError:
         return None
-    s = str(f).splitlines()[0].rstrip().lstrip()
-    if s.startswith('Nio file:'):
-        try:
-            return s.split('\t')[1]
-        except IndexError:
-            return None
+    try:
+        return f.path
+    except AttributeError:
+        return None
 
 
 class Signal(object):
@@ -607,6 +605,10 @@ def get_filename_ds(ds, dump=True, paths=None, **kwargs):
     """
     from tempfile import NamedTemporaryFile
 
+    # if already specified, return that filename
+    if ds.psy._filename is not None:
+        return tuple([ds.psy._filename] + list(ds.psy.data_store))
+
     def dump_nc():
         # make sure that the data store is not closed by providing a
         # write argument
@@ -648,6 +650,9 @@ def get_filename_ds(ds, dump=True, paths=None, **kwargs):
         fname = NamedTemporaryFile().name + '.nc'
         warn('Saving unsaved dataset to %s' % fname)
         store_mod, store_cls = dump_nc()
+
+    ds.psy.filename = fname
+    ds.psy.data_store = (store_mod, store_cls)
 
     return fname, store_mod, store_cls
 
@@ -3578,8 +3583,23 @@ class ArrayList(list):
 class DatasetAccessor(object):
     """A dataset accessor to interface with the psyplot package"""
 
+    _filename = None
+    data_store = (None, None)
+
     def __init__(self, ds):
         self.ds = ds
+
+    @property
+    def filename(self):
+        """The name of the file that stores this dataset"""
+        fname = self._filename
+        if fname is None:
+            fname, store_mod, store_cls = get_filename_ds(self.ds, dump=False)
+        return fname
+
+    @filename.setter
+    def filename(self, value):
+        self._filename = value
 
     @docstrings.dedent
     def create_list(self, *args, **kwargs):
@@ -3602,7 +3622,6 @@ class DatasetAccessor(object):
         --------
         psyplot.data.ArrayList.from_dataset"""
         return ArrayList.from_dataset(self.ds, *args, **kwargs)
-
 
 
 class InteractiveList(ArrayList, InteractiveBase):

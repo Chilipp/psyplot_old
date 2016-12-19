@@ -10,6 +10,13 @@ import psyplot.data as psyd
 import _base_testing as bt
 import numpy as np
 
+try:
+    import PyNio
+    with_nio = True
+except ImportError as e:
+    PyNio = psyd._MissingModule(e)
+    with_nio = False
+
 
 class DecoderTest(unittest.TestCase):
     """Test the :class:`psyplot.data.CFDecoder` class"""
@@ -735,8 +742,8 @@ class FilenamesTest(unittest.TestCase):
         from importlib import import_module
         fname = self.fname
         ds = psyd.open_dataset(fname, engine=engine)
-        self.assertEqual(ds.psy.fname, fname)
-        store_mod, store = ds.psy.store
+        self.assertEqual(ds.psy.filename, fname)
+        store_mod, store = ds.psy.data_store
         # try to load the dataset
         mod = import_module(store_mod)
         ds2 = psyd.open_dataset(getattr(mod, store)(fname))
