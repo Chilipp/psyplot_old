@@ -3792,7 +3792,7 @@ def decode_absolute_time(times):
         if rest.microseconds:
             rest += dt.timedelta(microseconds=1e6 - rest.microseconds)
         return np.datetime64(dt.datetime.strptime(day, "%Y%m%d") + rest)
-    times = np.asarray(times, dtype=str)
+    times = np.asarray(times, dtype=np.str_)
     print(times)
     return np.vectorize(decode, [np.datetime64])(times)
 
