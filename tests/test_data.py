@@ -1,5 +1,6 @@
 """Test module of the :mod:`psyplot.data` module"""
 import os
+import os.path as osp
 import six
 import unittest
 import pandas as pd
@@ -721,6 +722,29 @@ class AbsoluteTimeTest(unittest.TestCase):
         self.assertEqual(
             pd.to_datetime(ds.time.values).tolist(),
             pd.to_datetime(ref_ds.time.values).tolist())
+
+
+class FilenamesTest(unittest.TestCase):
+    """Test whether the filenames can be extracted correctly"""
+
+    @property
+    def fname(self):
+        return osp.join(osp.dirname(__file__), 'test-t2m-u-v.nc')
+
+    def _test_engine(self, engine):
+        from importlib import import_module
+        fname = self.fname
+        ds = psyd.open_dataset(fname, engine=engine)
+        self.assertEqual(ds.psy.fname, fname)
+        store_mod, store = ds.psy.store
+        # try to load the dataset
+        mod = import_module(store_mod)
+        ds2 = psyd.open_dataset(getattr(mod, store)(fname))
+        ds.close()
+        ds2.close()
+
+    def test_nio(self):
+        self._test_engine('pynio')
 
 if __name__ == '__main__':
     unittest.main()
