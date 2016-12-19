@@ -347,7 +347,7 @@ def setup_coords(arr_names=None, sort=[], dims={}, **kwargs):
                 *map(list, sorted_dims.values()))))])
 
 
-def is_slice(arr):
+def to_slice(arr):
     """Test whether `arr` is an integer array that can be replaced by a slice
 
     Parameters
@@ -364,6 +364,8 @@ def is_slice(arr):
     See Also
     --------
     get_index_from_coord"""
+    if isinstance(arr, slice):
+        return arr
     if len(arr) == 1:
         return slice(arr[0], arr[0] + 1)
     step = np.unique(arr[1:] - arr[:-1])
@@ -400,7 +402,7 @@ def get_index_from_coord(coord, base_index):
     if len(values) == len(base_index) and (values == base_index).all():
         return slice(None)
     values = np.array(list(map(lambda i: base_index.get_loc(i), values)))
-    return is_slice(values) or values
+    return to_slice(values) or values
 
 
 #: mapping that translates datetime format strings to regex patterns
