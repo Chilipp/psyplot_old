@@ -624,15 +624,14 @@ def get_filename_ds(ds, dump=True, paths=None, **kwargs):
             yield NamedTemporaryFile(suffix='.nc').name
 
     fname = None
-    if paths is True:
-        paths = tmp_it
+    if paths is True or (dump and paths is None):
+        paths = tmp_it()
     elif paths is not None:
-        paths = iter(paths)
+        paths = iter(safe_list(paths))
     # try to get the filename from  the data store of the obj
-    store = getattr(ds, '_file_obj', None)
-    store_mod = store.__module__ if store is not None else None
-    store_cls = store.__class__.__name__ if store is not None else None
-    if store is not None:
+    store_mod, store_cls = ds.psy.data_store
+    if store_mod is not None:
+        store = ds._file_obj
         # try several datasets
         for func in get_fname_funcs:
             fname = func(store)
@@ -643,13 +642,6 @@ def get_filename_ds(ds, dump=True, paths=None, **kwargs):
         fname = next(paths, None)
         if dump and fname is not None:
             store_mod, store_cls = dump_nc()
-    # check create a temporary file with the data if dump is True
-    if fname is None:
-        if not dump and paths is None:
-            return None, None, None
-        fname = NamedTemporaryFile().name + '.nc'
-        warn('Saving unsaved dataset to %s' % fname)
-        store_mod, store_cls = dump_nc()
 
     ds.psy.filename = fname
     ds.psy.data_store = (store_mod, store_cls)
@@ -3584,7 +3576,7 @@ class DatasetAccessor(object):
     """A dataset accessor to interface with the psyplot package"""
 
     _filename = None
-    data_store = (None, None)
+    _data_store = None
 
     def __init__(self, ds):
         self.ds = ds
@@ -3600,6 +3592,22 @@ class DatasetAccessor(object):
     @filename.setter
     def filename(self, value):
         self._filename = value
+
+    @property
+    def data_store(self):
+        """The :class:`xarray.backends.common.AbstractStore` used to save the
+        dataset"""
+        store_info = self._data_store
+        if store_info is None or any(s is None for s in store_info):
+            store = getattr(self.ds, '_file_obj', None)
+            store_mod = store.__module__ if store is not None else None
+            store_cls = store.__class__.__name__ if store is not None else None
+            return store_mod, store_cls
+        return store_info
+
+    @data_store.setter
+    def data_store(self, value):
+        self._data_store = value
 
     @docstrings.dedent
     def create_list(self, *args, **kwargs):
