@@ -1,6 +1,4 @@
 name: psyplot_py3.4_mpl1.4
-channel:
-    - conda-forge
 dependencies:
     - python=3.4
     - matplotlib=1.4
@@ -8,7 +6,5 @@ dependencies:
     - xarray
     - netCDF4
     - seaborn
-    - pynio
-    - pyngl
     - pip:
         - pytest
