@@ -794,25 +794,25 @@ def psyplot_fname(env_key='PSYPLOTRC', fname='psyplotrc.yaml'):
     ----------
     [1]: http://matplotlib.org/api/"""
     cwd = getcwd()
-    fname = os.path.join(cwd, fname)
-    if os.path.exists(fname):
-        return fname
+    full_fname = os.path.join(cwd, fname)
+    if os.path.exists(full_fname):
+        return full_fname
 
     if env_key in os.environ:
         path = os.environ[env_key]
         if os.path.exists(path):
             if os.path.isdir(path):
-                fname = os.path.join(path, fname)
-                if os.path.exists(fname):
-                    return fname
+                full_fname = os.path.join(path, fname)
+                if os.path.exists(full_fname):
+                    return full_fname
             else:
                 return path
 
     configdir = get_configdir()
     if configdir is not None:
-        fname = os.path.join(configdir, fname)
-        if os.path.exists(fname):
-            return fname
+        full_fname = os.path.join(configdir, fname)
+        if os.path.exists(full_fname):
+            return full_fname
 
     return None
 
