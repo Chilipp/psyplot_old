@@ -250,7 +250,7 @@ class Formatoption(object):
         except KeyError:
             warn("Unknown formatoption group " + str(self.group),
                  PsyPlotRuntimeWarning)
-            return "Unknown"
+            return self.group
 
     @property
     def raw_data(self):
