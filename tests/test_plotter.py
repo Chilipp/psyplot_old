@@ -9,6 +9,7 @@ import psyplot.data as psyd
 import pandas as pd
 import xarray as xr
 import psyplot.plotter as psyp
+from itertools import repeat
 from psyplot import rcParams
 import psyplot.config as psyc
 try:
@@ -559,6 +560,76 @@ class PlotterTest(unittest.TestCase):
         self.assertEqual(sorted(list(results)),
                          sorted([key_name('fmt_plot'), key_name('fmt_data1'),
                                  key_name('fmt_data2')]))
+
+    def test_reinit(self):
+        """Test the reinitialization of a plotter"""
+        class ClearingFormatoption(SimpleFmt):
+
+            def remove(self):
+                results['removed'] = True
+
+            requires_clearing = True
+
+        class AnotherFormatoption(SimpleFmt):
+
+            def remove(self):
+                results['removed2'] = True
+
+        class ThisTestPlotter(TestPlotter):
+            fmt_clear = ClearingFormatoption('fmt_clear')
+            fmt_remove = AnotherFormatoption('fmt_remove')
+        import matplotlib.pyplot as plt
+        ax = plt.axes()
+        ax.plot([6, 7])
+
+        plotter = ThisTestPlotter()
+        keys = list(plotter)
+        plotter = ThisTestPlotter(xr.DataArray([]), ax=ax,
+                                  **dict(zip(keys, repeat(1))))
+
+        self.assertNotIn('removed', results)
+        self.assertNotIn('removed2', results)
+        arr_name = plotter.data.psy.arr_name
+        for key in keys:
+            self.assertIn("%s.%s" % (arr_name, key), results)
+        self.assertTrue(ax.lines)  # axes should not be cleared
+
+        results.clear()
+
+        plotter.reinit()
+        self.assertIn('removed', results)
+        self.assertIn('removed2', results)
+        for key in keys:
+            self.assertIn("%s.%s" % (arr_name, key), results)
+        self.assertFalse(ax.lines)  # axes should be cleared
+
+        results.clear()
+
+        ax.plot([6, 7])
+        keys.remove('fmt_clear')
+        keys.remove('fmt_remove')
+        plotter = TestPlotter(xr.DataArray([]), ax=ax,
+                              **dict(zip(keys, repeat(1))))
+        for key in keys:
+            self.assertIn("%s.%s" % (arr_name, key), results)
+        self.assertTrue(ax.lines)  # axes should not be cleared
+
+        results.clear()
+
+        plotter.reinit()
+        for key in keys:
+            self.assertIn("%s.%s" % (arr_name, key), results)
+        self.assertTrue(ax.lines)  # axes should not be cleared
+
+    def test_check_data(self):
+        """Tests the :meth:`psyplot.plotter.Plotter.check_data` method"""
+        self.assertEqual(TestPlotter.check_data('test', ('dim1', ), True),
+                         ([True], ['']))
+        checks, messages = TestPlotter.check_data(
+            ['test1', 'test2'], [('dim1', )], [False, False])
+        self.assertEqual(checks, [False, False])
+        self.assertIn('not the same', messages[0])
+        self.assertIn('not the same', messages[1])
 
 
 class FormatoptionTest(unittest.TestCase):
