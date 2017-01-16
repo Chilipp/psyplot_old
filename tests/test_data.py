@@ -686,6 +686,7 @@ class TestArrayList(unittest.TestCase):
             name=[['v1', ['v3', 'v4']], ['v1', 'v2']], prefer_list=True)
         l.extend(ds2.psy.create_list(name=['t2m'], x=0, t=1),
                  new_name=True)
+        self.maxDiff = None
         self.assertEqual(l.array_info(engine='netCDF4'), OrderedDict([
             # first list contating an array with two variables
             ('arr0', OrderedDict([
