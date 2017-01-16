@@ -33,6 +33,39 @@ except ImportError as e:
     with_scipy = False
 
 
+class AlmostArrayEqualMixin(object):
+
+    def assertAlmostArrayEqual(self, actual, desired, rtol=1e-07, atol=0,
+                               msg=None, **kwargs):
+        """Asserts that the two given arrays are almost the same
+
+        This method uses the :func:`numpy.testing.assert_allclose` function
+        to compare the two given arrays.
+
+        Parameters
+        ----------
+        actual : array_like
+            Array obtained.
+        desired : array_like
+            Array desired.
+        rtol : float, optional
+            Relative tolerance.
+        atol : float, optional
+            Absolute tolerance.
+        equal_nan : bool, optional.
+            If True, NaNs will compare equal.
+        err_msg : str, optional
+            The error message to be printed in case of failure.
+        verbose : bool, optional
+            If True, the conflicting values are appended to the error message.
+        """
+        try:
+            np.testing.assert_allclose(actual, desired, rtol=rtol, atol=atol,
+                                       err_msg=msg or '', **kwargs)
+        except AssertionError as e:
+            self.fail(e if six.PY3 else e.message)
+
+
 class DecoderTest(unittest.TestCase):
     """Test the :class:`psyplot.data.CFDecoder` class"""
 
@@ -264,6 +297,33 @@ class DecoderTest(unittest.TestCase):
         ds.close()
 
 
+class UGridDecoderTest(unittest.TestCase, AlmostArrayEqualMixin):
+    """Test the :class:`psyplot.data.UGridDecoder` class"""
+
+    def test_get_decoder(self):
+        """Test to get the right decoder"""
+        ds = psyd.open_dataset(bt.get_file('simple_triangular_grid_si0.nc'))
+        d = psyd.CFDecoder.get_decoder(ds, ds.Mesh2_fcvar)
+        self.assertIsInstance(d, psyd.UGridDecoder)
+        return ds, d
+
+    def test_x(self):
+        """Test the get_x method"""
+        ds, d = self.test_get_decoder()
+        x = d.get_x(ds.Mesh2_fcvar)
+        self.assertIn('standard_name', x.attrs)
+        self.assertEqual(x.attrs['standard_name'], 'longitude')
+        self.assertAlmostArrayEqual(x.values, [0.3, 0.56666667])
+
+    def test_y(self):
+        """Test the get_y method"""
+        ds, d = self.test_get_decoder()
+        y = d.get_y(ds.Mesh2_fcvar)
+        self.assertIn('standard_name', y.attrs)
+        self.assertEqual(y.attrs['standard_name'], 'latitude')
+        self.assertAlmostArrayEqual(y.values, [0.4, 0.76666668])
+
+
 class TestTempBool(unittest.TestCase):
     """Test the :class:`psyplot.data._TempBool` class"""
 
@@ -287,6 +347,159 @@ class TestTempBool(unittest.TestCase):
 
         del t.test
         self.assertFalse(t.test)
+
+
+class TestInteractiveArray(unittest.TestCase):
+    """Test the :class:`psyplot.data.InteractiveArray` class"""
+
+    def test_auto_update(self):
+        """Test the :attr:`psyplot.plotter.Plotter.no_auto_update` attribute"""
+        ds = psyd.open_dataset(bt.get_file('test-t2m-u-v.nc'))
+        arr = ds.psy.t2m.psy[0, 0, 0]
+        arr.psy.init_accessor(auto_update=False)
+
+        arr.psy.update(time=1)
+        self.assertEqual(arr.time, ds.time[0])
+        arr.psy.start_update()
+        self.assertEqual(arr.time, ds.time[1])
+
+        arr.psy.no_auto_update = False
+        arr.psy.update(time=2)
+        self.assertEqual(arr.time, ds.time[2])
+
+    def test_update_01_isel(self):
+        """test the update of a single array through the isel method"""
+        ds = psyd.open_dataset(bt.get_file('test-t2m-u-v.nc'))
+        arr = ds.psy.t2m.psy[0, 0, 0]
+        arr.attrs['test'] = 4
+        self.assertNotIn('test', ds.t2m.attrs)
+        self.assertIs(arr.psy.base, ds)
+        self.assertEqual(dict(arr.psy.idims), {'time': 0, 'lev': 0, 'lat': 0,
+                                               'lon': slice(None)})
+        # update to next time step
+        arr.psy.update(time=1)
+        self.assertEqual(arr.time, ds.time[1])
+        self.assertEqual(arr.values.tolist(),
+                         ds.t2m[1, 0, 0, :].values.tolist())
+        self.assertEqual(dict(arr.psy.idims), {'time': 1, 'lev': 0, 'lat': 0,
+                                               'lon': slice(None)})
+        self.assertNotIn('test', ds.t2m.attrs)
+        self.assertIn('test', arr.attrs)
+        self.assertEqual(arr.test, 4)
+
+    def test_update_02_sel(self):
+        """test the update of a single array through the sel method"""
+        ds = psyd.open_dataset(bt.get_file('test-t2m-u-v.nc'))
+        arr = ds.psy.t2m.psy[0, 0, 0]
+        arr.attrs['test'] = 4
+        self.assertNotIn('test', ds.t2m.attrs)
+        self.assertIs(arr.psy.base, ds)
+        self.assertEqual(dict(arr.psy.idims), {'time': 0, 'lev': 0, 'lat': 0,
+                                               'lon': slice(None)})
+        # update to next time step
+        arr.psy.update(time='1979-02-28T18:00', method='nearest')
+        self.assertEqual(arr.time, ds.time[1])
+        self.assertEqual(arr.values.tolist(),
+                         ds.t2m[1, 0, 0, :].values.tolist())
+        self.assertEqual(dict(arr.psy.idims), {'time': 1, 'lev': 0, 'lat': 0,
+                                               'lon': slice(None)})
+        self.assertNotIn('test', ds.t2m.attrs)
+        self.assertIn('test', arr.attrs)
+        self.assertEqual(arr.test, 4)
+
+    def test_update_03_isel_concat(self):
+        """test the update of a concatenated array through the isel method"""
+        ds = psyd.open_dataset(bt.get_file('test-t2m-u-v.nc'))[['t2m', 'u']]
+        arr = ds.psy.to_array().psy.isel(time=0, lev=0, lat=0)
+        arr.attrs['test'] = 4
+        self.assertNotIn('test', ds.t2m.attrs)
+        arr.name = 'something'
+        self.assertIs(arr.psy.base, ds)
+        self.assertEqual(dict(arr.psy.idims), {'time': 0, 'lev': 0, 'lat': 0,
+                                               'lon': slice(None)})
+        self.assertEqual(arr.coords['variable'].values.tolist(), ['t2m', 'u'])
+        # update to next time step
+        arr.psy.update(time=1)
+        self.assertEqual(arr.time, ds.time[1])
+        self.assertEqual(arr.coords['variable'].values.tolist(), ['t2m', 'u'])
+        self.assertEqual(arr.values.tolist(),
+                         ds[['t2m', 'u']].to_array()[
+                             :, 1, 0, 0, :].values.tolist())
+        self.assertEqual(dict(arr.psy.idims), {'time': 1, 'lev': 0, 'lat': 0,
+                                               'lon': slice(None)})
+        self.assertNotIn('test', ds.t2m.attrs)
+        self.assertIn('test', arr.attrs)
+        self.assertEqual(arr.test, 4)
+        self.assertEqual(arr.name, 'something')
+
+    def test_update_04_sel_concat(self):
+        """test the update of a concatenated array through the isel method"""
+        ds = psyd.open_dataset(bt.get_file('test-t2m-u-v.nc'))[['t2m', 'u']]
+        arr = ds.psy.to_array().psy.isel(time=0, lev=0, lat=0)
+        arr.attrs['test'] = 4
+        self.assertNotIn('test', ds.t2m.attrs)
+        self.assertIs(arr.psy.base, ds)
+        self.assertEqual(dict(arr.psy.idims), {'time': 0, 'lev': 0, 'lat': 0,
+                                               'lon': slice(None)})
+        self.assertEqual(arr.coords['variable'].values.tolist(), ['t2m', 'u'])
+        # update to next time step
+        arr.psy.update(time='1979-02-28T18:00', method='nearest')
+        self.assertEqual(arr.time, ds.time[1])
+        self.assertEqual(arr.coords['variable'].values.tolist(), ['t2m', 'u'])
+        self.assertEqual(arr.values.tolist(),
+                         ds[['t2m', 'u']].to_array()[
+                             :, 1, 0, 0, :].values.tolist())
+        self.assertEqual(dict(arr.psy.idims), {'time': 1, 'lev': 0, 'lat': 0,
+                                               'lon': slice(None)})
+        self.assertNotIn('test', ds.t2m.attrs)
+        self.assertIn('test', arr.attrs)
+        self.assertEqual(arr.test, 4)
+
+    def test_update_05_1variable(self):
+        """Test to change the variable"""
+        ds = psyd.open_dataset(bt.get_file('test-t2m-u-v.nc'))
+        arr = ds.psy.t2m.psy[0, 0, 0]
+        arr.attrs['test'] = 4
+        self.assertNotIn('test', ds.t2m.attrs)
+        self.assertIs(arr.psy.base, ds)
+        self.assertEqual(dict(arr.psy.idims), {'time': 0, 'lev': 0, 'lat': 0,
+                                               'lon': slice(None)})
+        # update to next time step
+        arr.psy.update(name='u', time=1)
+        self.assertEqual(arr.time, ds.time[1])
+        self.assertEqual(arr.name, 'u')
+        self.assertEqual(arr.values.tolist(),
+                         ds.u[1, 0, 0, :].values.tolist())
+        self.assertEqual(dict(arr.psy.idims), {'time': 1, 'lev': 0, 'lat': 0,
+                                               'lon': slice(None)})
+        self.assertNotIn('test', ds.t2m.attrs)
+        self.assertIn('test', arr.attrs)
+        self.assertEqual(arr.test, 4)
+
+    def test_update_06_2variables(self):
+        """test the change of the variable of a concatenated array"""
+        ds = psyd.open_dataset(bt.get_file('test-t2m-u-v.nc'))
+        arr = ds[['t2m', 'u']].to_array().isel(time=0, lev=0, lat=0)
+        arr.attrs['test'] = 4
+        self.assertNotIn('test', ds.t2m.attrs)
+        arr.name = 'something'
+        arr.psy.base = ds
+        self.assertEqual(dict(arr.psy.idims), {'time': 0, 'lev': 0, 'lat': 0,
+                                               'lon': slice(None)})
+        self.assertEqual(arr.coords['variable'].values.tolist(), ['t2m', 'u'])
+        # update to next time step
+        arr.psy.update(time=1, name=['u', 'v'])
+        self.assertEqual(arr.time, ds.time[1])
+        self.assertEqual(arr.coords['variable'].values.tolist(), ['u', 'v'])
+        self.assertEqual(arr.values.tolist(),
+                         ds[['u', 'v']].to_array()[
+                             :, 1, 0, 0, :].values.tolist())
+        self.assertEqual(dict(arr.psy.idims), {'time': 1, 'lev': 0, 'lat': 0,
+                                               'lon': slice(None)})
+        self.assertNotIn('test', ds.t2m.attrs)
+        self.assertIn('test', arr.attrs)
+        self.assertEqual(arr.test, 4)
+        self.assertEqual(arr.name, 'something')
 
 
 class TestArrayList(unittest.TestCase):
@@ -726,39 +939,15 @@ class TestArrayList(unittest.TestCase):
         self.assertEqual(psyd.ArrayList.from_dict(d).array_info(),
                          l.array_info())
 
+    def test_logger(self):
+        """Test whether one can access the logger"""
+        import logging
+        l = self.test_array_info()
+        self.assertIsInstance(l.logger, logging.Logger)
 
-class AbsoluteTimeTest(unittest.TestCase):
+
+class AbsoluteTimeTest(unittest.TestCase, AlmostArrayEqualMixin):
     """TestCase for loading and storing absolute times"""
-
-    def assertAlmostArrayEqual(self, actual, desired, rtol=1e-07, atol=0,
-                               msg=None, **kwargs):
-        """Asserts that the two given arrays are almost the same
-
-        This method uses the :func:`numpy.testing.assert_allclose` function
-        to compare the two given arrays.
-
-        Parameters
-        ----------
-        actual : array_like
-            Array obtained.
-        desired : array_like
-            Array desired.
-        rtol : float, optional
-            Relative tolerance.
-        atol : float, optional
-            Absolute tolerance.
-        equal_nan : bool, optional.
-            If True, NaNs will compare equal.
-        err_msg : str, optional
-            The error message to be printed in case of failure.
-        verbose : bool, optional
-            If True, the conflicting values are appended to the error message.
-        """
-        try:
-            np.testing.assert_allclose(actual, desired, rtol=rtol, atol=atol,
-                                       err_msg=msg or '', **kwargs)
-        except AssertionError as e:
-            self.fail(e if six.PY3 else e.message)
 
     @property
     def _test_ds(self):

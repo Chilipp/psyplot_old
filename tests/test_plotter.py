@@ -180,6 +180,27 @@ class PlotterTest(unittest.TestCase):
         plotter2.unshare_me('labels')
         self.assertNotIn('test2.fmt2', results)
 
+    def test_auto_update(self):
+        """Test the :attr:`psyplot.plotter.Plotter.no_auto_update` attribute"""
+        data = xr.DataArray([])
+        plotter = TestPlotter(data, auto_update=False)
+        self.assertFalse(plotter.no_auto_update)
+        data.psy.init_accessor(auto_update=False)
+        plotter = TestPlotter(data, auto_update=False)
+        self.assertTrue(plotter.no_auto_update)
+
+        plotter.update(fmt1=1)
+        self.assertEqual(plotter['fmt1'], '')
+        self.assertEqual(plotter._registered_updates['fmt1'], 1)
+
+        plotter.start_update()
+        self.assertEqual(plotter['fmt1'], '1')
+        self.assertFalse(plotter._registered_updates)
+
+        data.psy.no_auto_update = False
+        self.assertFalse(plotter.data.psy.no_auto_update)
+        self.assertFalse(plotter.no_auto_update)
+
     def test_rc(self):
         """Test the default values and validation
         """
