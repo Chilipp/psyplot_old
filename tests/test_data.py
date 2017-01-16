@@ -681,7 +681,7 @@ class TestArrayList(unittest.TestCase):
         variables, coords = self._from_dataset_test_variables
         variables['v4'] = variables['v3'].copy()
         ds = xr.Dataset(variables, coords)
-        fname = bt.get_file('test-t2m-u-v.nc')
+        fname = osp.relpath(bt.get_file('test-t2m-u-v.nc'), '.')
         ds2 = xr.open_dataset(fname)
         l = ds.psy.create_list(
             name=[['v1', ['v3', 'v4']], ['v1', 'v2']], prefer_list=True)
