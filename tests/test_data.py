@@ -681,7 +681,8 @@ class TestArrayList(unittest.TestCase):
         variables, coords = self._from_dataset_test_variables
         variables['v4'] = variables['v3'].copy()
         ds = xr.Dataset(variables, coords)
-        ds2 = xr.open_dataset(bt.get_file('test-t2m-u-v.nc'))
+        fname = bt.get_file('test-t2m-u-v.nc')
+        ds2 = xr.open_dataset(fname)
         l = ds.psy.create_list(
             name=[['v1', ['v3', 'v4']], ['v1', 'v2']], prefer_list=True)
         l.extend(ds2.psy.create_list(name=['t2m'], x=0, t=1),
@@ -712,7 +713,7 @@ class TestArrayList(unittest.TestCase):
                       'attrs': ds2.t2m.attrs,
                       'store': ('xarray.backends.netCDF4_',
                                 'NetCDF4DataStore'),
-                      'name': 't2m', 'fname': 'test-t2m-u-v.nc'}),
+                      'name': 't2m', 'fname': fname}),
             ('attrs', OrderedDict())]))
         return l
 
