@@ -1032,7 +1032,7 @@ class Plotter(dict):
         if len(dims) != N or len(is_unstructured) != N:
             return [False] * N, [
                 'Number of provided names (%i) and dimensions '
-                '%(i) or unstructured information (%i) are not the same' % (
+                '(%i) or unstructured information (%i) are not the same' % (
                     N, len(dims), len(is_unstructured))] * N
         return [True] * N, [''] * N
 
