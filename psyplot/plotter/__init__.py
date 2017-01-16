@@ -898,7 +898,7 @@ class Plotter(dict):
         self.data = data
         if auto_update is None:
             auto_update = rcParams['lists.auto_update']
-        self.auto_update = not bool(auto_update)
+        self.no_auto_update = not bool(auto_update)
         self._registered_updates = {}
         self._todefault = False
         self._old_fmt = []
@@ -1066,7 +1066,7 @@ class Plotter(dict):
         if data is None:  # nothing to do if no data is given
             return
         self.no_auto_update = not (
-            not self.no_auto_update or not data.no_auto_update)
+            not self.no_auto_update or not data.psy.no_auto_update)
         data.psy.plotter = self
         if not make_plot:  # stop here if we shall not plot
             return
