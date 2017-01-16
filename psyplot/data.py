@@ -2058,7 +2058,7 @@ class InteractiveBase(object):
         self.arr_name = arr_name
         if auto_update is None:
             auto_update = rcParams['lists.auto_update']
-        self.auto_update = not bool(auto_update)
+        self.no_auto_update = not bool(auto_update)
         self.replot = False
 
     def _finish_all(self, queues):
@@ -2386,7 +2386,7 @@ class InteractiveArray(InteractiveBase):
             """Checks whether the attribute is from the :attr:`base` dataset"""
             return (item[0] not in self.base.attrs or
                     item[1] != self.base.attrs[item[0]])
-        saved_attrs = list(filter(filter_attrs, six.iteritems(self.attrs)))
+        saved_attrs = list(filter(filter_attrs, six.iteritems(self.arr.attrs)))
         saved_name = self.arr.name
         self.arr.name = 'None'
         if 'name' in dims:
@@ -2398,6 +2398,7 @@ class InteractiveArray(InteractiveBase):
             dims = self.idims
             res = self.base[name].isel(**dims).to_array()
         else:
+            self._idims = None
             for key, val in six.iteritems(self.arr.coords):
                 if key != 'variable':
                     dims.setdefault(key, val)
@@ -2431,6 +2432,7 @@ class InteractiveArray(InteractiveBase):
             dims = self.idims
             res = self.base[name].isel(**dims)
         else:
+            self._idims = None
             for key, val in six.iteritems(self.arr.coords):
                 dims.setdefault(key, val)
             if any(isinstance(idx, slice) for idx in dims.values()):
@@ -2477,7 +2479,7 @@ class InteractiveArray(InteractiveBase):
             dims = self._new_dims
             method = self.method
             if dims:
-                if 'variable' in self.coords:
+                if 'variable' in self.arr.coords:
                     self._update_concatenated(dims, method)
                 else:
                     self._update_array(dims, method)
@@ -2548,13 +2550,25 @@ class InteractiveArray(InteractiveBase):
                 for coord, val in six.iteritems(self.arr.coords)
                 if val.ndim == 0))
 
+    def __getitem__(self, key):
+        ret = self.arr.__getitem__(key)
+        ret.psy._base = self.base
+        return ret
+
     def isel(self, *args, **kwargs):
         # reimplemented to keep the base. The doc is set below
         ret = self.arr.isel(*args, **kwargs)
         ret.psy._base = self._base
         return ret
 
+    def sel(self, *args, **kwargs):
+        # reimplemented to keep the base. The doc is set below
+        ret = self.arr.sel(*args, **kwargs)
+        ret.psy._base = self._base
+        return ret
+
     isel.__doc__ = xr.DataArray.isel.__doc__
+    sel.__doc__ = xr.DataArray.sel.__doc__
 
 
 class ArrayList(list):
@@ -3654,6 +3668,30 @@ class DatasetAccessor(object):
         --------
         psyplot.data.ArrayList.from_dataset"""
         return ArrayList.from_dataset(self.ds, *args, **kwargs)
+
+    def to_array(self, *args, **kwargs):
+        """Same as :meth:`xarray.Dataset.to_array` but sets the base"""
+        # the docstring is set below
+        ret = self.ds.to_array(*args, **kwargs)
+        ret.psy.base = self.ds
+        return ret
+
+    to_array.__doc__ = xr.Dataset.to_array.__doc__
+
+    def __getitem__(self, key):
+        ret = self.ds[key]
+        if isinstance(ret, xr.DataArray):
+            ret.psy.base = self.ds
+        return ret
+
+    def __getattr__(self, attr):
+        if attr in self.ds:
+            ret = getattr(self.ds, attr)
+            ret.psy.base = self.ds
+            return ret
+        else:
+            raise AttributeError("%s has not Attribute %s" % (
+                self.__class__.__name__, attr))
 
 
 class InteractiveList(ArrayList, InteractiveBase):
