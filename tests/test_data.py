@@ -9,6 +9,7 @@ from psyplot.compat.pycompat import range
 import psyplot.data as psyd
 import _base_testing as bt
 import numpy as np
+from collections import OrderedDict
 
 try:
     import PyNio
@@ -675,6 +676,54 @@ class TestArrayList(unittest.TestCase):
         self.assertIsInstance(l[1], psyd.InteractiveList)
         self.assertEqual(len(l[0]), 2)
         self.assertEqual(len(l[1]), 2)
+
+    def test_array_info(self):
+        variables, coords = self._from_dataset_test_variables
+        variables['v4'] = variables['v3'].copy()
+        ds = xr.Dataset(variables, coords)
+        ds2 = xr.open_dataset(bt.get_file('test-t2m-u-v.nc'))
+        l = ds.psy.create_list(
+            name=[['v1', ['v3', 'v4']], ['v1', 'v2']], prefer_list=True)
+        l.extend(ds2.psy.create_list(name=['t2m'], x=0, t=1),
+                 new_name=True)
+        self.assertEqual(l.array_info(engine='netCDF4'), OrderedDict([
+            # first list contating an array with two variables
+            ('arr0', OrderedDict([
+                ('arr0', {'dims': {'t': slice(None), 'x': slice(None)},
+                          'attrs': OrderedDict(), 'store': (None, None),
+                          'name': 'v1', 'fname': None}),
+                ('arr1', {'dims': {'y': slice(None)},
+                          'attrs': OrderedDict(), 'store': (None, None),
+                          'name': [['v3', 'v4']], 'fname': None}),
+                ('attrs', OrderedDict())])),
+            # second list with two arrays containing each one variable
+            ('arr1', OrderedDict([
+                ('arr0', {'dims': {'t': slice(None), 'x': slice(None)},
+                          'attrs': OrderedDict(), 'store': (None, None),
+                          'name': 'v1', 'fname': None}),
+                ('arr1', {'dims': {'y': slice(None), 'x': slice(None)},
+                          'attrs': OrderedDict(), 'store': (None, None),
+                          'name': 'v2', 'fname': None}),
+                ('attrs', OrderedDict())])),
+            # last array from real dataset
+            ('arr2', {'dims': {'z': slice(None), 'y': slice(None),
+                               't': 1, 'x': 0},
+                      'attrs': ds2.t2m.attrs,
+                      'store': ('xarray.backends.netCDF4_',
+                                'NetCDF4DataStore'),
+                      'name': 't2m', 'fname': 'test-t2m-u-v.nc'}),
+            ('attrs', OrderedDict())]))
+        return l
+
+    def test_from_dict(self):
+        """Test the creation from a dictionary"""
+        l = self.test_array_info()
+        d = l.array_info(engine='netCDF4')
+        self.assertEqual(psyd.ArrayList.from_dict(d).array_info(),
+                         l[-1:].array_info())
+        d = l.array_info(ds_description={'ds'})
+        self.assertEqual(psyd.ArrayList.from_dict(d).array_info(),
+                         l.array_info())
 
 
 class AbsoluteTimeTest(unittest.TestCase):
