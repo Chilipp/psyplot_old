@@ -34,7 +34,7 @@ install:
   - conda info -a
   - set ENVKEY=py%PYTHON_VERSION%_mpl%MPL_VERSION%
   - conda env create -f tests/envs/environment_%ENVKEY%.yml
-  - source activate psyplot_%ENVKEY%
+  - activate psyplot_%ENVKEY%
   - pip install coveralls
   # install the test plugin
   - cd tests/test_plugin
