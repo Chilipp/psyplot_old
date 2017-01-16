@@ -1,6 +1,9 @@
 environment:
+
+  PYTHON_ARCH: "64"
+  PYTHON: "C:\\Python34-conda64"
+
   matrix:
-    # We don't actually use the Travis Python, but this keeps it organized.
     - PYTHON_VERSION: "2.7"
       MPL_VERSION: "1.4"
     - PYTHON_VERSION: "3.4"
@@ -14,9 +17,16 @@ environment:
     - PYTHON_VERSION: "3.5"
       MPL_VERSION: "1.5"
 install:
-  # We do this conditionally because it saves us some downloading if the
-  # version is the same.
-  - set PATH=C:\Miniconda3;C:\Miniconda3\Scripts;%PATH%
+  # Install miniconda Python
+  - "powershell ./ci/install_python.ps1"
+   # Prepend newly installed Python to the PATH of this build (this cannot be
+  # done from inside the powershell script as it would require to restart
+  # the parent CMD process).
+  - "SET PATH=%PYTHON%;%PYTHON%\\Scripts;%PATH%"
+
+  # Check that we have the expected version and architecture for Python
+  - "python --version"
+  - "python -c \"import struct; print(struct.calcsize('P') * 8)\""
   # make sure we use an 'innocent' default matplotlib environment
   - cmd: touch matplotlibrc
   - conda config --set always_yes yes --set changeps1 no
