@@ -34,5 +34,7 @@ install:
   # export the environment for debugging
   - conda env export -n psyplot_%ENVKEY%
 
-script:
+build: false
+
+test_script:
   - python setup.py pytest
