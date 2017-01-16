@@ -2,11 +2,17 @@ language: python
 matrix:
   # We don't actually use the Travis Python, but this keeps it organized.
   - PYTHON_VERSION: "2.7"
+    MPL_VERSION: "1.4"
   - PYTHON_VERSION: "3.4"
+    MPL_VERSION: "1.4"
   - PYTHON_VERSION: "3.5"
-env:
-  - MPL_VERSION=1.4
-  - MPL_VERSION=1.5
+    MPL_VERSION: "1.4"
+  - PYTHON_VERSION: "2.7"
+    MPL_VERSION: "1.5"
+  - PYTHON_VERSION: "3.4"
+    MPL_VERSION: "1.5"
+  - PYTHON_VERSION: "3.5"
+    MPL_VERSION: "1.5"
 install:
   # We do this conditionally because it saves us some downloading if the
   # version is the same.
