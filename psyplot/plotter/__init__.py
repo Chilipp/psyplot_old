@@ -18,11 +18,12 @@ from xarray.core.formatting import format_timestamp, format_timedelta
 from psyplot import rcParams
 from psyplot.warning import warn, critical, PsyPlotRuntimeWarning
 from psyplot.compat.pycompat import map, filter, zip, range
-from psyplot.config.rcsetup import defaultParams, SubDict
+from psyplot.config.rcsetup import SubDict
 from psyplot.docstring import docstrings, dedent
 from psyplot.data import (
     InteractiveList, _TempBool, _no_auto_update_getter, check_key,
     unique_everseen, _temp_bool_prop, CFDecoder)
+from psyplot.utils import DefaultOrderedDict
 
 #: the default function to use when printing formatoption infos (the default is
 #: use print or in the gui, use the help explorer)
@@ -44,9 +45,14 @@ groups = {
     }
 
 
-def _identity(obj):
-    """identity function to make no validation"""
-    return obj
+def _identity(*args):
+    """identity function to make no validation
+
+    Returns
+    -------
+    object
+        just return the last argument in ``*args``"""
+    return args[-1]
 
 
 def format_time(x):
@@ -283,19 +289,7 @@ class Formatoption(object):
 
     @decoder.setter
     def decoder(self, value):
-        # we do not modify the raw data but instead set it on the plotter
-        # TODO: This is not safe for encapsulated InteractiveList instances!
-        if self.index_in_list is not None and isinstance(
-                self.plotter.plot_data, InteractiveList):
-            n = len(self.plotter.plot_data)
-            decoders = self.plotter.plot_data_decoder or [None] * n
-            decoders[self.index_in_list] = value
-            self.plotter.plot_data_decoder = decoders
-        else:
-            if (isinstance(self.plotter.plot_data, InteractiveList) and
-                    isinstance(value, CFDecoder)):
-                value = [value] * len(self.plotter.plot_data)
-            self.plotter.plot_data_decoder = value
+        self.set_decoder(value, self.index_in_list)
 
     @property
     def data(self):
@@ -308,11 +302,7 @@ class Formatoption(object):
 
     @data.setter
     def data(self, value):
-        if self.index_in_list is not None and isinstance(
-                self.plotter.plot_data, InteractiveList):
-            self.plotter.plot_data[self.index_in_list] = value
-        else:
-            self.plotter.plot_data = value
+        self.set_data(value, self.index_in_list)
 
     @property
     def iter_data(self):
@@ -502,11 +492,16 @@ class Formatoption(object):
         i: int
             The position in the InteractiveList where to insert the data (if
             the plotter visualizes a list anyway)
+
+        Notes
+        -----
+        This method uses the :attr:`Formatoption.data` attribute
         """
-        if i is not None and isinstance(self.data, InteractiveList):
-            self.data[i] = data
+        if i is not None and isinstance(self.plotter.plot_data,
+                                        InteractiveList):
+            self.plotter.plot_data[i] = data
         else:
-            self.data = data
+            self.plotter.plot_data = data
 
     def set_decoder(self, decoder, i=None):
         """
@@ -525,6 +520,8 @@ class Formatoption(object):
             The position in the InteractiveList where to insert the data (if
             the plotter visualizes a list anyway)
         """
+        # we do not modify the raw data but instead set it on the plotter
+        # TODO: This is not safe for encapsulated InteractiveList instances!
         if i is not None and isinstance(
                 self.plotter.plot_data, InteractiveList):
             n = len(self.plotter.plot_data)
@@ -532,6 +529,9 @@ class Formatoption(object):
             decoders[i] = decoder
             self.plotter.plot_data_decoder = decoders
         else:
+            if (isinstance(self.plotter.plot_data, InteractiveList) and
+                    isinstance(decoder, CFDecoder)):
+                decoder = [decoder] * len(self.plotter.plot_data)
             self.plotter.plot_data_decoder = decoder
 
     def check_and_set(self, value, todefault=False, validate=True):
@@ -1557,7 +1557,7 @@ class Plotter(dict):
         if isinstance(keys, six.string_types):
             keys = [keys]
         else:
-            keys = list(keys or all_keys)
+            keys = list(keys or sorted(all_keys))
         fmto_groups = defaultdict(list)
         for key in all_keys:
             fmto_groups[getattr(cls, key).group].append(key)
@@ -1576,6 +1576,7 @@ class Plotter(dict):
                     **kwargs)
                 if not valid:
                     keys.remove(key)
+                    new_i -= 1
                     warn(message)
             new_i += 1
         return keys
@@ -1628,7 +1629,7 @@ class Plotter(dict):
         func = func or default_print_func
         # call this function recursively when grouped is True
         if grouped:
-            grouped_keys = defaultdict(list)
+            grouped_keys = DefaultOrderedDict(list)
             for fmto in map(lambda key: getattr(cls, key), keys):
                 grouped_keys[fmto.groupname].append(fmto.key)
             text = ""
@@ -1704,7 +1705,7 @@ class Plotter(dict):
         keys = cls._enhance_keys(keys, *args, **kwargs)
         str_indent = " " * indent
         if grouped:
-            grouped_keys = defaultdict(list)
+            grouped_keys = DefaultOrderedDict(list)
             for fmto in map(lambda key: getattr(cls, key), keys):
                 grouped_keys[fmto.groupname].append(fmto.key)
             text = "\n\n".join(
@@ -1816,7 +1817,8 @@ class Plotter(dict):
                           pattern_base=pattern_base)
         self._rc.update(user_rc.data)
 
-        self._defaultParams = SubDict(defaultParams, base_str, pattern=pattern,
+        self._defaultParams = SubDict(rcParams.defaultParams, base_str,
+                                      pattern=pattern,
                                       pattern_base=pattern_base)
 
     docstrings.keep_params('InteractiveBase.update.parameters', 'auto_update')
@@ -2098,9 +2100,9 @@ class Plotter(dict):
                 if coord.size == 1:
                     attrs[dim] = format_time(coord.values)
             if isinstance(self.data, InteractiveList):
-                decoder = self.data[0].decoder
+                decoder = self.data[0].psy.decoder
             else:
-                decoder = self.data.decoder
+                decoder = self.data.psy.decoder
             for dim in axes:
                 for obj in [base_var, arr]:
                     coord = getattr(decoder, 'get_' + dim)(
