@@ -16,6 +16,7 @@ to open a GeoTIFF file named ``'my_tiff.tiff'`` you can do::
 Or you use the `engine` of the :func:`psyplot.open_dataset` function:
 
     >>> ds = open_dataset('my_tiff.tiff', engine='gdal')"""
+import six
 from numpy import arange, nan, dtype
 from xarray import Variable
 from collections import OrderedDict
@@ -23,12 +24,12 @@ from xarray.core.utils import FrozenOrderedDict
 from xarray.backends.common import AbstractDataStore
 from psyplot.compat.pycompat import range
 from psyplot.warning import warn
+import psyplot.data as psyd
 try:
     import gdal
     from osgeo import gdal_array
 except ImportError as e:
-    from .data import _MissingModule
-    gdal = _MissingModule(e)
+    gdal = psyd._MissingModule(e)
 try:
     from dask.array import Array
     with_dask = True
@@ -42,18 +43,35 @@ class GdalStore(AbstractDataStore):
     We recommend to use the :func:`psyplot.open_dataset` function to open
     a geotiff file::
 
-        >>> ds = psyplot.open_dataset('my_geotiff.tiff', engine='gdal')"""
+        >>> ds = psyplot.open_dataset('my_geotiff.tiff', engine='gdal')
 
-    def __init__(self, filename):
+    Notes
+    -----
+    The :class:`GdalStore` object is not as elaborate as, for example, the
+    `gdal_translate` command. Many attributes, e.g. variable names or netCDF
+    dimensions will not be interpreted. We only support two
+    dimensional arrays and each band is saved into one variable named like
+    ``'Band1', 'Band2', ...``. If you want a more elaborate translation of your
+    GDAL Raster, convert the file to a netCDF file using ``gdal_translate`` or
+    the ``gdal.GetDriverByName('netCDF').CreateCopy`` method. However this
+    class does not create an extra file on your hard disk as it is done by
+    GDAL."""
+
+    def __init__(self, filename_or_obj):
         """
         Parameters
         ----------
-        filename: str
-            The path to the GeoTIFF file"""
-        self.ds = gdal.Open(filename)
-        self._filename = filename
+        filename_or_obj: str
+            The path to the GeoTIFF file or a gdal dataset"""
+        if isinstance(psyd.safe_list(filename_or_obj)[0], six.string_types):
+            self.ds = gdal.Open(filename_or_obj)
+            self._filename = filename_or_obj
+        else:
+            self.ds = filename_or_obj
+            fnames = self.ds.GetFileList()
+            self._filename = fnames[0] if len(fnames) == 1 else fnames
 
-    def get_variables(self):  # pragma: no cover
+    def get_variables(self):
         def load(band):
             band = ds.GetRasterBand(band)
             a = band.ReadAsArray()
@@ -84,7 +102,7 @@ class GdalStore(AbstractDataStore):
             except ValueError:
                 no_data = band.GetNoDataValue()
                 attrs.update({'_FillValue': no_data} if no_data else {})
-            variables['band%i' % iband] = Variable(dims, arr, attrs)
+            variables['Band%i' % iband] = Variable(dims, arr, attrs)
         variables['lat'], variables['lon'] = self._load_GeoTransform()
         return FrozenOrderedDict(variables)
 
