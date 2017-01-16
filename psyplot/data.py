@@ -173,7 +173,7 @@ def unique_everseen(iterable, key=None):
 def is_remote_url(path):
     patt = re.compile('^https?\://')
     if not isinstance(path, six.string_types):
-        return all(map(patt.search, path))
+        return all(map(patt.search, (s or '' for s in path)))
     return bool(re.search('^https?\://', path))
 
 
@@ -450,7 +450,7 @@ def get_tdata(t_format, files):
     for fmt, patt in t_patterns.items():
         t_pattern = t_pattern.replace(fmt, patt)
     t_pattern = re.compile(t_pattern)
-    time = range(len(files))
+    time = list(range(len(files)))
     for i, f in enumerate(files):
         time[i] = median(np.array(list(map(
             lambda s: np.datetime64(dt.datetime.strptime(s, t_format)),
@@ -458,7 +458,7 @@ def get_tdata(t_format, files):
     ind = np.argsort(time)  # sort according to time
     files = np.array(files)[ind]
     time = np.array(time)[ind]
-    return Index(time, name='time'), files
+    return to_datetime(Index(time, name='time')), files
 
 
 docstrings.get_sections(
@@ -1873,7 +1873,7 @@ def open_dataset(filename_or_obj, decode_cf=True, decode_times=True,
     if isstring(filename_or_obj) and os.path.exists(filename_or_obj):
         filename_or_obj = os.path.abspath(filename_or_obj)
     if engine == 'gdal':
-        from .gdal_store import GdalStore
+        from psyplot.gdal_store import GdalStore
         filename_or_obj = GdalStore(filename_or_obj)
         engine = None
     ds = xr.open_dataset(filename_or_obj, decode_cf=decode_cf,
@@ -1934,7 +1934,7 @@ def open_mfdataset(paths, decode_cf=True, decode_times=True,
         time, paths = get_tdata(t_format, paths)
         kwargs['concat_dim'] = time
     if engine == 'gdal':
-        from .gdal_store import GdalStore
+        from psyplot.gdal_store import GdalStore
         paths = list(map(GdalStore, paths))
         engine = None
         kwargs['lock'] = False
@@ -2637,11 +2637,61 @@ class ArrayList(list):
             ([arr] if not isinstance(arr, InteractiveList) else arr.arrays
              for arr in self)))
 
+    @docstrings.get_sectionsf('ArrayList.rename', sections=[
+        'Parameters', 'Raises'])
+    @dedent
+    def rename(self, arr, new_name=True):
+        """
+        Rename an array to find a name that isn't already in the list
+
+        Parameters
+        ----------
+        arr: InteractiveBase
+            A :class:`InteractiveArray` or :class:`InteractiveList` instance
+            whose name shall be checked
+        new_name: bool or str
+            If False, and the ``arr_name`` attribute of the new array is
+            already in the list, a ValueError is raised.
+            If True and the ``arr_name`` attribute of the new array is not
+            already in the list, the name is not changed. Otherwise, if the
+            array name is already in use, `new_name` is set to 'arr{0}'.
+            If not True, this will be used for renaming (if the array name of
+            `arr` is in use or not). ``'{0}'`` is replaced by a counter
+
+        Returns
+        -------
+        InteractiveBase
+            `arr` with changed ``arr_name`` attribute
+        bool or None
+            True, if the array has been renamed, False if not and None if the
+            array is already in the list
+
+        Raises
+        ------
+        ValueError
+            If it was impossible to find a name that isn't already  in the list
+        ValueError
+            If `new_name` is False and the array is already in the list"""
+        name_in_me = arr.psy.arr_name in self.arr_names
+        if not name_in_me:
+            return arr, False
+        elif name_in_me and not self._contains_array(arr):
+            if new_name is False:
+                raise ValueError(
+                    "Array name %s is already in use! Set the `new_name` "
+                    "parameter to None for renaming!" % arr.psy.arr_name)
+            elif new_name is True:
+                new_name = new_name if isstring(new_name) else 'arr{0}'
+                arr.psy.arr_name = self.next_available_name(new_name)
+                return arr, True
+        return arr, None
+
+    docstrings.keep_params('ArrayList.rename.parameters', 'new_name')
     docstrings.keep_params('InteractiveBase.parameters', 'auto_update')
 
     @docstrings.get_sectionsf('ArrayList')
     @docstrings.dedent
-    def __init__(self, iterable=[], attrs={}, auto_update=None):
+    def __init__(self, iterable=[], attrs={}, auto_update=None, new_name=True):
         """
         Parameters
         ----------
@@ -2649,14 +2699,17 @@ class ArrayList(list):
             The iterable (e.g. another list) defining this list
         attrs: dict-like or iterable, optional
             Global attributes of this list
-        %(InteractiveBase.parameters.auto_update)s"""
-        super(ArrayList, self).__init__(
-            (arr for arr in iterable
-             if isinstance(getattr(arr, 'psy', None), InteractiveBase)))
+        %(InteractiveBase.parameters.auto_update)s
+        %(ArrayList.rename.parameters.new_name)s"""
+        super(ArrayList, self).__init__()
         self.attrs = OrderedDict(attrs)
         if auto_update is None:
             auto_update = rcParams['lists.auto_update']
         self.auto_update = not bool(auto_update)
+        # append the data in order to set the correct names
+        for arr in iterable:
+            if isinstance(getattr(arr, 'psy', None), InteractiveBase):
+                self.append(arr, new_name=new_name)
 
     def copy(self, deep=False):
         """Returns a copy of the list
@@ -2777,6 +2830,8 @@ class ArrayList(list):
                     dim: def_slice for dim in set(arr.dims).difference(
                         dims) if dim != 'variable'})
                 ret = squeeze_array(arr.isel(**dims))
+                # delete the variable dimension for the idims
+                dims.pop('variable', None)
                 ret.psy.init_accessor(arr_name=key, base=base, idims=dims)
                 return ret
         else:
@@ -2969,13 +3024,18 @@ class ArrayList(list):
             it_datasets = iter(datasets)
             datasets = defaultdict(partial(next, it_datasets, None))
         arrays = [0] * len(set(d) - {'attrs'})
-        for i, (arr_name, info) in enumerate(six.iteritems(d)):
+        i = 0
+        for arr_name, info in six.iteritems(d):
             if arr_name in ignore_keys:
                 continue
             if 'fname' not in info and 'ds' not in info:
                 arr = InteractiveList.from_dict(
                     info, alternative_paths=alternative_paths,
                     datasets=datasets)
+                if not arr:
+                    warn("Skipping empty list %s!" % arr_name)
+                    arrays.pop(i)
+                    continue
             else:
                 if 'ds' in info:
                     arr = cls.from_dataset(
@@ -3001,8 +3061,9 @@ class ArrayList(list):
                         name=info['name'])[0]
                 for key, val in six.iteritems(info.get('attrs', {})):
                     arr.attrs.setdefault(key, val)
-            arr.arr_name = arr_name
+            arr.psy.arr_name = arr_name
             arrays[i] = arr
+            i += 1
         return cls(arrays, attrs=d.get('attrs', {}))
 
     docstrings.delete_params('get_filename_ds.parameters', 'ds', 'dump')
@@ -3096,7 +3157,7 @@ class ArrayList(list):
             else:
                 if standardize_dims:
                     idims = arr.psy.decoder.standardize_dims(
-                        next(arr.psy.iter_base_variables), arr.idims)
+                        next(arr.psy.iter_base_variables), arr.psy.idims)
                 else:
                     idims = arr.idims
                 ret[arr.psy.arr_name] = d = {'dims': idims}
@@ -3125,7 +3186,8 @@ class ArrayList(list):
                                 else:
                                     f = os.path.abspath(f)
                                 d['fname'].append(f)
-                        if isinstance(fname, six.string_types):
+                        if fname is None or isinstance(fname,
+                                                       six.string_types):
                             d['fname'] = d['fname'][0]
                         else:
                             d['fname'] = tuple(safe_list(fname))
@@ -3425,54 +3487,18 @@ class ArrayList(list):
     def __repr__(self):
         return self.__str__()
 
-    @docstrings.get_sectionsf('ArrayList.rename', sections=[
-        'Parameters', 'Raises'])
-    @dedent
-    def rename(self, arr, new_name=True):
-        """
-        Rename an array to find a name that isn't already in the list
+    def __getitem__(self, key):
+        """Overwrites lists __getitem__ by returning an ArrayList if `key` is a
+        slice"""
+        if isinstance(key, slice):  # return a new ArrayList
+            return self.__class__(
+                super(ArrayList, self).__getitem__(key))
+        else:  # return the item
+            return super(ArrayList, self).__getitem__(key)
 
-        Parameters
-        ----------
-        arr: InteractiveBase
-            A :class:`InteractiveArray` or :class:`InteractiveList` instance
-            whose name shall be checked
-        new_name: bool or str
-            If False, and the ``arr_name`` attribute of the new array is
-            already in the list, a ValueError is raised.
-            If True and the ``arr_name`` attribute of the new array is not
-            already in the list, the name is not changed. Otherwise, if the
-            array name is already in use, `new_name` is set to 'arr{0}'.
-            If not True, this will be used for renaming (if the array name of
-            `arr` is in use or not). ``'{0}'`` is replaced by a counter
-
-        Returns
-        -------
-        InteractiveBase
-            `arr` with changed ``arr_name`` attribute
-        bool or None
-            True, if the array has been renamed, False if not and None if the
-            array is already in the list
-
-        Raises
-        ------
-        ValueError
-            If it was impossible to find a name that isn't already  in the list
-        ValueError
-            If `new_name` is False and the array is already in the list"""
-        name_in_me = arr.psy.arr_name in self.arr_names
-        if not name_in_me:
-            return arr, False
-        elif name_in_me and not self._contains_array(arr):
-            if new_name is False:
-                raise ValueError(
-                    "Array name %s is already in use! Set the `new_name` "
-                    "parameter to None for renaming!" % arr.psy.arr_name)
-            elif new_name is True:
-                new_name = new_name if isstring(new_name) else 'arr{0}'
-                arr.psy.arr_name = self.next_available_name(new_name)
-                return arr, True
-        return arr, None
+    if six.PY2:  # for compatibility to python 2.7
+        def __getslice__(self, *args):
+            return self[slice(*args)]
 
     def next_available_name(self, fmt_str='arr{0}', counter=None):
         """Create a new array out of the given format string
@@ -3499,8 +3525,6 @@ class ArrayList(list):
             raise ValueError(
                 "{0} already in the list".format(fmt_str))
         return new_name
-
-    docstrings.keep_params('ArrayList.rename.parameters', 'new_name')
 
     @docstrings.dedent
     def append(self, value, new_name=False):
