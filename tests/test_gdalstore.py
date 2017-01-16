@@ -17,7 +17,7 @@ class TestGdalStore(unittest.TestCase):
         """Test to open a GeoTiff file"""
         ds_ref = psyd.open_dataset(bt.get_file('test-t2m-u-v.nc'))
         ds_tiff = psyd.open_dataset(bt.get_file(
-            'test-t2m-1979-01-31T18:00:00.tif'), engine='gdal')
+            'test-t2m-1979-01-31T18-00-00.tif'), engine='gdal')
         self.assertListEqual(
             ds_tiff.Band1.values.tolist(),
             ds_ref.isel(time=0, lev=0).t2m.values.tolist())
@@ -29,7 +29,7 @@ class TestGdalStore(unittest.TestCase):
         ds_ref = psyd.open_dataset(bt.get_file('test-t2m-u-v.nc'))
         ds_tiff = psyd.open_mfdataset(bt.get_file('test-t2m-*.tif'),
                                       engine='gdal',
-                                      t_format='test-t2m-%Y-%m-%dT%H:%M:%S')
+                                      t_format='test-t2m-%Y-%m-%dT%H-%M-%S')
         self.assertListEqual(
             ds_ref.isel(time=[0, 1], lev=0).t2m.values.tolist(),
             ds_tiff.Band1.values.tolist())
