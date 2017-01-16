@@ -88,10 +88,10 @@ class GdalStore(AbstractDataStore):
         shape = (ds.RasterYSize, ds.RasterXSize)
         variables = OrderedDict()
         for iband in range(1, ds.RasterCount+1):
+            band = ds.GetRasterBand(iband)
+            dt = dtype(gdal_array.codes[band.DataType])
             if with_dask:
-                band = ds.GetRasterBand(iband)
                 dsk = {('x', 0, 0): (load, iband)}
-                dt = dtype(gdal_array.codes[band.DataType])
                 arr = Array(dsk, 'x', chunks, shape=shape, dtype=dt)
             else:
                 arr = load(iband)
