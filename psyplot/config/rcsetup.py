@@ -276,6 +276,7 @@ base rcParams dictionary."""
 
     def _get_val_and_base(self, key):
         found = False
+        e = None
         for s, patt in self._iter_base_and_pattern(key):
             found = True
             try:
@@ -286,17 +287,11 @@ base rcParams dictionary."""
                     raise KeyError(
                         "{0} does not match the specified pattern!".format(
                             s))
-            except KeyError:
+            except KeyError as e:
                 pass
         if not found:
-            try:
+            if e is not None:
                 raise
-            # no active Exception found, error was already captured
-            except RuntimeError:
-                pass
-            except TypeError:  # python2 gives a TypeError instead
-                if not six.PY2:
-                    raise
         raise KeyError("{0} does not match the specified pattern!".format(
                             key))
 
@@ -386,6 +381,10 @@ environment variable."""
     @defaultParams.setter
     def defaultParams(self, value):
         self._defaultParams = value
+
+    @defaultParams.deleter
+    def defaultParams(self):
+        del self._defaultParams
 
     # validate values on the way in
     def __init__(self, *args, **kwargs):
