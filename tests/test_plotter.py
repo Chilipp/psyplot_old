@@ -3,7 +3,6 @@
 import unittest
 import six
 import os.path as osp
-from textwrap import indent
 import _base_testing as bt
 from psyplot.compat.pycompat import OrderedDict
 import psyplot.data as psyd
@@ -12,6 +11,12 @@ import xarray as xr
 import psyplot.plotter as psyp
 from psyplot import rcParams
 import psyplot.config as psyc
+try:
+    from textwrap import indent
+except ImportError:
+    def indent(text, prefix, predicate=None):  # python2
+        return '\n'.join(prefix + s if predicate is None or predicate(s) else s
+                         for s in text.splitlines())
 
 
 docstrings = psyp.docstrings
