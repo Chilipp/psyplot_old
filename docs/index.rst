@@ -25,6 +25,8 @@ on `GitHub <https://github.com/Chilipp/psyplot>`__.
 .. _psyplot_gui: http://psyplot-gui.readthedocs.io/en/latest/
 
 
+.. start-badges
+
 .. list-table::
     :stub-columns: 1
     :widths: 10 90
@@ -32,7 +34,7 @@ on `GitHub <https://github.com/Chilipp/psyplot>`__.
     * - docs
       - |docs|
     * - tests
-      - |travis| |requires| |coveralls|
+      - |travis| |appveyor| |requires| |coveralls|
     * - package
       - |version| |conda| |supported-versions| |supported-implementations|
 
@@ -44,13 +46,17 @@ on `GitHub <https://github.com/Chilipp/psyplot>`__.
     :alt: Travis
     :target: https://travis-ci.org/Chilipp/psyplot
 
+.. |appveyor| image:: https://ci.appveyor.com/api/projects/status/3jk6ea1n4a4dl6vk?svg=true
+    :alt: AppVeyor
+    :target: https://ci.appveyor.com/project/Chilipp/psyplot
+
 .. |coveralls| image:: https://coveralls.io/repos/github/Chilipp/psyplot/badge.svg?branch=master
     :alt: Coverage
     :target: https://coveralls.io/github/Chilipp/psyplot?branch=master
 
 .. |requires| image:: https://requires.io/github/Chilipp/psyplot/requirements.svg?branch=master
-     :alt: Requirements Status
-     :target: https://requires.io/github/Chilipp/psyplot/requirements/?branch=master
+    :alt: Requirements Status
+    :target: https://requires.io/github/Chilipp/psyplot/requirements/?branch=master
 
 .. |version| image:: https://img.shields.io/pypi/v/psyplot.svg?style=flat
     :alt: PyPI Package latest release
@@ -67,6 +73,8 @@ on `GitHub <https://github.com/Chilipp/psyplot>`__.
 .. |supported-implementations| image:: https://img.shields.io/pypi/implementation/psyplot.svg?style=flat
     :alt: Supported implementations
     :target: https://pypi.python.org/pypi/psyplot
+
+.. end-badges
 
 
 Documentation
