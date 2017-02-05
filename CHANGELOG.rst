@@ -7,6 +7,8 @@ Added
 
 Changed
 -------
+* The ``psyplot.project.close`` method does only accept the project number
+  now
 * The modules in the psyplot.plotter modules have been moved to separate
   packages to make the debugging and testing easier
 
