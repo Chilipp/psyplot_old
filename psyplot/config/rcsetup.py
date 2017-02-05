@@ -755,28 +755,28 @@ environment variable."""
         return RcParams(self)
 
 
-def psyplot_fname(env_key='PSYPLOTRC', fname='psyplotrc.yaml'):
+def psyplot_fname(env_key='PSYPLOTRC', fname='psyplotrc.yml'):
     """
     Get the location of the config file.
 
     The file location is determined in the following order
 
-    - `$PWD/psyplotrc.yaml`
+    - `$PWD/psyplotrc.yml`
 
     - environment variable `PSYPLOTRC` (pointing to the file location or a
-      directory containing the file `psyplotrc.yaml`)
+      directory containing the file `psyplotrc.yml`)
 
     - `$PSYPLOTCONFIGDIR/psyplot`
 
     - On Linux,
 
-          - `$HOME/.config/psyplot/psyplotrc.yaml`
+          - `$HOME/.config/psyplot/psyplotrc.yml`
 
     - On other platforms,
 
-         - `$HOME/.psyplot/psyplotrc.yaml` if `$HOME` is defined.
+         - `$HOME/.psyplot/psyplotrc.yml` if `$HOME` is defined.
 
-    - Lastly, it looks in `$PSYPLOTDATA/psyplotrc.yaml` for a
+    - Lastly, it looks in `$PSYPLOTDATA/psyplotrc.yml` for a
       system-defined copy.
 
     Returns
