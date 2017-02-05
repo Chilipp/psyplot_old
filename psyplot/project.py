@@ -35,14 +35,13 @@ except ImportError as e:
     Cdo = _MissingModule(e)
     with_cdo = False
 
-
 if rcParams['project.import_seaborn'] is not False:
     try:
         import seaborn as _sns
-    except ImportError:
+    except ImportError as e:
         if rcParams['project.import_seaborn']:
             raise
-        _sns = None
+        _sns = _MissingModule(e)
 
 _open_projects = []  # list of open projects
 _current_project = None  # current main project
@@ -183,8 +182,8 @@ class Project(ArrayList):
         figure"""
         ret = OrderedDict()
         for arr in self:
-            if arr.plotter:
-                fig = arr.plotter.ax.get_figure()
+            if arr.psy.plotter:
+                fig = arr.psy.plotter.ax.get_figure()
                 if fig in ret:
                     ret[fig].append(arr)
                 else:
@@ -197,8 +196,8 @@ class Project(ArrayList):
         """
         ret = OrderedDict()
         for arr in self:
-            if arr.plotter:
-                ax = arr.plotter.ax
+            if arr.psy.plotter:
+                ax = arr.psy.plotter.ax
                 if ax in ret:
                     ret[ax].append(arr)
                 else:
@@ -238,7 +237,7 @@ class Project(ArrayList):
     @property
     def plotters(self):
         """A list of all the plotters in this instance"""
-        return [arr.plotter for arr in self.with_plotter]
+        return [arr.psy.plotter for arr in self.with_plotter]
 
     @property
     def datasets(self):
@@ -313,13 +312,13 @@ class Project(ArrayList):
     def disable(self):
         """Disables the plotters in this list"""
         for arr in self:
-            if arr.plotter:
-                arr.plotter.disabled = True
+            if arr.psy.plotter:
+                arr.psy.plotter.disabled = True
 
     def enable(self):
         for arr in self:
-            if arr.plotter:
-                arr.plotter.disabled = False
+            if arr.psy.plotter:
+                arr.psy.plotter.disabled = False
 
     def __call__(self, *args, **kwargs):
         ret = super(Project, self).__call__(*args, **kwargs)
@@ -364,8 +363,8 @@ class Project(ArrayList):
             If True, close the dataset as well"""
         import matplotlib.pyplot as plt
         for arr in self[:]:
-            if figs and arr.plotter is not None:
-                plt.close(arr.plotter.ax.get_figure().number)
+            if figs and arr.psy.plotter is not None:
+                plt.close(arr.psy.plotter.ax.get_figure().number)
             if data:
                 self.remove(arr)
                 if not self.is_main:
@@ -374,11 +373,12 @@ class Project(ArrayList):
                 if isinstance(arr, InteractiveList):
                     for ds in [val['ds'] for val in six.itervalues(
                                arr._get_ds_descriptions(
-                                    arr.array_info(ds_description=['ds'])))]:
+                                    arr.array_info(ds_description=['ds'],
+                                                   standardize_dims=False)))]:
                         ds.close()
                 else:
-                    arr.base.close()
-            arr.plotter = None
+                    arr.psy.base.close()
+            arr.psy.plotter = None
         if self.is_main and self is gcp(True):
             scp(None)
         elif self.main is gcp(True):
@@ -459,8 +459,7 @@ class Project(ArrayList):
             kwargs, possible_fmts)
         fmt.update(additional_fmt)
         # create the subproject
-        sub_project = self.from_dataset(
-            filename_or_obj, **kwargs)
+        sub_project = self.from_dataset(filename_or_obj, **kwargs)
         sub_project.main = self
         sub_project.no_auto_update = not (
             not sub_project.no_auto_update or not self.no_auto_update)
@@ -485,13 +484,12 @@ class Project(ArrayList):
                 share = [share]
             else:
                 share = list(share)
-            sub_project[0].plotter.share(
-                [arr.plotter for arr in sub_project[1:]], keys=share,
+            sub_project[0].psy.plotter.share(
+                [arr.psy.plotter for arr in sub_project[1:]], keys=share,
                 draw=False)
             if make_plot:
                 for arr in sub_project:
-                    arr.plotter.reinit(
-                        draw=False, clear=clear)
+                    arr.psy.plotter.reinit(draw=False, clear=clear)
         if draw is None:
             draw = rcParams['auto_draw']
         if draw:
@@ -545,13 +543,13 @@ class Project(ArrayList):
             data type of the corresponding value"""
         if enhanced:
             all_attrs = [
-                arr.plotter.get_enhanced_attrs(
-                    getattr(arr.plotter, 'plot_data' if plot_data else 'data'))
-                for arr in self]
+                plotter.get_enhanced_attrs(
+                    getattr(plotter, 'plot_data' if plot_data else 'data'))
+                for plotter in self.plotters]
         else:
             if plot_data:
-                all_attrs = [arr.plotter.plot_data.attrs for arr in
-                             filter(lambda arr: arr.plotter is not None, self)]
+                all_attrs = [plotter.plot_data.attrs
+                             for plotter in self.plotters]
             else:
                 all_attrs = [arr.attrs for arr in self]
         all_keys = set(chain(*(attrs.keys() for attrs in all_attrs)))
@@ -695,11 +693,11 @@ class Project(ArrayList):
 
         Parameters
         ----------
-        base: None, plotter, or :class:`psyplot.data.InteractiveBase`
+        base: None, plotter or data object or a list of them
             The source of the plotter that shares its formatoptions with the
             others. It can be None (then the first instance in this project
             is used), a :class:`~psyplot.plotter.Plotter` or any data object
-            with a *plotter* attribute
+            with a *psy* attribute.
         %(Plotter.share.parameters.keys)s
         by: {'figure', 'axes'}
             Share the formatoptions only with the others on the same
@@ -712,16 +710,19 @@ class Project(ArrayList):
         psyplot.plotter.share"""
         if by is not None:
             if base is not None:
-                bases = {}
-                for arr in base:
-                    bases[arr.ax if by == 'axes' else arr.ax.figure] = arr
+                if hasattr(base, 'psy') or isinstance(base, Plotter):
+                    base = [base]
+                if by == 'axes':
+                    bases = dict(Project(base).axes)
+                else:
+                    bases = dict(Project(base).figs)
             else:
                 bases = {}
             projects = self.axes if by == 'axes' else self.figs
             for obj, p in projects.items():
                 p.share(bases.get(obj), keys, **kwargs)
         else:
-            plotters = [arr.plotter for arr in self.with_plotter]
+            plotters = self.plotters
             if not plotters:
                 return
             if base is None:
@@ -730,8 +731,8 @@ class Project(ArrayList):
                 base = plotters[0]
                 plotters = plotters[1:]
             else:
-                base = getattr(base, 'plotter', base)
-            base.share(plotters, keys=keys, **kwargs)
+                plotter = getattr(getattr(base, 'psy', base), 'plotter', base)
+            plotter.share(plotters, keys=keys, **kwargs)
 
     @docstrings.dedent
     def unshare(self, **kwargs):
@@ -748,8 +749,8 @@ class Project(ArrayList):
         See Also
         --------
         psyplot.plotter.Plotter.unshare, psyplot.plotter.Plotter.unshare_me"""
-        for arr in self.with_plotter:
-            arr.plotter.unshare_me(**kwargs)
+        for plotter in self.plotters:
+            plotter.unshare_me(**kwargs)
 
     docstrings.delete_params('ArrayList.array_info.parameters', 'pwd')
 
@@ -828,9 +829,9 @@ class Project(ArrayList):
                 pwd=pwd, alternate_paths=alternate_paths, **kwargs)
         # store the plotter settings
         for arr, d in zip(self, six.itervalues(ret['arrays'])):
-            if arr.plotter is None:
+            if arr.psy.plotter is None:
                 continue
-            plotter = arr.plotter
+            plotter = arr.psy.plotter
             d['plotter'] = {
                 'ax': _ProjectLoader.inspect_axes(plotter.ax),
                 'fmt': {key: getattr(plotter, key).value2pickle
@@ -839,11 +840,12 @@ class Project(ArrayList):
                         plotter.__class__.__name__),
                 'shared': {}}
             d['plotter']['ax']['shared'] = set(
-                other.arr_name for other in self if other.ax == plotter.ax)
+                other.psy.arr_name for other in self
+                if other.psy.ax == plotter.ax)
             shared = d['plotter']['shared']
             for fmto in plotter._fmtos:
                 if fmto.shared:
-                    shared[fmto.key] = [other_fmto.plotter.data.arr_name
+                    shared[fmto.key] = [other_fmto.plotter.data.psy.arr_name
                                         for other_fmto in fmto.shared]
         if fname is not None:
             with open(fname, 'wb') as f:
@@ -1025,15 +1027,16 @@ class Project(ArrayList):
                     ax = axes[next(iter(already_opened))]
                 else:
                     plot_dict['ax'].pop('shared', None)
-                    axes[arr.arr_name] = ax = _ProjectLoader.load_axes(
+                    axes[arr.psy.arr_name] = ax = _ProjectLoader.load_axes(
                         plot_dict['ax'])
             plotter_cls(
                 arr, make_plot=False, draw=False, clear=False,
                 ax=ax, project=obj.main, **plot_dict['fmt'])
         for arr in obj.with_plotter:
-            shared = d['arrays'][arr.arr_name]['plotter'].get('shared', {})
+            shared = d['arrays'][arr.psy.arr_name]['plotter'].get('shared', {})
             for key, arr_names in six.iteritems(shared):
-                arr.plotter.share(obj(arr_name=arr_names).plotters, keys=[key])
+                arr.psy.plotter.share(obj(arr_name=arr_names).plotters,
+                                      keys=[key])
         if make_plot:
             for plotter in obj.plotters:
                 plotter.reinit(
@@ -1373,7 +1376,7 @@ class _PlotterInterface(object):
             name = [name]
             dims = [dims]
         else:
-            dims = dims[:]
+            dims = list(dims)
         variables = [ds[safe_list(n)[0]] for n in name]
         decoders = [CFDecoder.get_decoder(ds, var) for var in variables]
         default_slice = slice(None) if self._default_slice is None else \
@@ -1700,7 +1703,7 @@ def project(num=None, *args, **kwargs):
     return project
 
 
-def close(num=None, *args, **kwargs):
+def close(num=None):
     """
     Close the project
 
@@ -1721,22 +1724,16 @@ def close(num=None, *args, **kwargs):
     See Also
     --------
     Project.close"""
-    if args or kwargs:
-        warn('*args and *kwargs are depreciated since psyplot 0.2.18. Please '
-             'use the Project.close method if you need finer control!',
-             DeprecationWarning)
-    else:
-        args = (True, True, True),
-        kwargs = {}
+    kws = dict(figs=True, data=True, ds=True)
     cp_num = gcp(True).num
     got_cp = False
     if num is None:
         project = gcp()
         scp(None)
-        project.close(*args, **kwargs)
+        project.close(**kws)
     elif num == 'all':
         for project in _open_projects[:]:
-            project.close(*args, **kwargs)
+            project.close(**kws)
             got_cp = got_cp or project.main.num == cp_num
             del _open_projects[0]
     else:
@@ -1749,7 +1746,7 @@ def close(num=None, *args, **kwargs):
             _open_projects.remove(project)
         except ValueError:
             pass
-        project.close(*args, **kwargs)
+        project.close(**kws)
         got_cp = got_cp or project.main.num == cp_num
     if got_cp:
         if _open_projects:
@@ -1763,8 +1760,9 @@ docstrings.delete_params('Project._register_plotter.parameters', 'plotter_cls')
 
 
 @docstrings.dedent
-def register_plotter(identifier, module, plotter_name, sorter=True,
-                     plot_func=True, import_plotter=None, **kwargs):
+def register_plotter(identifier, module, plotter_name, plotter_cls=None,
+                     sorter=True, plot_func=True, import_plotter=None,
+                     **kwargs):
     """
     Register a :class:`psyplot.plotter.Plotter` for the projects
 
@@ -1793,20 +1791,25 @@ def register_plotter(identifier, module, plotter_name, sorter=True,
     ----------------
     %(ProjectPlotter._register_plotter.other_parameters)s
     """
-    if ((import_plotter is None and rcParams['project.auto_import']) or
-            import_plotter):
-        try:
-            plotter_cls = getattr(import_module(module), plotter_name)
-        except Exception as e:
-            critical("Could not import %s!\n" % module +
-                     e.message if six.PY2 else str(e))
-            return
-    else:
-        plotter_cls = None
+    if plotter_cls is None:
+        if ((import_plotter is None and rcParams['project.auto_import']) or
+                import_plotter):
+            try:
+                plotter_cls = getattr(import_module(module), plotter_name)
+            except Exception as e:
+                critical(("Could not import %s!\n" % module) +
+                         e.message if six.PY2 else str(e))
+                return
     if sorter:
+        if hasattr(Project, identifier):
+            raise ValueError(
+                "Project class already has a %s attribute" % identifier)
         Project._register_plotter(
             identifier, module, plotter_name, plotter_cls)
     if plot_func:
+        if hasattr(ProjectPlotter, identifier):
+            raise ValueError(
+                "Project class already has a %s attribute" % identifier)
         ProjectPlotter._register_plotter(
             identifier, module, plotter_name, plotter_cls, **kwargs)
     if identifier not in registered_plotters:
@@ -1815,6 +1818,37 @@ def register_plotter(identifier, module, plotter_name, sorter=True,
             plot_func=plot_func, import_plotter=import_plotter))
         registered_plotters[identifier] = kwargs
     return
+
+
+def unregister_plotter(identifier, sorter=True, plot_func=True):
+    """
+    Unregister a :class:`psyplot.plotter.Plotter` for the projects
+
+    Parameters
+    ----------
+    identifier: str
+        Name of the attribute that is used to filter for the instances
+        belonging to this plotter or to create plots with this plotter
+    sorter: bool
+        If True, the identifier will be unregistered from the :class:`Project`
+        class
+    plot_func: bool
+        If True, the identifier will be unregistered from the
+        :class:`ProjectPlotter` class
+    """
+    d = registered_plotters.get(identifier, {})
+    if sorter and hasattr(Project, identifier):
+        delattr(Project, identifier)
+        d['sorter'] = False
+    if plot_func and hasattr(ProjectPlotter, identifier):
+        delattr(ProjectPlotter, identifier)
+        try:
+            delattr(plot, '_' + identifier)
+        except AttributeError:
+            pass
+        d['plot_func'] = False
+    if sorter and plot_func:
+        registered_plotters.pop(identifier, None)
 
 
 registered_plotters = {}
