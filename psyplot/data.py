@@ -1,3 +1,4 @@
+from __future__ import division
 import os
 from threading import Thread
 from functools import partial
@@ -337,7 +338,13 @@ def setup_coords(arr_names=None, sort=[], dims={}, **kwargs):
         for key, val in six.iteritems(dims):
             sorted_dims[key] = val
     else:
-        sorted_dims = dims
+        # make sure, it is first sorted for the variable names
+        if 'name' in dims:
+            sorted_dims['name'] = None
+        for key, val in sorted(dims.items()):
+            sorted_dims[key] = val
+        for key, val in six.iteritems(kwargs):
+            sorted_dims.setdefault(key, val)
     for key, val in six.iteritems(sorted_dims):
         sorted_dims[key] = iter(safe_list(val))
     return OrderedDict([
@@ -370,7 +377,7 @@ def to_slice(arr):
         return slice(arr[0], arr[0] + 1)
     step = np.unique(arr[1:] - arr[:-1])
     if len(step) == 1:
-        return slice(arr[0], arr[-1] + step, step[0])
+        return slice(arr[0], arr[-1] + step[0], step[0])
 
 
 def get_index_from_coord(coord, base_index):
@@ -1460,7 +1467,7 @@ class CFDecoder(object):
             arr = target_crs.transform_points(src_crs, xvert, yvert)
             xvert = arr[:, 0]
             yvert = arr[:, 1]
-        triangles = np.reshape(range(len(xvert)), (int(len(xvert) / 3), 3))
+        triangles = np.reshape(range(len(xvert)), (len(xvert) // 3, 3))
         return Triangulation(xvert, yvert, triangles)
 
     docstrings.delete_params(
@@ -2874,7 +2881,7 @@ class ArrayList(list):
                     # ignore method argument
                     ret = squeeze_array(arr.sel(**dims))
                 else:
-                    return squeeze_array(arr.sel(method=method, **dims))
+                    ret = squeeze_array(arr.sel(method=method, **dims))
                 ret.psy.init_accessor(arr_name=key, base=base)
                 return ret
         kwargs.setdefault(
@@ -3173,7 +3180,7 @@ class ArrayList(list):
                     idims = arr.psy.decoder.standardize_dims(
                         next(arr.psy.iter_base_variables), arr.psy.idims)
                 else:
-                    idims = arr.idims
+                    idims = arr.psy.idims
                 ret[arr.psy.arr_name] = d = {'dims': idims}
                 if 'variable' in arr.coords:
                     d['name'] = [list(arr.coords['variable'].values)]
@@ -3615,6 +3622,7 @@ class DatasetAccessor(object):
 
     _filename = None
     _data_store = None
+    num = None
 
     def __init__(self, ds):
         self.ds = ds
