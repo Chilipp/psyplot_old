@@ -31,6 +31,7 @@ install:
   - pip install coveralls
   # install the test plugin
   - cd tests/test_plugin && python setup.py install && cd ../../
+  # install psyplot
   - python setup.py install
   # export the environment for debugging
   - conda env export -n psyplot_$ENVKEY
