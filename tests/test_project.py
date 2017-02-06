@@ -1,6 +1,7 @@
 """Test module of the :mod:`psyplot.project` module"""
 import os
 import os.path as osp
+import six
 import unittest
 from itertools import chain
 import _base_testing as bt
@@ -63,7 +64,6 @@ class TestProject(td.TestArrayList):
             os.remove(fname)
 
 
-
 class TestPlotterInterface(unittest.TestCase):
 
     list_class = psy.Project
@@ -79,9 +79,10 @@ class TestPlotterInterface(unittest.TestCase):
         self.assertEqual(psy.plot.test_plotter.fmt1, SimpleFmt.__doc__)
         psy.plot.test_plotter.print_func = None
         # test the warning
-        with self.assertWarnsRegex(UserWarning, "not_existent_module"):
-            psy.register_plotter('something', "not_existent_module",
-                                 'not_important', import_plotter=True)
+        if not six.PY2:
+            with self.assertWarnsRegex(UserWarning, "not_existent_module"):
+                psy.register_plotter('something', "not_existent_module",
+                                     'not_important', import_plotter=True)
         psy.unregister_plotter('test_plotter')
         self.assertFalse(hasattr(psy.Project, 'test_plotter'))
         self.assertFalse(hasattr(psy.plot, 'test_plotter'))
