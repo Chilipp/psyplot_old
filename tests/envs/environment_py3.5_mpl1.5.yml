@@ -5,7 +5,7 @@ dependencies:
     - python=3.5
     - matplotlib=1.5
     - dask
-    - xarray<0.9
+    - xarray
     - netCDF4
     - seaborn
     - scipy  # necessary for scipy engine test
