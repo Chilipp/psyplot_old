@@ -1322,9 +1322,15 @@ class CFDecoder(object):
         else:
             coord_items = ((label, coord) for label, coord in six.iteritems(
                 arr.coords) if label in coords)
-        return dict(
+        ret = dict(
                 (label, get_index_from_coord(coord, self.ds.indexes[label]))
                 for label, coord in coord_items if label in self.ds.indexes)
+        # handle the coordinates that are not in the dataset
+        missing = set(arr.dims).difference(ret)
+        if missing:
+            warn('Could not get slices for the following dimensions: %r' % (
+                missing, ))
+        return ret
 
     @docstrings.get_sectionsf('CFDecoder.get_plotbounds', sections=[
         'Parameters', 'Returns'])
@@ -2823,6 +2829,14 @@ class ArrayList(list):
             def get_decoder(arr):
                 return CFDecoder.get_decoder(base, arr)
 
+        def add_missing_dimensions(arr):
+            # add the missing dimensions to the dataset. This is not anymore
+            # done by default from xarray >= 0.9 but we need it to ensure the
+            # interactive treatment of DataArrays
+            missing = set(arr.dims).difference(base.coords) - {'variable'}
+            for dim in missing:
+                base[dim] = arr.coords[dim] = np.arange(base.dims[dim])
+
         if squeeze:
             def squeeze_array(arr):
                 return arr.isel(**{dim: 0 for i, dim in enumerate(arr.dims)
@@ -2838,6 +2852,7 @@ class ArrayList(list):
                     arr = base[name]
                 else:
                     arr = base[list(name)]
+                add_missing_dimensions(arr)
                 if not isinstance(arr, xr.DataArray):
                     attrs = next(var for key, var in arr.variables.items()
                                  if key not in arr.coords).attrs
@@ -2863,6 +2878,7 @@ class ArrayList(list):
                     arr = base[name]
                 else:
                     arr = base[list(name)]
+                add_missing_dimensions(arr)
                 if not isinstance(arr, xr.DataArray):
                     attrs = next(var for key, var in arr.variables.items()
                                  if key not in arr.coords).attrs
@@ -2889,7 +2905,7 @@ class ArrayList(list):
                 key for key in base.variables if key not in base.coords))
         names = setup_coords(**kwargs)
         # check coordinates
-        possible_keys = ['t', 'x', 'y', 'z', 'name'] + list(base.coords)
+        possible_keys = ['t', 'x', 'y', 'z', 'name'] + list(base.dims)
         for key in set(chain(*six.itervalues(names))):
             check_key(key, possible_keys, name='dimension')
         instance = cls(starmap(sel_method, six.iteritems(names)),

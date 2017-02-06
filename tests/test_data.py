@@ -32,8 +32,6 @@ except ImportError as e:
     scipy = psyd._MissingModule(e)
     with_scipy = False
 
-import psyplot.project as psy
-
 
 class AlmostArrayEqualMixin(object):
 
@@ -227,6 +225,27 @@ class DecoderTest(unittest.TestCase):
                 psyd.safe_list(ds[dim][dims[dim]]),
                 psyd.safe_list(arr.coords[dim]),
                 msg="Slice %s for dimension %s is wrong!" % (dims[dim], dim))
+        # test with unknown dimensions
+        ds = ds.drop('time')
+        arr = ds.t2m[1:, 1]
+        arr.psy.init_accessor(base=ds)
+        if xr.__version__ >= '0.9':
+            if not six.PY2:
+                with self.assertWarnsRegex(UserWarning, 'time'):
+                    dims = arr.psy.idims
+            l = psyd.ArrayList.from_dataset(
+                ds, name='t2m', time=slice(1, None), lev=85000., method='sel')
+            arr = l[0]
+            dims = arr.psy.idims
+            for dim in ['time', 'lev', 'lat', 'lon']:
+                if dim == 'time':
+                    self.assertEqual(dims[dim], slice(1, 5, 1))
+                else:
+                    self.assertEqual(
+                        psyd.safe_list(ds[dim][dims[dim]]),
+                        psyd.safe_list(arr.coords[dim]),
+                        msg="Slice %s for dimension %s is wrong!" % (dims[dim],
+                                                                     dim))
 
     def test_triangles(self):
         """Test the creation of triangles"""
@@ -539,7 +558,8 @@ class TestArrayList(unittest.TestCase):
                                                                'test2': 2}),
              'v2': xr.Variable(('xdim', ), np.zeros(4), attrs={'test': 3,
                                                                'test2': 3})},
-            {'ydim': xr.Variable(('ydim', ), np.arange(1, 5))})
+            {'ydim': xr.Variable(('ydim', ), np.arange(1, 5)),
+             'xdim': xr.Variable(('xdim', ), np.arange(4))})
 
     def test_filter_1_name(self):
         """Test the filtering of the ArrayList"""
@@ -617,9 +637,9 @@ class TestArrayList(unittest.TestCase):
         """Test the filtering of InteractiveList by the variable name"""
         ds = self._filter_test_ds
         l = self.list_class.from_dataset(ds, name='v1', ydim=[0, 1],
-                                        prefer_list=True)
+                                         prefer_list=True)
         l.extend(self.list_class.from_dataset(ds, name='v2', xdim=[0, 1],
-                                             prefer_list=True), new_name=True)
+                                              prefer_list=True), new_name=True)
         self.assertEqual([arr.psy.arr_name for arr in l(name='v1')],
                          ['arr0'])
         self.assertEqual([arr.psy.arr_name for arr in l(name='v2')],
@@ -632,9 +652,9 @@ class TestArrayList(unittest.TestCase):
         """Test the filtering of InteractiveList by the array name"""
         ds = self._filter_test_ds
         l = self.list_class.from_dataset(ds, name='v1', ydim=[0, 1],
-                                        prefer_list=True)
+                                         prefer_list=True)
         l.extend(self.list_class.from_dataset(ds, name='v2', xdim=[0, 1],
-                                             prefer_list=True), new_name=True)
+                                              prefer_list=True), new_name=True)
         self.assertEqual([arr.psy.arr_name for arr in l(arr_name='arr0')],
                          ['arr0'])
         self.assertEqual([arr.psy.arr_name for arr in l(arr_name='arr1')],
@@ -647,9 +667,9 @@ class TestArrayList(unittest.TestCase):
         """Test the filtering of InteractiveList by attribute"""
         ds = self._filter_test_ds
         l = self.list_class.from_dataset(ds, name='v1', ydim=[0, 1],
-                                        prefer_list=True)
+                                         prefer_list=True)
         l.extend(self.list_class.from_dataset(ds, name='v2', xdim=[0, 1],
-                                             prefer_list=True), new_name=True)
+                                              prefer_list=True), new_name=True)
         self.assertEqual([arr.psy.arr_name for arr in l(test=2)],
                          ['arr0'])
         self.assertEqual([arr.psy.arr_name for arr in l(test=3)],
@@ -662,10 +682,10 @@ class TestArrayList(unittest.TestCase):
         """Test the filtering of InteractiveList by the coordinate"""
         ds = self._filter_test_ds
         l = self.list_class.from_dataset(ds, name=['v1', 'v2'], xdim=0,
-                                        prefer_list=True)
+                                         prefer_list=True)
         l.extend(
             self.list_class.from_dataset(ds, name=['v1', 'v2'], xdim=1,
-                                        prefer_list=True), new_name=True)
+                                         prefer_list=True), new_name=True)
         self.assertEqual([arr.psy.arr_name for arr in l(xdim=0)],
                          ['arr0'])
         self.assertEqual([arr.psy.arr_name for arr in l(xdim=1)],
@@ -685,10 +705,10 @@ class TestArrayList(unittest.TestCase):
         """
         ds = self._filter_test_ds
         l = self.list_class.from_dataset(ds, name='v0', ydim=[0, 1],
-                                        prefer_list=True)
+                                         prefer_list=True)
         l.extend(
             self.list_class.from_dataset(ds, name='v0', ydim=[2, 3],
-                                        prefer_list=True), new_name=True)
+                                         prefer_list=True), new_name=True)
         self.assertEqual([arr.psy.arr_name for arr in l(ydim=[0, 1])],
                          ['arr0'])
         self.assertEqual([arr.psy.arr_name for arr in l(ydim=[2, 3])],
@@ -704,9 +724,9 @@ class TestArrayList(unittest.TestCase):
         """Test the filtering of InteractiveList by attribute"""
         ds = self._filter_test_ds
         l = self.list_class.from_dataset(ds, name='v0', ydim=[0, 1],
-                                        prefer_list=True)
+                                         prefer_list=True)
         l.extend(self.list_class.from_dataset(ds, name='v0', ydim=[2, 3],
-                                             prefer_list=True), new_name=True)
+                                              prefer_list=True), new_name=True)
         self.assertEqual(
             [arr.psy.arr_name for arr in l(name='v0', ydim=[2, 3])],
             ['arr1'])
@@ -725,6 +745,7 @@ class TestArrayList(unittest.TestCase):
              'v3': xr.Variable(('xdim', ), np.zeros(4))}
         coords = {
             'ydim': xr.Variable(('ydim', ), np.arange(1, 5)),
+            'xdim': xr.Variable(('xdim', ), np.arange(4)),
             'time': xr.Variable(
                 ('time', ),
                 pd.date_range('1999-01-01', '1999-05-01', freq='M').values)}
@@ -775,7 +796,7 @@ class TestArrayList(unittest.TestCase):
         variables, coords = self._from_dataset_test_variables
         ds = xr.Dataset(variables, coords)
         l = self.list_class.from_dataset(ds, ydim=2, method=None,
-                                        name=['v0', 'v2'])
+                                         name=['v0', 'v2'])
         self.assertEqual(len(l), 2)
         self.assertEqual(set(l.names), {'v0', 'v2'})
         for arr in l:
@@ -787,7 +808,7 @@ class TestArrayList(unittest.TestCase):
         variables, coords = self._from_dataset_test_variables
         ds = xr.Dataset(variables, coords)
         l = self.list_class.from_dataset(ds, ydim=[[2, 3]], method=None,
-                                        name=['v0', 'v2'])
+                                         name=['v0', 'v2'])
         self.assertEqual(len(l), 2)
         self.assertEqual(set(l.names), {'v0', 'v2'})
         for arr in l:
@@ -799,7 +820,7 @@ class TestArrayList(unittest.TestCase):
         variables, coords = self._from_dataset_test_variables
         ds = xr.Dataset(variables, coords)
         l = self.list_class.from_dataset(ds, ydim=1.7, method='nearest',
-                                        name=['v0', 'v2'])
+                                         name=['v0', 'v2'])
         self.assertEqual(len(l), 2)
         self.assertEqual(set(l.names), {'v0', 'v2'})
         for arr in l:
@@ -811,7 +832,7 @@ class TestArrayList(unittest.TestCase):
         variables, coords = self._from_dataset_test_variables
         ds = xr.Dataset(variables, coords)
         l = self.list_class.from_dataset(ds, t='1999-02-28', method=None,
-                                        name=['v0', 'v1'])
+                                         name=['v0', 'v1'])
         self.assertEqual(len(l), 2)
         self.assertEqual(set(l.names), {'v0', 'v1'})
         for arr in l:
@@ -824,7 +845,7 @@ class TestArrayList(unittest.TestCase):
         ds = xr.Dataset(variables, coords)
         # test with array of time
         l = self.list_class.from_dataset(ds, t=[coords['time'][1:3]],
-                                        method=None, name=['v0', 'v1'])
+                                         method=None, name=['v0', 'v1'])
         self.assertEqual(len(l), 2)
         self.assertEqual(set(l.names), {'v0', 'v1'})
         for arr in l:
@@ -837,7 +858,7 @@ class TestArrayList(unittest.TestCase):
         variables, coords = self._from_dataset_test_variables
         ds = xr.Dataset(variables, coords)
         l = self.list_class.from_dataset(ds, t='1999-02-20', method='nearest',
-                                        name=['v0', 'v1'])
+                                         name=['v0', 'v1'])
         self.assertEqual(len(l), 2)
         self.assertEqual(set(l.names), {'v0', 'v1'})
         for arr in l:
@@ -850,7 +871,7 @@ class TestArrayList(unittest.TestCase):
         variables['v4'] = variables['v3'].copy()
         ds = xr.Dataset(variables, coords)
         l = self.list_class.from_dataset(ds, name=[['v3', 'v4'], 'v2'],
-                                        xdim=[[2]], squeeze=False)
+                                         xdim=[[2]], squeeze=False)
         self.assertEqual(len(l), 2)
         self.assertIn('variable', l[0].dims)
         self.assertEqual(l[0].coords['variable'].values.tolist(), ['v3', 'v4'])
