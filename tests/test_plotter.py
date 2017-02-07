@@ -449,7 +449,6 @@ class PlotterTest(unittest.TestCase):
         """Test the :meth:`psyplot.plotter.Plotter.show_docs` method"""
         plotter = TestPlotter(xr.DataArray([]))
         s = plotter.show_docs(func=str)
-        self.maxDiff = None
         self.assertEqual(s, '\n'.join([
             'fmt1', '====', SimpleFmt.__doc__, '',
             'fmt2', '====', SimpleFmt2.__doc__, '',
@@ -471,7 +470,6 @@ class PlotterTest(unittest.TestCase):
         """Test the :meth:`psyplot.plotter.Plotter.show_summaries` method"""
         plotter = TestPlotter(xr.DataArray([]))
         s = plotter.show_summaries(func=str)
-        self.maxDiff = None
         self.assertEqual(s, '\n'.join([
             'fmt1', indent(SimpleFmt.__doc__.splitlines()[0], '    '),
             'fmt2', indent(SimpleFmt2.__doc__.splitlines()[0], '    '),
