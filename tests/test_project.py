@@ -6,7 +6,11 @@ import unittest
 from itertools import chain
 import _base_testing as bt
 import test_data as td
+import test_plotter as tp
+import xarray as xr
+import psyplot.data as psyd
 import psyplot.project as psy
+import matplotlib.pyplot as plt
 
 from test_plotter import TestPlotter, SimpleFmt
 
@@ -18,10 +22,19 @@ def get_file(fname):
 class TestProject(td.TestArrayList):
     """Testclass for the :class:`psyplot.project.Project` class"""
 
+    def setUp(self):
+        psy.close('all')
+        plt.close('all')
+
+    def tearDown(self):
+        for identifier in list(psy.registered_plotters):
+            psy.unregister_plotter(identifier)
+        psy.close('all')
+        plt.close('all')
+        tp.results.clear()
+
     def test_save_and_load_01_simple(self):
         """Test the saving and loading of a Project"""
-        import test_plotter as tp
-        import matplotlib.pyplot as plt
         psy.register_plotter('test_plotter', import_plotter=True,
                              module='test_plotter', plotter_name='TestPlotter')
         ds = psy.open_dataset(bt.get_file('test-t2m-u-v.nc'))
@@ -45,6 +58,7 @@ class TestProject(td.TestArrayList):
         fname = 'test.pkl'
         sp.save_project(fname)
         psy.close()
+        tp.results.clear()
         sp = psy.Project.load_project(fname)
         self.assertEqual(len(sp), 2)
         self.assertEqual(sp[0].psy.ax.get_figure().number, 1)
@@ -58,10 +72,359 @@ class TestProject(td.TestArrayList):
         self.assertEqual(sp[1].psy.ax.numCols, 2)
         self.assertEqual(sp[1].psy.ax.numRows, 2)
 
+        psy.close()
         psy.unregister_plotter('test_plotter')
+        tp.results.clear()
 
         if osp.exists(fname):
             os.remove(fname)
+
+    def test_save_and_load_02_alternative_axes(self):
+        """Test the saving and loading of a Project providing alternative axes
+        """
+        psy.register_plotter('test_plotter', import_plotter=True,
+                             module='test_plotter', plotter_name='TestPlotter')
+        ds = psy.open_dataset(bt.get_file('test-t2m-u-v.nc'))
+        plt.close('all')
+        sp = psy.plot.test_plotter(ds, name=['t2m', 'u'], x=0, y=4,
+                                   ax=(2, 2, 1), fmt1='test')
+        self.assertEqual(len(sp), 2)
+        self.assertEqual(sp[0].psy.ax.get_figure().number, 1)
+        self.assertEqual(sp[0].psy.ax.rowNum, 0)
+        self.assertEqual(sp[0].psy.ax.colNum, 0)
+        self.assertEqual(sp[0].psy.ax.numCols, 2)
+        self.assertEqual(sp[0].psy.ax.numRows, 2)
+        self.assertEqual(sp[1].psy.ax.get_figure().number, 2)
+        self.assertEqual(sp[1].psy.ax.rowNum, 0)
+        self.assertEqual(sp[1].psy.ax.colNum, 0)
+        self.assertEqual(sp[1].psy.ax.numCols, 2)
+        self.assertEqual(sp[1].psy.ax.numRows, 2)
+        arr_names = sp.arr_names
+        self.assertEqual(tp.results[arr_names[0] + '.fmt1'], 'test')
+        self.assertEqual(tp.results[arr_names[1] + '.fmt1'], 'test')
+        fname = 'test.pkl'
+        sp.save_project(fname)
+        psy.close()
+        tp.results.clear()
+        fig, axes = plt.subplots(1, 2)
+        sp = psy.Project.load_project(fname, alternative_axes=axes.ravel())
+        self.assertEqual(len(sp), 2)
+        self.assertEqual(sp[0].psy.ax.get_figure().number, 1)
+        self.assertEqual(sp[0].psy.ax.rowNum, 0)
+        self.assertEqual(sp[0].psy.ax.colNum, 0)
+        self.assertEqual(sp[0].psy.ax.numCols, 2)
+        self.assertEqual(sp[0].psy.ax.numRows, 1)
+        self.assertEqual(sp[1].psy.ax.get_figure().number, 1)
+        self.assertEqual(sp[1].psy.ax.rowNum, 0)
+        self.assertEqual(sp[1].psy.ax.colNum, 1)
+        self.assertEqual(sp[1].psy.ax.numCols, 2)
+        self.assertEqual(sp[1].psy.ax.numRows, 1)
+
+        psy.close()
+        psy.unregister_plotter('test_plotter')
+        tp.results.clear()
+
+        if osp.exists(fname):
+            os.remove(fname)
+
+    def test_save_and_load_03_alternative_ds(self):
+        """Test the saving and loading of a Project providing alternative axes
+        """
+        psy.register_plotter('test_plotter', import_plotter=True,
+                             module='test_plotter', plotter_name='TestPlotter')
+        ds = psy.open_dataset(bt.get_file('test-t2m-u-v.nc'))
+        plt.close('all')
+        sp = psy.plot.test_plotter(ds, name=['t2m', 'u'], x=0, y=4,
+                                   ax=(2, 2, 1), fmt1='test')
+        self.assertEqual(len(sp), 2)
+        self.assertEqual(sp[0].psy.ax.get_figure().number, 1)
+        self.assertEqual(sp[0].psy.ax.rowNum, 0)
+        self.assertEqual(sp[0].psy.ax.colNum, 0)
+        self.assertEqual(sp[0].psy.ax.numCols, 2)
+        self.assertEqual(sp[0].psy.ax.numRows, 2)
+        self.assertEqual(sp[1].psy.ax.get_figure().number, 2)
+        self.assertEqual(sp[1].psy.ax.rowNum, 0)
+        self.assertEqual(sp[1].psy.ax.colNum, 0)
+        self.assertEqual(sp[1].psy.ax.numCols, 2)
+        self.assertEqual(sp[1].psy.ax.numRows, 2)
+        arr_names = sp.arr_names
+        self.assertEqual(tp.results[arr_names[0] + '.fmt1'], 'test')
+        self.assertEqual(tp.results[arr_names[1] + '.fmt1'], 'test')
+        fname = 'test.pkl'
+        sp.save_project(fname)
+        psy.close()
+        tp.results.clear()
+        fig, axes = plt.subplots(1, 2)
+        ds = psy.open_dataset(bt.get_file('circumpolar_test.nc'))
+        sp = psy.Project.load_project(fname, datasets=[ds])
+        self.assertEqual(len(sp), 2)
+        self.assertEqual(sp[0].psy.ax.get_figure().number, 1)
+        self.assertEqual(sp[0].psy.ax.rowNum, 0)
+        self.assertEqual(sp[0].psy.ax.colNum, 0)
+        self.assertEqual(sp[0].psy.ax.numCols, 2)
+        self.assertEqual(sp[0].psy.ax.numRows, 2)
+        self.assertEqual(sp[1].psy.ax.get_figure().number, 2)
+        self.assertEqual(sp[1].psy.ax.rowNum, 0)
+        self.assertEqual(sp[1].psy.ax.colNum, 0)
+        self.assertEqual(sp[1].psy.ax.numCols, 2)
+        self.assertEqual(sp[1].psy.ax.numRows, 2)
+        self.assertIs(sp[0].psy.base, ds)
+        self.assertIs(sp[1].psy.base, ds)
+
+        psy.close()
+        psy.unregister_plotter('test_plotter')
+        tp.results.clear()
+
+        if osp.exists(fname):
+            os.remove(fname)
+
+    def test_save_and_load_04_alternative_fname(self):
+        """Test the saving and loading of a Project providing alternative axes
+        """
+        psy.register_plotter('test_plotter', import_plotter=True,
+                             module='test_plotter', plotter_name='TestPlotter')
+        ds = psy.open_dataset(bt.get_file('test-t2m-u-v.nc'))
+        plt.close('all')
+        sp = psy.plot.test_plotter(ds, name=['t2m', 'u'], x=0, y=4,
+                                   ax=(2, 2, 1), fmt1='test')
+        self.assertEqual(len(sp), 2)
+        self.assertEqual(sp[0].psy.ax.get_figure().number, 1)
+        self.assertEqual(sp[0].psy.ax.rowNum, 0)
+        self.assertEqual(sp[0].psy.ax.colNum, 0)
+        self.assertEqual(sp[0].psy.ax.numCols, 2)
+        self.assertEqual(sp[0].psy.ax.numRows, 2)
+        self.assertEqual(sp[1].psy.ax.get_figure().number, 2)
+        self.assertEqual(sp[1].psy.ax.rowNum, 0)
+        self.assertEqual(sp[1].psy.ax.colNum, 0)
+        self.assertEqual(sp[1].psy.ax.numCols, 2)
+        self.assertEqual(sp[1].psy.ax.numRows, 2)
+        arr_names = sp.arr_names
+        self.assertEqual(tp.results[arr_names[0] + '.fmt1'], 'test')
+        self.assertEqual(tp.results[arr_names[1] + '.fmt1'], 'test')
+        fname = 'test.pkl'
+        sp.save_project(fname)
+        psy.close()
+        tp.results.clear()
+        fig, axes = plt.subplots(1, 2)
+        sp = psy.Project.load_project(
+            fname, alternative_paths=[bt.get_file('circumpolar_test.nc')])
+        self.assertEqual(len(sp), 2)
+        self.assertEqual(sp[0].psy.ax.get_figure().number, 1)
+        self.assertEqual(sp[0].psy.ax.rowNum, 0)
+        self.assertEqual(sp[0].psy.ax.colNum, 0)
+        self.assertEqual(sp[0].psy.ax.numCols, 2)
+        self.assertEqual(sp[0].psy.ax.numRows, 2)
+        self.assertEqual(sp[1].psy.ax.get_figure().number, 2)
+        self.assertEqual(sp[1].psy.ax.rowNum, 0)
+        self.assertEqual(sp[1].psy.ax.colNum, 0)
+        self.assertEqual(sp[1].psy.ax.numCols, 2)
+        self.assertEqual(sp[1].psy.ax.numRows, 2)
+        self.assertEqual(psyd.get_filename_ds(sp[0].psy.base)[0],
+                         bt.get_file('circumpolar_test.nc'))
+        self.assertEqual(psyd.get_filename_ds(sp[1].psy.base)[0],
+                         bt.get_file('circumpolar_test.nc'))
+
+        psy.close()
+        psy.unregister_plotter('test_plotter')
+        tp.results.clear()
+
+        if osp.exists(fname):
+            os.remove(fname)
+
+    def test_keys(self):
+        """Test the :meth:`psyplot.project.Project.keys` method"""
+        import test_plotter as tp
+        import psyplot.plotter as psyp
+        psy.register_plotter('test_plotter', import_plotter=True,
+                             module='test_plotter', plotter_name='TestPlotter')
+
+        class TestPlotter2(tp.TestPlotter):
+            fmt2 = None
+
+        psy.register_plotter('test_plotter2', module='something',
+                             plotter_name='anyway', plotter_cls=TestPlotter2)
+        variables, coords = self._from_dataset_test_variables
+        ds = xr.Dataset(variables, coords)
+        sp1 = psy.plot.test_plotter(ds, name='v0')
+        # add a second project without a fmt2 formatoption
+        sp2 = psy.plot.test_plotter2(ds, name='v1')
+        mp = sp1 + sp2
+        self.assertEqual(sp1.keys(func=str),
+                         '+------+------+------+\n'
+                         '| fmt1 | fmt2 | fmt3 |\n'
+                         '+------+------+------+')
+        self.assertEqual(mp.keys(func=str),
+                         '+------+------+\n'
+                         '| fmt1 | fmt3 |\n'
+                         '+------+------+')
+        title = psyp.groups['labels']
+        self.assertEqual(sp1.keys(func=str, grouped=True),
+                         '*' * len(title) + '\n' +
+                         title + '\n' +
+                         '*' * len(title) + '\n'
+                         '+------+------+\n'
+                         '| fmt1 | fmt2 |\n'
+                         '+------+------+\n'
+                         '\n'
+                         '*********\n'
+                         'something\n'
+                         '*********\n'
+                         '+------+\n'
+                         '| fmt3 |\n'
+                         '+------+')
+        self.assertEqual(mp.keys(func=str, grouped=True),
+                         '*' * len(title) + '\n' +
+                         title + '\n' +
+                         '*' * len(title) + '\n'
+                         '+------+\n'
+                         '| fmt1 |\n'
+                         '+------+\n'
+                         '\n'
+                         '*********\n'
+                         'something\n'
+                         '*********\n'
+                         '+------+\n'
+                         '| fmt3 |\n'
+                         '+------+')
+        self.assertEqual(sp1.keys(['fmt1', 'something'], func=str),
+                         '+------+------+\n'
+                         '| fmt1 | fmt3 |\n'
+                         '+------+------+')
+        if six.PY3:
+            with self.assertWarnsRegex(UserWarning,
+                                       '(?i)unknown formatoption keyword'):
+                self.assertEqual(
+                    sp1.keys(['fmt1', 'wrong', 'something'], func=str),
+                    '+------+------+\n'
+                    '| fmt1 | fmt3 |\n'
+                    '+------+------+')
+
+    def test_docs(self):
+        """Test the :meth:`psyplot.project.Project.docs` method"""
+        import test_plotter as tp
+        import psyplot.plotter as psyp
+        psy.register_plotter('test_plotter', import_plotter=True,
+                             module='test_plotter', plotter_name='TestPlotter')
+
+        class TestPlotter2(tp.TestPlotter):
+            fmt2 = None
+
+        psy.register_plotter('test_plotter2', module='something',
+                             plotter_name='anyway', plotter_cls=TestPlotter2)
+        variables, coords = self._from_dataset_test_variables
+        ds = xr.Dataset(variables, coords)
+        sp1 = psy.plot.test_plotter(ds, name='v0')
+        # add a second project without a fmt2 formatoption
+        sp2 = psy.plot.test_plotter2(ds, name='v1')
+        mp = sp1 + sp2
+        self.assertEqual(sp1.docs(func=str), '\n'.join([
+            'fmt1', '====', tp.SimpleFmt.__doc__, '',
+            'fmt2', '====', tp.SimpleFmt2.__doc__, '',
+            'fmt3', '====', tp.SimpleFmt3.__doc__, '']))
+        # test summed project
+        self.assertEqual(mp.docs(func=str), '\n'.join([
+            'fmt1', '====', tp.SimpleFmt.__doc__, '',
+            'fmt3', '====', tp.SimpleFmt3.__doc__, '']))
+        title = psyp.groups['labels']
+        self.assertEqual(sp1.docs(func=str, grouped=True), '\n'.join([
+            '*' * len(title),
+            title,
+            '*' * len(title),
+            'fmt1', '====', tp.SimpleFmt.__doc__, '',
+            'fmt2', '====', tp.SimpleFmt2.__doc__, '', '',
+            '*********',
+            'something',
+            '*********',
+            'fmt3', '====', tp.SimpleFmt3.__doc__]))
+        # test summed project
+        self.assertEqual(mp.docs(func=str, grouped=True), '\n'.join([
+            '*' * len(title),
+            title,
+            '*' * len(title),
+            'fmt1', '====', tp.SimpleFmt.__doc__, '', '',
+            '*********',
+            'something',
+            '*********',
+            'fmt3', '====', tp.SimpleFmt3.__doc__]))
+
+    def test_summaries(self):
+        """Test the :meth:`psyplot.project.Project.summaries` method"""
+        import test_plotter as tp
+        import psyplot.plotter as psyp
+        psy.register_plotter('test_plotter', import_plotter=True,
+                             module='test_plotter', plotter_name='TestPlotter')
+
+        class TestPlotter2(tp.TestPlotter):
+            fmt2 = None
+
+        psy.register_plotter('test_plotter2', module='something',
+                             plotter_name='anyway', plotter_cls=TestPlotter2)
+        variables, coords = self._from_dataset_test_variables
+        ds = xr.Dataset(variables, coords)
+        sp1 = psy.plot.test_plotter(ds, name='v0')
+        # add a second project without a fmt2 formatoption
+        sp2 = psy.plot.test_plotter2(ds, name='v1')
+        mp = sp1 + sp2
+        self.assertEqual(sp1.summaries(func=str), '\n'.join([
+            'fmt1', tp.indent(tp.SimpleFmt.__doc__.splitlines()[0], '    '),
+            'fmt2', tp.indent(tp.SimpleFmt2.__doc__.splitlines()[0], '    '),
+            'fmt3', tp.indent(tp.SimpleFmt3.__doc__.splitlines()[0], '    ')]))
+        # test summed project
+        self.assertEqual(mp.summaries(func=str), '\n'.join([
+            'fmt1', tp.indent(tp.SimpleFmt.__doc__.splitlines()[0], '    '),
+            'fmt3', tp.indent(tp.SimpleFmt3.__doc__.splitlines()[0], '    ')]))
+        title = psyp.groups['labels']
+        self.assertEqual(sp1.summaries(func=str, grouped=True), '\n'.join([
+            '*' * len(title),
+            title,
+            '*' * len(title),
+            'fmt1', tp.indent(tp.SimpleFmt.__doc__.splitlines()[0], '    '),
+            'fmt2', tp.indent(tp.SimpleFmt2.__doc__.splitlines()[0], '    '),
+            '',
+            '*********',
+            'something',
+            '*********',
+            'fmt3', tp.indent(tp.SimpleFmt3.__doc__.splitlines()[0], '    ')]
+            ))
+        # test summed project
+        self.assertEqual(mp.summaries(func=str, grouped=True), '\n'.join([
+            '*' * len(title),
+            title,
+            '*' * len(title),
+            'fmt1', tp.indent(tp.SimpleFmt.__doc__.splitlines()[0], '    '),
+            '',
+            '*********',
+            'something',
+            '*********',
+            'fmt3', tp.indent(tp.SimpleFmt3.__doc__.splitlines()[0], '    ')]
+            ))
+
+    def test_figs(self):
+        """Test the :attr:`psyplot.project.Project.figs` attribute"""
+        psy.register_plotter('test_plotter', import_plotter=True,
+                             module='test_plotter', plotter_name='TestPlotter')
+        ds = psy.open_dataset(bt.get_file('test-t2m-u-v.nc'))
+        sp = psy.plot.test_plotter(ds, name='t2m', time=[1, 2])
+        self.assertEqual(sp[0].psy.ax.figure.number, 1)
+        self.assertEqual(sp[1].psy.ax.figure.number, 2)
+        figs = sp.figs
+        self.assertIn(sp[0].psy.ax.figure, figs)
+        self.assertIs(figs[sp[0].psy.ax.figure][0], sp[0])
+        self.assertIn(sp[1].psy.ax.figure, figs)
+        self.assertIs(figs[sp[1].psy.ax.figure][0], sp[1])
+
+    def test_axes(self):
+        """Test the :attr:`psyplot.project.Project.axes` attribute"""
+        psy.register_plotter('test_plotter', import_plotter=True,
+                             module='test_plotter', plotter_name='TestPlotter')
+        ds = psy.open_dataset(bt.get_file('test-t2m-u-v.nc'))
+        sp = psy.plot.test_plotter(ds, name='t2m', time=[1, 2])
+        self.assertIsNot(sp[0].psy.ax, sp[1].psy.ax)
+        axes = sp.axes
+        self.assertIn(sp[0].psy.ax, axes)
+        self.assertIs(axes[sp[0].psy.ax][0], sp[0])
+        self.assertIn(sp[1].psy.ax, axes)
+        self.assertIs(axes[sp[1].psy.ax][0], sp[1])
 
 
 class TestPlotterInterface(unittest.TestCase):
@@ -405,7 +768,6 @@ class TestPlotterInterface(unittest.TestCase):
 class TestMultipleSubplots(unittest.TestCase):
 
     def test_one_subplot(self):
-        import matplotlib.pyplot as plt
         plt.close('all')
         axes = psy.multiple_subplots()
         self.assertEqual(len(axes), 1)
@@ -415,7 +777,6 @@ class TestMultipleSubplots(unittest.TestCase):
         plt.close('all')
 
     def test_multiple_subplots(self):
-        import matplotlib.pyplot as plt
         plt.close('all')
         axes = psy.multiple_subplots(2, 2, 3, 5)
         self.assertEqual(len(axes), 5)
