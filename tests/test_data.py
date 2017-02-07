@@ -226,10 +226,10 @@ class DecoderTest(unittest.TestCase):
                 psyd.safe_list(arr.coords[dim]),
                 msg="Slice %s for dimension %s is wrong!" % (dims[dim], dim))
         # test with unknown dimensions
-        ds = ds.drop('time')
-        arr = ds.t2m[1:, 1]
-        arr.psy.init_accessor(base=ds)
         if xr.__version__ >= '0.9':
+            ds = ds.drop('time')
+            arr = ds.t2m[1:, 1]
+            arr.psy.init_accessor(base=ds)
             if not six.PY2:
                 with self.assertWarnsRegex(UserWarning, 'time'):
                     dims = arr.psy.idims
