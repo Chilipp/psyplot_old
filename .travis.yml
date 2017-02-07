@@ -2,11 +2,10 @@ language: python
 python:
   # We don't actually use the Travis Python, but this keeps it organized.
   - "2.7"
-  - "3.4"
   - "3.5"
 env:
-  - MPL_VERSION=1.4
-  - MPL_VERSION=1.5
+  - XARRAY_VERSION=0.8
+  - XARRAY_VERSION=0.9
 addons:  # install cdo
   apt:
     packages:
@@ -29,7 +28,7 @@ install:
   - conda update -q conda
   # Useful for debugging any issues with conda
   - conda info -a
-  - 'ENVKEY=py"${TRAVIS_PYTHON_VERSION}"_mpl"${MPL_VERSION}"'
+  - 'ENVKEY=py"${TRAVIS_PYTHON_VERSION}"_xr"${XARRAY_VERSION}"'
   - conda env create -f tests/envs/environment_$ENVKEY.yml
   - source activate psyplot_$ENVKEY
   - pip install coveralls
