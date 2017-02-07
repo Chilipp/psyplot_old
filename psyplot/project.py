@@ -21,6 +21,7 @@ import matplotlib as mpl
 import matplotlib.figure as mfig
 import numpy as np
 from psyplot import rcParams
+import psyplot.utils as utils
 from psyplot.warning import warn, critical
 from psyplot.docstring import docstrings, dedent, safe_modulo
 from psyplot.data import (
@@ -180,29 +181,21 @@ class Project(ArrayList):
     def figs(self):
         """A mapping from figures to data objects with the plotter in this
         figure"""
-        ret = OrderedDict()
+        ret = utils.DefaultOrderedDict(lambda: self[1:0])
         for arr in self:
-            if arr.psy.plotter:
-                fig = arr.psy.plotter.ax.get_figure()
-                if fig in ret:
-                    ret[fig].append(arr)
-                else:
-                    ret[fig] = self.__class__([arr], main=self.main)
-        return ret
+            if arr.psy.plotter is not None:
+                ret[arr.psy.plotter.ax.get_figure()].append(arr)
+        return OrderedDict(ret)
 
     @property
     def axes(self):
         """A mapping from axes to data objects with the plotter in this axes
         """
-        ret = OrderedDict()
+        ret = utils.DefaultOrderedDict(lambda: self[1:0])
         for arr in self:
-            if arr.psy.plotter:
-                ax = arr.psy.plotter.ax
-                if ax in ret:
-                    ret[ax].append(arr)
-                else:
-                    ret[ax] = self.__class__([arr], main=self.main)
-        return ret
+            if arr.psy.plotter is not None:
+                ret[arr.psy.plotter.ax].append(arr)
+        return OrderedDict(ret)
 
     @property
     def is_main(self):
@@ -512,6 +505,12 @@ class Project(ArrayList):
     if six.PY2:  # for compatibility to python 2.7
         def __getslice__(self, *args):
             return self[slice(*args)]
+
+    def __add__(self, other):
+        # overwritte to return a subproject
+        ret = self.__class__(super(Project, self).__add__(other),
+                             main=self.main)
+        return ret
 
     @staticmethod
     def show():
