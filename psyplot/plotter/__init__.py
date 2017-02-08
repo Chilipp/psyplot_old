@@ -74,9 +74,9 @@ def format_time(x):
         Either the formatted time object or the initial `x`"""
     if isinstance(x, (datetime64, datetime)):
         return format_timestamp(x)
-    if isinstance(x, (timedelta64, timedelta)):
+    elif isinstance(x, (timedelta64, timedelta)):
         return format_timedelta(x)
-    if isinstance(x, ndarray):
+    elif isinstance(x, ndarray):
         return list(x) if x.ndim else x[()]
     return x
 
