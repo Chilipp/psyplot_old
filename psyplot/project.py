@@ -16,6 +16,7 @@ from itertools import chain, repeat, cycle, count
 from collections import Iterable, defaultdict
 from functools import wraps
 import xarray
+import pandas as pd
 
 import matplotlib as mpl
 import matplotlib.figure as mfig
@@ -24,6 +25,7 @@ from psyplot import rcParams
 import psyplot.utils as utils
 from psyplot.warning import warn, critical
 from psyplot.docstring import docstrings, dedent, safe_modulo
+import psyplot.data as psyd
 from psyplot.data import (
     ArrayList, open_dataset, open_mfdataset, sort_kwargs, _MissingModule,
     to_netcdf, is_remote_url, Signal, CFDecoder, safe_list, InteractiveList)
@@ -144,6 +146,9 @@ class Project(ArrayList):
 
     #: signal to be emiitted when the current main and/or subproject changes
     oncpchange = Signal(cls_signal=True)
+
+    # block the
+    block_signals = psyd._TempBool()
 
     @property
     def main(self):
@@ -268,7 +273,8 @@ class Project(ArrayList):
         self._plot = ProjectPlotter(self)
         self.num = kwargs.pop('num', 1)
         self._ds_counter = count()
-        super(Project, self).__init__(*args, **kwargs)
+        with self.block_signals:
+            super(Project, self).__init__(*args, **kwargs)
 
     @classmethod
     @docstrings.get_sectionsf('Project._register_plotter')
@@ -355,6 +361,7 @@ class Project(ArrayList):
         ds: bool
             If True, close the dataset as well"""
         import matplotlib.pyplot as plt
+        close_ds = ds
         for arr in self[:]:
             if figs and arr.psy.plotter is not None:
                 plt.close(arr.psy.plotter.ax.get_figure().number)
@@ -362,7 +369,7 @@ class Project(ArrayList):
                 self.remove(arr)
                 if not self.is_main:
                     self.main.remove(arr)
-            if ds:
+            if close_ds:
                 if isinstance(arr, InteractiveList):
                     for ds in [val['ds'] for val in six.itervalues(
                                arr._get_ds_descriptions(
@@ -371,6 +378,7 @@ class Project(ArrayList):
                         ds.close()
                 else:
                     arr.psy.base.close()
+
             arr.psy.plotter = None
         if self.is_main and self is gcp(True):
             scp(None)
@@ -497,8 +505,9 @@ class Project(ArrayList):
         """Overwrites lists __getitem__ by returning subproject if `key` is a
         slice"""
         if isinstance(key, slice):  # return a new project
-            return self.__class__(
+            ret = self.__class__(
                 super(Project, self).__getitem__(key), main=self.main)
+            return ret
         else:  # return the item
             return super(Project, self).__getitem__(key)
 
@@ -562,7 +571,7 @@ class Project(ArrayList):
         return ret
 
     def export(self, output, tight=False, concat=True, close_pdf=None,
-               **kwargs):
+               use_time=False, **kwargs):
         """Exports the figures of the project to one or more image files
 
         Parameters
@@ -589,6 +598,12 @@ class Project(ArrayList):
             If None and `output` is a string, it is the same as
             ``close_pdf=True``, if None and `output` is neither a string nor an
             iterable, it is the same as ``close_pdf=False``
+        use_time: bool
+            If True, formatting strings for the
+            :meth:`datetime.datetime.strftime` are expected to be found in
+            `output` (e.g. ``'%m'``, ``'%Y'``, etc.). If so, other formatting
+            strings must be escaped by double ``'%'`` (e.g. ``'%%i'`` instead
+            of (``'%i'``))
         ``**kwargs``
             Any valid keyword for the :func:`matplotlib.pyplot.savefig`
             function
@@ -626,14 +641,34 @@ class Project(ArrayList):
 
             >>> p.export(['my_plots1.pdf', 'my_plots2.pdf'])
         """
-        import matplotlib.pyplot as plt
         from matplotlib.backends.backend_pdf import PdfPages
         if tight:
             kwargs['bbox_inches'] = 'tight'
+
+        if use_time:
+            def insert_time(s, attrs):
+                time = attrs[tname]
+                try:  # assume a valid datetime.datetime instance
+                    s = pd.to_datetime(time).strftime(s)
+                except ValueError:
+                    pass
+                return s
+
+            tnames = self._get_tnames()
+            tname = next(iter(tnames)) if len(tnames) == 1 else None
+        else:
+            def insert_time(s, attrs):
+                return s
+
+            tname = None
+
         if isinstance(output, six.string_types):  # a single string
             out_fmt = kwargs.pop('format', os.path.splitext(output))[1][1:]
             if out_fmt.lower() == 'pdf' and concat:
-                pdf = PdfPages(safe_modulo(output, self.joined_attrs('-')))
+                attrs = self.joined_attrs('-')
+                if tname is not None and tname in attrs:
+                    output = insert_time(output, attrs)
+                pdf = PdfPages(safe_modulo(output, attrs))
 
                 def save(fig):
                     pdf.savefig(fig, **kwargs)
@@ -645,13 +680,15 @@ class Project(ArrayList):
                     return pdf
             else:
                 def save(fig):
-                    plt.figure(fig.number)
+                    attrs = self.figs[fig].joined_attrs('-')
+                    out = output
+                    if tname is not None and tname in attrs:
+                        out = insert_time(out, attrs)
                     try:
-                        out = safe_modulo(output, i, print_warning=False)
+                        out = safe_modulo(out, i, print_warning=False)
                     except TypeError:
-                        out = output
-                    plt.savefig(safe_modulo(
-                        out, self.figs[fig].joined_attrs('-')), **kwargs)
+                        pass
+                    fig.savefig(safe_modulo(out, attrs), **kwargs)
 
                 def close():
                     pass
@@ -659,12 +696,15 @@ class Project(ArrayList):
             output = cycle(output)
 
             def save(fig):
+                attrs = self.figs[fig].joined_attrs('-')
+                out = next(output)
+                if tname is not None and tname in attrs:
+                    out = insert_time(out, attrs)
                 try:
                     out = safe_modulo(next(output), i, print_warning=False)
                 except TypeError:
-                    out = output
-                plt.savefig(safe_modulo(out, self.figs[fig].joined_attrs('-')),
-                            **kwargs)
+                    pass
+                fig.savefig(safe_modulo(out, attrs), **kwargs)
 
             def close():
                 pass
@@ -696,9 +736,10 @@ class Project(ArrayList):
             The source of the plotter that shares its formatoptions with the
             others. It can be None (then the first instance in this project
             is used), a :class:`~psyplot.plotter.Plotter` or any data object
-            with a *psy* attribute.
+            with a *psy* attribute. If `by` is not None, then it is expected
+            that `base` is a list of data objects for each figure/axes
         %(Plotter.share.parameters.keys)s
-        by: {'figure', 'axes'}
+        by: {'fig', 'figure', 'ax', 'axes'}
             Share the formatoptions only with the others on the same
             ``'figure'`` or the same ``'axes'``. In this case, base must either
             be ``None`` or a list of the types specified for `base`
@@ -711,10 +752,16 @@ class Project(ArrayList):
             if base is not None:
                 if hasattr(base, 'psy') or isinstance(base, Plotter):
                     base = [base]
-                if by == 'axes':
-                    bases = dict(Project(base).axes)
+                if by.lower() in ['ax', 'axes']:
+                    bases = {ax: p[0] for ax, p in six.iteritems(
+                        Project(base).axes)}
+                elif by.lower() in ['fig', 'figure']:
+                    bases = {fig: p[0] for fig, p in six.iteritems(
+                        Project(base).figs)}
                 else:
-                    bases = dict(Project(base).figs)
+                    raise ValueError(
+                        "*by* must be out of {'fig', 'figure', 'ax', 'axes'}. "
+                        "Not %s" % (by, ))
             else:
                 bases = {}
             projects = self.axes if by == 'axes' else self.figs
@@ -729,9 +776,9 @@ class Project(ArrayList):
                     return
                 base = plotters[0]
                 plotters = plotters[1:]
-            else:
-                plotter = getattr(getattr(base, 'psy', base), 'plotter', base)
-            plotter.share(plotters, keys=keys, **kwargs)
+            elif not isinstance(base, Plotter):
+                base = getattr(getattr(base, 'psy', base), 'plotter', base)
+            base.share(plotters, keys=keys, **kwargs)
 
     @docstrings.dedent
     def unshare(self, **kwargs):
@@ -1121,7 +1168,7 @@ class Project(ArrayList):
         return project
 
     def __str__(self):
-        return ('Main ' if self.is_main else '') + super(
+        return (('%i Main ' % self.num) if self.is_main else '') + super(
             Project, self).__str__()
 
 
@@ -1717,7 +1764,8 @@ def project(num=None, *args, **kwargs):
     return project
 
 
-def close(num=None):
+@docstrings.dedent
+def close(num=None, figs=True, data=True, ds=True):
     """
     Close the project
 
@@ -1730,15 +1778,12 @@ def close(num=None):
         if :class:`int`, it specifies the number of the project, if None, the
         current subproject is closed, if ``'all'``, all open projects are
         closed
-
-    Other Parameters
-    ----------------
     %(Project.close.parameters)s
 
     See Also
     --------
     Project.close"""
-    kws = dict(figs=True, data=True, ds=True)
+    kws = dict(figs=figs, data=data, ds=ds)
     cp_num = gcp(True).num
     got_cp = False
     if num is None:
@@ -1752,15 +1797,15 @@ def close(num=None):
             del _open_projects[0]
     else:
         if isinstance(num, Project):
-            project = project
+            project = num
         else:
             project = [project for project in _open_projects
                        if project.num == num][0]
+        project.close(**kws)
         try:
             _open_projects.remove(project)
         except ValueError:
             pass
-        project.close(**kws)
         got_cp = got_cp or project.main.num == cp_num
     if got_cp:
         if _open_projects:
