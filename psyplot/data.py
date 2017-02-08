@@ -534,6 +534,9 @@ class Signal(object):
     :class:`PyQt4.QtCore.pyqtBoundSignal`
     """
 
+    instance = None
+    owner = None
+
     def __init__(self, name=None, cls_signal=False):
         self.name = name
         self.cls_signal = cls_signal
@@ -544,8 +547,10 @@ class Signal(object):
             self._connections.append(func)
 
     def emit(self, *args, **kwargs):
-        for func in self._connections[:]:
-            func(*args, **kwargs)
+        if (not getattr(self.owner, 'block_signals', False) and
+                not getattr(self.instance, 'block_signals', False)):
+            for func in self._connections[:]:
+                func(*args, **kwargs)
 
     def disconnect(self, func=None):
         """Disconnect a function call to the signal. If None, all connections
@@ -556,6 +561,8 @@ class Signal(object):
             self._connections.remove(func)
 
     def __get__(self, instance, owner):
+        self.owner = owner
+        self.instance = instance
         if instance is None or self.cls_signal:
             return self
         ret = getattr(instance, self.name, None)
@@ -3250,6 +3257,17 @@ class ArrayList(list):
         if ds.psy.num is None:
             ds.psy.num = next(nums)
         return ds.psy.num
+
+    def _get_tnames(self):
+        """Get the name of the time coordinate of the objects in this list"""
+        tnames = set()
+        for arr in self:
+            if isinstance(arr, InteractiveList):
+                tnames.update(arr.get_tnames())
+            else:
+                tnames.add(arr.psy.decoder.get_tname(
+                    next(arr.psy.iter_base_variables), arr.coords))
+        return tnames - {None}
 
     @docstrings.dedent
     def _register_update(self, method='isel', replot=False, dims={}, fmt={},
