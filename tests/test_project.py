@@ -559,8 +559,8 @@ class TestProject(td.TestArrayList):
         self.assertEqual(len(projects[1]), 2, msg=str(projects[1]))
 
         # try scp
-        check_mains.clear()
-        projects.clear()
+        check_mains = []
+        check_mains = []
         p = sp[1:]
         psy.scp(p)
         self.assertEqual(check_mains, [False],
@@ -568,8 +568,8 @@ class TestProject(td.TestArrayList):
         self.assertIs(projects[0], p)
 
         # test appending
-        check_mains.clear()
-        projects.clear()
+        check_mains = []
+        check_mains = []
         p.append(sp[0])
         self.assertEqual(check_mains, [False],
                          msg="projects: %s" % (projects, ))
@@ -577,15 +577,15 @@ class TestProject(td.TestArrayList):
         p.pop(1)
 
         # close a part of the project
-        check_mains.clear()
-        projects.clear()
+        check_mains = []
+        check_mains = []
         sp[:1].close(True, True)
         self.assertEqual(check_mains, [True])
         self.assertEqual(len(projects[0]), 1, msg=str(projects[0]))
 
         # close the remaining part of the project
-        check_mains.clear()
-        projects.clear()
+        check_mains = []
+        check_mains = []
         psy.close()
         self.assertEqual(len(check_mains), 2,
                          msg="%s, %s" % (check_mains, projects))
@@ -791,7 +791,7 @@ class TestProject(td.TestArrayList):
 
         # check time formatting
         psy.close(mp)
-        reffiles.clear()
+        reffiles = []
         fig, ax = plt.subplots()
         ds.v1[1].plot(ax=ax)
         reffiles.append(
