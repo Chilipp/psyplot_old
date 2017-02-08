@@ -9,6 +9,7 @@ import test_data as td
 import test_plotter as tp
 import xarray as xr
 import psyplot.data as psyd
+import psyplot.plotter as psyp
 import psyplot.project as psy
 import matplotlib.pyplot as plt
 
@@ -22,9 +23,12 @@ def get_file(fname):
 class TestProject(td.TestArrayList):
     """Testclass for the :class:`psyplot.project.Project` class"""
 
+    _created_files = set()
+
     def setUp(self):
         psy.close('all')
         plt.close('all')
+        self._created_files = set()
 
     def tearDown(self):
         for identifier in list(psy.registered_plotters):
@@ -32,6 +36,10 @@ class TestProject(td.TestArrayList):
         psy.close('all')
         plt.close('all')
         tp.results.clear()
+        for f in self._created_files:
+            if osp.exists(f):
+                os.remove(f)
+        self._created_files.clear()
 
     def test_save_and_load_01_simple(self):
         """Test the saving and loading of a Project"""
@@ -426,6 +434,460 @@ class TestProject(td.TestArrayList):
         self.assertIn(sp[1].psy.ax, axes)
         self.assertIs(axes[sp[1].psy.ax][0], sp[1])
 
+    def test_close(self):
+        """Test the :meth:`psyplot.project.Project.close` method"""
+        psy.register_plotter('test_plotter', module='test_plotter',
+                             plotter_name='TestPlotter')
+        ds = psy.open_dataset(bt.get_file('test-t2m-u-v.nc'))
+        sp1 = psy.plot.test_plotter(ds, name='t2m', time=[1, 2])
+        sp2 = psy.plot.test_plotter(ds, name='t2m', time=[3, 4])
+        mp = psy.gcp(True)
+        names1 = sp1.arr_names
+        names2 = sp2.arr_names
+        # some checks in the beginning
+        self.assertIs(sp1.main, mp)
+        self.assertIs(sp2.main, mp)
+        self.assertEqual(mp.arr_names, names1 + names2)
+        self.assertEqual(mp.with_plotter.arr_names, names1 + names2)
+        # close sp1
+        sp1.close()
+        self.assertEqual(mp.arr_names, names1 + names2)
+        self.assertEqual(mp.with_plotter.arr_names, names2)
+        # remove the data
+        sp1.close(True, True)
+        self.assertEqual(mp.arr_names, names2)
+        self.assertEqual(mp.with_plotter.arr_names, names2)
+        self.assertEqual(sp1, [])
+        self.assertEqual(len(mp), 2)
+        # close the dataset in sp2
+        sp2.close(True, True, True)
+        self.assertEqual(sp2, [])
+        self.assertEqual(mp, [])
+        if not six.PY2:
+            with self.assertRaises(RuntimeError):
+                ds.t2m.values
+
+    def test_close_global(self):
+        """Test the :func:`psyplot.project.close` function"""
+        psy.register_plotter('test_plotter', module='test_plotter',
+                             plotter_name='TestPlotter')
+        with psy.open_dataset(bt.get_file('test-t2m-u-v.nc')) as ds:
+            time = ds.time.values
+            lev = ds.lev.values
+        mp0 = psy.plot.test_plotter(bt.get_file('test-t2m-u-v.nc'), name='t2m',
+                                    lev=[0, 1]).main
+        mp1 = psy.project()
+        psy.plot.test_plotter(bt.get_file('test-t2m-u-v.nc'), name='t2m',
+                              time=[1, 2])
+        mp2 = psy.project()
+        sp1 = psy.plot.test_plotter(bt.get_file('test-t2m-u-v.nc'), name='t2m',
+                                    time=[3, 4])
+        sp2 = psy.plot.test_plotter(bt.get_file('test-t2m-u-v.nc'), name='t2m',
+                                    lev=[2, 3])
+        # some checks in the beginning
+        self.assertEqual(len(mp0), 2)
+        self.assertEqual(len(mp1), 2)
+        self.assertEqual(len(mp2), 4)
+        self.assertEqual(mp0[0].lev.values, lev[0])
+        self.assertEqual(mp0[1].lev.values, lev[1])
+        self.assertEqual(mp1[0].time.values, time[1])
+        self.assertEqual(mp1[1].time.values, time[2])
+        self.assertEqual(mp2[0].time.values, time[3])
+        self.assertEqual(mp2[1].time.values, time[4])
+        self.assertEqual(mp2[2].lev.values, lev[2])
+        self.assertEqual(mp2[3].lev.values, lev[3])
+        self.assertIs(psy.gcp(True), mp2)
+        self.assertIs(psy.gcp(), sp2)
+        # close the current subproject
+        ds = mp2[2].psy.base
+        psy.close()
+        if not six.PY2:
+            with self.assertRaises(RuntimeError):
+                ds.u.values
+        self.assertIs(psy.gcp(True), mp2)
+        self.assertEqual(psy.gcp(), [])
+        self.assertEqual(sp2, [])
+        self.assertEqual(len(sp1), 2)
+        self.assertEqual(mp2.arr_names, sp1.arr_names)
+        # close the current mainproject
+        ds = mp2[0].psy.base
+        ds.v.values  # check that the data can be loaded
+        psy.close(mp2.num)
+        self.assertIs(psy.gcp(True), mp1)
+        self.assertEqual(mp2, [])
+        self.assertIs(psy.gcp().main, mp1)
+        self.assertEqual(psy.gcp().arr_names, mp1.arr_names)
+        if not six.PY2:
+            with self.assertRaises(RuntimeError):
+                ds.u.values
+        # close all projects
+        ds0 = mp0[0].psy.base
+        ds0.v.values  # check that the data can be loaded
+        ds1 = mp1[0].psy.base
+        ds1.v.values  # check that the data can be loaded
+        psy.close('all')
+        self.assertEqual(mp0, [])
+        self.assertEqual(mp1, [])
+        self.assertEqual(psy.gcp(), [])
+        self.assertIsNot(psy.gcp(True), mp0)
+        self.assertIsNot(psy.gcp(True), mp1)
+        if not six.PY2:
+            with self.assertRaises(RuntimeError):
+                ds0.u.values
+                ds1.u.values
+
+    def test_oncpchange_signal(self):
+        """Test whether the correct signal is fired"""
+        psy.register_plotter('test_plotter', module='test_plotter',
+                             plotter_name='TestPlotter')
+        check_mains = []
+        projects = []
+
+        def check(p):
+            check_mains.append(p.is_main)
+            projects.append(p)
+
+        psy.Project.oncpchange.connect(check)
+        ds = psy.open_dataset(bt.get_file('test-t2m-u-v.nc')).load()
+        sp = psy.plot.test_plotter(ds, name='t2m', lev=[0, 1])
+        # the signal should have been fired 2 times, one times from the
+        # subproject, one times from the project
+        self.assertEqual(len(check_mains), 2)
+        self.assertIn(False, check_mains)
+        self.assertIn(True, check_mains)
+        self.assertEqual(len(projects[0]), 2, msg=str(projects[0]))
+        self.assertEqual(len(projects[1]), 2, msg=str(projects[1]))
+
+        # try scp
+        check_mains.clear()
+        projects.clear()
+        p = sp[1:]
+        psy.scp(p)
+        self.assertEqual(check_mains, [False],
+                         msg="projects: %s" % (projects, ))
+        self.assertIs(projects[0], p)
+
+        # test appending
+        check_mains.clear()
+        projects.clear()
+        p.append(sp[0])
+        self.assertEqual(check_mains, [False],
+                         msg="projects: %s" % (projects, ))
+        self.assertIs(projects[0], p)
+        p.pop(1)
+
+        # close a part of the project
+        check_mains.clear()
+        projects.clear()
+        sp[:1].close(True, True)
+        self.assertEqual(check_mains, [True])
+        self.assertEqual(len(projects[0]), 1, msg=str(projects[0]))
+
+        # close the remaining part of the project
+        check_mains.clear()
+        projects.clear()
+        psy.close()
+        self.assertEqual(len(check_mains), 2,
+                         msg="%s, %s" % (check_mains, projects))
+        self.assertIn(False, check_mains)
+        self.assertIn(True, check_mains)
+        self.assertEqual(len(projects[0]), 0, msg=str(projects[0]))
+        self.assertEqual(len(projects[1]), 0, msg=str(projects[1]))
+
+        psy.Project.oncpchange.disconnect(check)
+
+    def test_share_01_on_creation(self):
+        """Test the sharing within a project when creating it"""
+        psy.register_plotter('test_plotter', module='test_plotter',
+                             plotter_name='TestPlotter')
+        sp = psy.plot.test_plotter(bt.get_file('test-t2m-u-v.nc'), name='t2m',
+                                   time=[0, 1, 2], share='something')
+        self.assertEqual(len(sp), 3, msg=sp)
+        self.assertEqual(sp.plotters[0].fmt3.shared,
+                         {sp.plotters[1].fmt3, sp.plotters[2].fmt3})
+        sp[0].psy.update(fmt3='test3')
+        self.assertEqual(sp.plotters[1].fmt3.value, 'test3')
+        self.assertEqual(sp.plotters[2].fmt3.value, 'test3')
+
+    def test_share_02_method(self):
+        """Test the :meth:`psyplot.project.Project.share` method"""
+        psy.register_plotter('test_plotter', module='test_plotter',
+                             plotter_name='TestPlotter')
+        sp = psy.plot.test_plotter(bt.get_file('test-t2m-u-v.nc'), name='t2m',
+                                   time=[0, 1, 2])
+        # share within the project
+        sp.share(keys='something')
+        self.assertEqual(len(sp), 3, msg=sp)
+        self.assertEqual(sp.plotters[0].fmt3.shared,
+                         {sp.plotters[1].fmt3, sp.plotters[2].fmt3})
+        sp[0].psy.update(fmt3='test3')
+        self.assertEqual(sp.plotters[1].fmt3.value, 'test3')
+        self.assertEqual(sp.plotters[2].fmt3.value, 'test3')
+
+        sp.unshare()
+        self.assertFalse(sp.plotters[0].fmt3.shared)
+
+        # share from outside the project
+        sp[::2].share(sp[1], keys='something')
+        self.assertEqual(sp.plotters[1].fmt3.shared,
+                         {sp.plotters[0].fmt3, sp.plotters[2].fmt3})
+        sp[1].psy.update(fmt3='test3')
+        self.assertEqual(sp.plotters[0].fmt3.value, 'test3')
+        self.assertEqual(sp.plotters[2].fmt3.value, 'test3')
+
+        sp.unshare()
+        self.assertFalse(sp.plotters[1].fmt3.shared)
+
+    def test_share_03_method_by(self):
+        """Test the :meth:`psyplot.project.Project.share` method by axes/figure
+        """
+        import matplotlib.pyplot as plt
+        psy.register_plotter('test_plotter', module='test_plotter',
+                             plotter_name='TestPlotter')
+        fig1, ax1 = plt.subplots()
+        fig2, axes = plt.subplots(1, 2)
+        ax2, ax3 = axes
+        sp = psy.plot.test_plotter(bt.get_file('test-t2m-u-v.nc'), name='t2m',
+                                   time=range(4), ax=[ax1, ax2, ax1, ax3])
+
+        self.assertEqual(len(sp), 4, msg=sp)
+
+        # share by axes
+        sp.share(by='axes', keys='something')
+        self.assertEqual(sp.plotters[0].fmt3.shared,
+                         {sp.plotters[2].fmt3})
+        self.assertFalse(sp.plotters[1].fmt3.shared)
+        self.assertFalse(sp.plotters[3].fmt3.shared)
+        sp[0].psy.update(fmt3='test3')
+        self.assertEqual(sp.plotters[2].fmt3.value, 'test3')
+
+        sp.unshare()
+        self.assertFalse(sp.plotters[0].fmt3.shared)
+
+        # share by figure
+        sp.share(by='fig', keys='something')
+        self.assertEqual(sp.plotters[0].fmt3.shared,
+                         {sp.plotters[2].fmt3})
+        self.assertEqual(sp.plotters[1].fmt3.shared,
+                         {sp.plotters[3].fmt3})
+        sp[0].psy.update(fmt3='test3')
+        sp[1].psy.update(fmt3='test4')
+        self.assertEqual(sp.plotters[2].fmt3.value, 'test3')
+        self.assertEqual(sp.plotters[3].fmt3.value, 'test4')
+
+        sp.unshare()
+        self.assertFalse(sp.plotters[0].fmt3.shared)
+        self.assertFalse(sp.plotters[1].fmt3.shared)
+
+        # share with provided bases by figure
+        sp[2:].share(sp[:2], keys='something', by='fig')
+
+        self.assertEqual(sp.plotters[0].fmt3.shared,
+                         {sp.plotters[2].fmt3})
+        self.assertEqual(sp.plotters[1].fmt3.shared,
+                         {sp.plotters[3].fmt3})
+        sp[0].psy.update(fmt3='test3')
+        sp[1].psy.update(fmt3='test4')
+        self.assertEqual(sp.plotters[2].fmt3.value, 'test3')
+        self.assertEqual(sp.plotters[3].fmt3.value, 'test4')
+
+        sp.unshare()
+        self.assertFalse(sp.plotters[0].fmt3.shared)
+        self.assertFalse(sp.plotters[1].fmt3.shared)
+
+        # share with provided bases by axes
+        sp[2:].share(sp[:2], keys='something', by='axes')
+        self.assertEqual(sp.plotters[0].fmt3.shared,
+                         {sp.plotters[2].fmt3})
+        self.assertFalse(sp.plotters[1].fmt3.shared)
+        self.assertFalse(sp.plotters[3].fmt3.shared)
+        sp[0].psy.update(fmt3='test3')
+        self.assertEqual(sp.plotters[2].fmt3.value, 'test3')
+
+        sp.unshare()
+        self.assertFalse(sp.plotters[0].fmt3.shared)
+
+    def _register_export_plotter(self):
+        class SimplePlotFormatoption(tp.TestFormatoption):
+
+            plot_fmt = True
+            priority = psyp.BEFOREPLOTTING
+
+            def update(self, value):
+                pass
+
+            def make_plot(self):
+                self.data.plot(ax=self.ax)
+
+        class TestPlotter(psyp.Plotter):
+
+            fmt1 = SimplePlotFormatoption('fmt1')
+
+        psy.register_plotter('test_plotter', module='something',
+                             plotter_name='irrelevant',
+                             plotter_cls=TestPlotter)
+
+    def test_export_01_replacement(self):
+        """Test exporting a project"""
+        import matplotlib.pyplot as plt
+        from matplotlib.testing.compare import compare_images
+        import pandas as pd
+        import numpy as np
+        from tempfile import NamedTemporaryFile
+
+        self._register_export_plotter()
+
+        with psy.open_dataset(bt.get_file('test-t2m-u-v.nc')) as ds:
+            time = ds.time
+            time.values  # make sure the data is loaded
+
+        ds = xr.Dataset(
+            {"v0": xr.Variable(('x', 'y'), np.arange(3 * 5).reshape(3, 5)),
+             "v1": xr.Variable(('time', 'y'), np.arange(5 * 5).reshape(5, 5))},
+            {"x": xr.Variable(('x', ), [4, 5, 6]),
+             "y": xr.Variable(('y', ), [6, 7, 8, 9, 10]),
+             'time': time})
+        # create reference plots
+        reffiles = []
+        fig, ax = plt.subplots()
+        ds.v0[1].plot(ax=ax)
+        reffiles.append(
+            NamedTemporaryFile(prefix='psyplot_', suffix='.png').name)
+        self._created_files.update(reffiles)
+        fig.savefig(reffiles[-1])
+
+        # figure with two plots
+        fig, axes = plt.subplots(1, 2)
+        ds.v0.plot(ax=axes[0])
+        ds.v0[1:].plot(ax=axes[1])
+        reffiles.append(
+            NamedTemporaryFile(prefix='psyplot_', suffix='.png').name)
+        self._created_files.update(reffiles)
+        fig.savefig(reffiles[-1])
+
+        plt.close('all')
+
+        # create project
+        psy.plot.test_plotter(ds, name='v0', x=1, attrs={'test': 7},
+                              ax=plt.subplots()[1])
+        psy.plot.test_plotter(ds, name='v0', x=[slice(None), slice(1, None)],
+                              attrs={'test': 3}, ax=plt.subplots(1, 2)[1])
+        mp = psy.gcp(True)
+        self.assertEqual(len(mp), 3, msg=mp)
+
+        base_name = NamedTemporaryFile(prefix='psyplot_').name
+        mp.export(base_name + '%i_%(test)s.png')
+        # compare reference files and exported files
+        self.assertTrue(osp.exists(base_name + '1_7.png'),
+                        msg="Missing " + base_name + '1_7.png')
+        self._created_files.add(base_name + '1_7.png')
+        self.assertTrue(osp.exists(base_name + '2_3.png'),
+                        msg="Missing " + base_name + '2_3.png')
+        self._created_files.add(base_name + '2_3.png')
+        results = compare_images(reffiles[0], base_name + '1_7.png', 1)
+        self.assertIsNone(results, msg=results)
+        results = compare_images(reffiles[1], base_name + '2_3.png', 1)
+        self.assertIsNone(results, msg=results)
+
+        # check time formatting
+        psy.close(mp)
+        reffiles.clear()
+        fig, ax = plt.subplots()
+        ds.v1[1].plot(ax=ax)
+        reffiles.append(
+            NamedTemporaryFile(prefix='psyplot_', suffix='.png').name)
+        self._created_files.update(reffiles)
+        fig.savefig(reffiles[-1])
+
+        fig, axes = plt.subplots(1, 2)
+        ds.v1[2, :2].plot(ax=axes[0])
+        ds.v1[2, 2:].plot(ax=axes[1])
+        reffiles.append(
+            NamedTemporaryFile(prefix='psyplot_', suffix='.png').name)
+        self._created_files.update(reffiles)
+        fig.savefig(reffiles[-1])
+
+        plt.close('all')
+
+        # create project
+        psy.plot.test_plotter(ds, name='v1', time=1, attrs={'test': 3},
+                              ax=plt.subplots()[1])
+        psy.plot.test_plotter(ds, name='v1', time=2, attrs={'test': 5},
+                              y=[slice(0, 2), slice(2, None)],
+                              ax=plt.subplots(1, 2)[1])
+        mp = psy.gcp(True)
+        self.assertEqual(len(mp), 3, msg=mp)
+        mp.export(base_name + '%%i_%m_%%(test)s.png', use_time=True)
+
+        # compare reference files and exported files
+        t1 = pd.to_datetime(time.values[1]).strftime('%m')
+        t2 = pd.to_datetime(time.values[2]).strftime('%m')
+        self.assertTrue(osp.exists(base_name + ('1_%s_3.png' % t1)),
+                        msg="Missing " + base_name + ('1_%s_3.png' % t1))
+        self._created_files.add(base_name + ('1_%s_3.png' % t1))
+        self.assertTrue(osp.exists(base_name + ('2_%s_5.png' % t2)),
+                        msg="Missing " + base_name + ('2_%s_5.png' % t2))
+        self._created_files.add(base_name + ('2_%s_5.png' % t2))
+        results = compare_images(reffiles[0], base_name + ('1_%s_3.png' % t1),
+                                 1)
+        self.assertIsNone(results, msg=results)
+        results = compare_images(reffiles[1], base_name + ('2_%s_5.png' % t2),
+                                 1)
+        self.assertIsNone(results, msg=results)
+
+        # check pdf replacement
+        psy.close(mp)
+        sp = psy.plot.test_plotter(ds, name='v1', time=1, attrs={'test': 3},
+                                   ax=plt.subplots()[1])
+        sp.export(base_name + '%m_%%(test)s.pdf', use_time=True)
+        self.assertTrue(osp.exists(base_name + ('%s_3.pdf' % t1)),
+                        msg="Missing " + base_name + ('%s_3.pdf' % t1))
+        self._created_files.add(base_name + ('%s_3.pdf' % t1))
+
+    def test_export_02_list(self):
+        """Test whether the exporting to a list works well"""
+        import tempfile
+        self._register_export_plotter()
+        sp = psy.plot.test_plotter(bt.get_file('test-t2m-u-v.nc'),
+                                   name='t2m', time=[1, 2, 3], z=0)
+        self.assertEqual(len(sp), 3, msg=sp)
+
+        fnames = list(
+            tempfile.NamedTemporaryFile(suffix='.png', prefix='psyplot_').name
+            for _ in range(3))
+        self._created_files.update(fnames)
+
+        sp.export(fnames)
+
+        for fname in fnames:
+            self.assertTrue(osp.exists(fname), msg="Missing " + fname)
+
+    def test_export_03_append(self):
+        """Append to a pdf file"""
+        import tempfile
+        self._register_export_plotter()
+        fig1, ax1 = plt.subplots(1, 2)
+        fig2, ax2 = plt.subplots()
+        axes = list(ax1) + [ax2]
+        sp = psy.plot.test_plotter(bt.get_file('test-t2m-u-v.nc'),
+                                   name='t2m', time=[1, 2, 3], z=0, y=0,
+                                   ax=axes)
+        self.assertEqual(len(sp), 3, msg=sp)
+
+        fname = tempfile.NamedTemporaryFile(
+            suffix='.pdf', prefix='psyplot_').name
+        self._created_files.add(fname)
+
+        pdf = sp.export(fname, close_pdf=False)
+
+        self.assertEqual(pdf.get_pagecount(), 2)
+
+        sp.export(pdf)
+
+        self.assertEqual(pdf.get_pagecount(), 4)
+
+        pdf.close()
+
 
 class TestPlotterInterface(unittest.TestCase):
 
@@ -741,9 +1203,8 @@ class TestPlotterInterface(unittest.TestCase):
     def test_check_data(self):
         """Test the :meth:`psyplot.project._PlotterInterface.check_data` method
         """
-        from psyplot.plotter import Plotter
 
-        class TestPlotter(Plotter):
+        class TestPlotter(psyp.Plotter):
 
             @classmethod
             def check_data(cls, name, dims, is_unstructured):
