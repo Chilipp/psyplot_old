@@ -1191,7 +1191,7 @@ class _ProjectLoader(object):
         return fig.add_axes(*d.pop('args', []), projection=proj, **d)
 
 
-class _PlotterInterface(object):
+class PlotterInterface(object):
     """Base class for visualizing a data array from an predefined plotter
 
     See the :meth:`__call__` method for details on plotting."""
@@ -1465,7 +1465,7 @@ class ProjectPlotter(object):
 
         summary = summary or 'Open and plot data via :class:`%s` plotters'
 
-        class PlotMethod(_PlotterInterface):
+        class PlotMethod(PlotterInterface):
             __doc__ = docstrings.dedents("""
             %s
 
@@ -1514,54 +1514,71 @@ class ProjectPlotter(object):
 if with_cdo:
     CDF_MOD_NCREADER = 'xarray'
 
-    docstrings.keep_params('Project._add_data.parameters', 'ax', 'make_plot')
+    docstrings.keep_params('Project._add_data.parameters', 'dims',
+                           'fmt', 'ax', 'make_plot', 'method')
 
     class Cdo(_CdoBase):
-        """Subclass of the original cdo.Cdo class in the cdo.py module
 
-        Requirements are a working cdo binary and the installed cdo.py python
-        module.
+        __doc__ = docstrings.dedents(
+            """
+            Subclass of the original cdo.Cdo class in the cdo.py module
 
-        For a documentation of an operator, use the python help function, for a
-        list of operators, use the builtin dir function.
-        Further documentation on the operators can be found here:
-        https://code.zmaw.de/projects/cdo/wiki/Cdo%7Brbpy%7D
-        and on the usage of the cdo.py module here:
-        https://code.zmaw.de/projects/cdo
+            Requirements are a working cdo binary and the installed cdo.py
+            python module.
 
-        For a demonstration script on how cdos are implemented, see the
-        examples of the psyplot package
+            For a documentation of an operator, use the python help function,
+            for a list of operators, use the builtin dir function.
+            Further documentation on the operators can be found here:
+            https://code.zmaw.de/projects/cdo/wiki/Cdo%7Brbpy%7D
+            and on the usage of the cdo.py module here:
+            https://code.zmaw.de/projects/cdo
 
-        Compared to the original cdo.Cdo class, the following things changed,
-        the default cdf handler is the :func:`psyplot.data.open_dataset`
-        function and the following keywords are implemented for each cdo
-        operator. Each of them determine the output of the specific operator.
+            For a demonstration script on how cdos are implemented, see the
+            examples of the psyplot package
 
-        Other Parameters
-        ----------------
-        returnMap: str, list or dict
-            the :attr:`~psyplot.project.ProjectPlotter.mapplot` plotting method
-            is used to visualize a scalar field projected on the globe and a
-            :class:`psyplot.project.Project` instance is returned.
-            If `returnMap` is a string or list of strings, this specifies the
-            variables to plot. A dictionary may contain key-value pairs used
-            for the above visualization method
-        returnLine: str, list or dict
-            the :attr:`~psyplot.project.ProjectPlotter.plot1d` plotting method
-            is used to visualize a simple one-dimensional plot and a
-            :class:`psyplot.project.Project` instance is returned.
-            If `returnLine` is a string or list of strings, this specifies the
-            variables to plot. A dictionary may contain key-value pairs used
-            for the above visualization method
-        returnDA: str or list of str
-            Returns the :class:`xarray.DataArray` of the specified variables
-        %(Project._add_data.parameters.ax|make_plot)s
-        """
+            Compared to the original cdo.Cdo class, the following things
+            changed, the default cdf handler is the
+            :func:`psyplot.data.open_dataset` function and the following
+            keywords are implemented for each cdo operator. If any of those is
+            specified, the return will be a subproject (i.e. an instance of
+            :class:`psyplot.project.Project`)
+
+            Other Parameters
+            ----------------
+            plot_method: str or psyplot.project.PlotterInterface
+                An registered plotting function to plot the data (e.g.
+                `psyplot.project.plot.mapplot` to plot on a map). If ``None``,
+                no plot will be created. In any case, the returned value is a
+                subproject. If string, it must correspond to the attribute of
+                the :class:`psyplot.project.ProjectPlotter` class
+            name: str or list of str
+                The variable names to plot/extract
+            %(Project._add_data.parameters.dims|fmt|ax|make_plot|method)s
+
+            Examples
+            --------
+            Calculate the timmean of a 3-dimensional array and plot it on a map
+            using the psy-maps package
+
+            .. code-block:: python
+
+                cdo = psy.Cdo()
+                sp = cdo.timmean(input='ifile.nc', name='temperature',
+                                 plot_method='mapplot')
+
+            which is essentially the same as
+
+            .. code-block:: python
+
+                sp = cdo.timmean(input='ifile.nc', name='temperature',
+                                 plot_method=psy.plot.mapplot)
+                # and
+                sp = psy.plot.mapplot(
+                    cdo.timmean(input='ifile.nc', returnCdf=True),
+                    name='temperature', plot_method=psy.plot.mapplot)
+            """)
 
         def __init__(self, *args, **kwargs):
-            """Initialization method of nc2map.Cdo class.
-            args and kwargs are the same as for Base Class __init__ with the
-            only exception that cdfMod is set to CDF_MOD_NCREADER by default"""
             kwargs.setdefault('cdfMod', CDF_MOD_NCREADER)
             super(Cdo, self).__init__(*args, **kwargs)
             self.loadCdf()
@@ -1582,30 +1599,28 @@ if with_cdo:
                 """
                 @wraps(get)
                 def wrapper(self, *args, **kwargs):
-                    added_kwargs = {'returnMap', 'returnLine', 'returnDA'}
-                    ret_mode = next(iter(added_kwargs.intersection(kwargs)),
-                                    None)
-                    if ret_mode:
-                        val = kwargs.pop(ret_mode, None)
+                    added_kwargs = {'plot_method', 'name', 'dims', 'fmt'}
+                    if added_kwargs.intersection(kwargs):
+                        plot_method = kwargs.pop('plot_method', None)
                         ax = kwargs.pop('ax', None)
                         make_plot = kwargs.pop('make_plot', True)
+                        fmt = kwargs.pop('fmt', {})
+                        dims = kwargs.pop('dims', {})
+                        name = kwargs.pop('name', None)
+                        method = kwargs.pop('method', 'isel')
                         kwargs['returnCdf'] = True
                         ds = get(*args, **kwargs)
-                        if ret_mode in ['returnMap', 'returnLine']:
-                            if ret_mode == 'returnMap':
-                                plot_method = plot.mapplot
-                            else:
-                                plot_method = plot.lineplot
-                            try:
-                                val = dict(val)
-                            except (TypeError, ValueError):
-                                return plot_method(ds, name=val, ax=ax,
-                                                   make_plot=make_plot)
-                            else:
-                                val.setdefault('ax', ax)
-                                val.setdefault('make_plot', make_plot)
-                                return plot_method(ds, **dict(val))
-                        return ds[val]
+                        if isinstance(plot_method, six.string_types):
+                            plot_method = getattr(plot, plot_method)
+                        if plot_method is None:
+                            ret = Project.from_dataset(
+                                ds, name=name, dims=dims, method=method)
+                            ret.main = gcp(True)
+                            return ret
+                        else:
+                            return plot_method(
+                                ds, name=name, fmt=fmt, dims=dims, ax=ax,
+                                make_plot=make_plot, method=method)
                     else:
                         return get(*args, **kwargs)
                 return wrapper
