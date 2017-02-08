@@ -765,6 +765,52 @@ class TestPlotterInterface(unittest.TestCase):
         psy.unregister_plotter('test_plotter')
 
 
+@unittest.skipIf(not psy.with_cdo, "Cdo not installed")
+class TestCdo(unittest.TestCase):
+
+    def setUp(self):
+        psy.close('all')
+        plt.close('all')
+
+    def tearDown(self):
+        for identifier in list(psy.registered_plotters):
+            psy.unregister_plotter(identifier)
+        psy.close('all')
+        plt.close('all')
+        tp.results.clear()
+
+    def test_cdo(self):
+        cdo = psy.Cdo()
+        sp = cdo.timmean(input=bt.get_file('test-t2m-u-v.nc'),
+                         name='t2m', dims=dict(z=[1, 2]))
+        with psy.open_dataset(bt.get_file('test-t2m-u-v.nc')) as ds:
+            lev = ds.lev.values
+        self.assertEqual(len(sp), 2, msg=str(sp))
+        self.assertEqual(sp[0].name, 't2m')
+        self.assertEqual(sp[1].name, 't2m')
+        self.assertEqual(sp[0].lev.values, lev[1])
+        self.assertEqual(sp[1].lev.values, lev[2])
+        self.assertIsNone(sp[0].psy.plotter)
+        self.assertIsNone(sp[1].psy.plotter)
+
+    def test_cdo_plotter(self):
+        cdo = psy.Cdo()
+        psy.register_plotter('test_plotter', module='test_plotter',
+                             plotter_name='TestPlotter')
+        sp = cdo.timmean(input=bt.get_file('test-t2m-u-v.nc'),
+                         name='t2m', dims=dict(z=[1, 2]),
+                         plot_method='test_plotter')
+        with psy.open_dataset(bt.get_file('test-t2m-u-v.nc')) as ds:
+            lev = ds.lev.values
+        self.assertEqual(len(sp), 2, msg=str(sp))
+        self.assertEqual(sp[0].name, 't2m')
+        self.assertEqual(sp[1].name, 't2m')
+        self.assertEqual(sp[0].lev.values, lev[1])
+        self.assertEqual(sp[1].lev.values, lev[2])
+        self.assertIsInstance(sp[0].psy.plotter, tp.TestPlotter)
+        self.assertIsInstance(sp[1].psy.plotter, tp.TestPlotter)
+
+
 class TestMultipleSubplots(unittest.TestCase):
 
     def test_one_subplot(self):
