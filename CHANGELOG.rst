@@ -7,6 +7,9 @@ Added
 
 Changed
 -------
+* The ``psyplot.project.Cdo`` class does not accept any of the keywords
+  ``returnDA, returnMaps`` or ``returnLine`` anymore. Instead it takes
+  the ``plot_method`` keyword and several others.
 * The ``psyplot.project.close`` method does only accept the project number
   now
 * The modules in the psyplot.plotter modules have been moved to separate
