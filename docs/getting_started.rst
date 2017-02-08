@@ -192,9 +192,9 @@ Getting startet
     .. autosummary::
         :toctree: generated/
 
-        ~psyplot.project._PlotterInterface.keys
-        ~psyplot.project._PlotterInterface.summaries
-        ~psyplot.project._PlotterInterface.docs
+        ~psyplot.project.PlotterInterface.keys
+        ~psyplot.project.PlotterInterface.summaries
+        ~psyplot.project.PlotterInterface.docs
 
     For example to look at the formatoptions of the
     :attr:`~psyplot.project.ProjectPlotter.mapplot` method in an interactive
