@@ -560,7 +560,7 @@ class TestProject(td.TestArrayList):
 
         # try scp
         check_mains = []
-        check_mains = []
+        projects = []
         p = sp[1:]
         psy.scp(p)
         self.assertEqual(check_mains, [False],
@@ -569,7 +569,7 @@ class TestProject(td.TestArrayList):
 
         # test appending
         check_mains = []
-        check_mains = []
+        projects = []
         p.append(sp[0])
         self.assertEqual(check_mains, [False],
                          msg="projects: %s" % (projects, ))
@@ -578,14 +578,14 @@ class TestProject(td.TestArrayList):
 
         # close a part of the project
         check_mains = []
-        check_mains = []
+        projects = []
         sp[:1].close(True, True)
         self.assertEqual(check_mains, [True])
         self.assertEqual(len(projects[0]), 1, msg=str(projects[0]))
 
         # close the remaining part of the project
         check_mains = []
-        check_mains = []
+        projects = []
         psy.close()
         self.assertEqual(len(check_mains), 2,
                          msg="%s, %s" % (check_mains, projects))
