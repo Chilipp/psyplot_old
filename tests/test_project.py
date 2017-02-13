@@ -925,6 +925,36 @@ class TestProject(td.TestArrayList):
 
         pdf.close()
 
+    def test_update(self):
+        """Test the update of an :class:`psyplot.data.ArrayList`"""
+        variables, coords = self._from_dataset_test_variables
+        ds = xr.Dataset(variables, coords)
+        psy.register_plotter('test_plotter', module='something',
+                             plotter_name='unimportant',
+                             plotter_cls=tp.TestPlotter)
+        # add 2 arrays
+        psy.plot.test_plotter(ds, name=['v0', 'v1'], t=0)
+        # add a list
+        psy.plot.test_plotter(ds, name=['v0', 'v1'], t=0, prefer_list=True)
+
+        mp = psy.gcp(True)
+
+        self.assertEqual(len(mp), 3, msg=mp)
+        self.assertEqual(len(mp.plotters), 3, msg=mp)
+
+        # update the list
+        mp.update(t=1, fmt2='updated')
+
+        for i, plotter in enumerate(mp.plotters):
+            self.assertEqual(plotter['fmt2'], 'updated',
+                             msg='Plotter of array %i not updated! %s' % (
+                                i, mp[i]))
+
+        self.assertEqual(mp[0].time, ds.time[1])
+        self.assertEqual(mp[1].time, ds.time[1])
+        for data in mp[2]:
+            self.assertEqual(data.time, ds.time[1])
+
 
 class TestPlotterInterface(unittest.TestCase):
 

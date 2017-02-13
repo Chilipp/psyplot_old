@@ -9,3 +9,5 @@ def pytest_configure(config):
     if config.getoption('no_removal'):
         import test_project
         test_project.remove_temp_files = False
+        import test_main
+        test_main.remove_temp_files = False
