@@ -14,7 +14,7 @@ import pickle
 from importlib import import_module
 from itertools import chain, repeat, cycle, count
 from collections import Iterable, defaultdict
-from functools import wraps
+from functools import wraps, partial
 import xarray
 import pandas as pd
 
@@ -830,11 +830,15 @@ class Project(ArrayList):
         if fname is not None and pwd is None and not pack:
             pwd = os.path.dirname(fname)
         if pack and fname is not None:
+            target_dir = os.path.dirname(fname)
+            if not os.path.exists(target_dir):
+                os.makedirs(target_dir)
+
             def tmp_it():
                 from tempfile import NamedTemporaryFile
                 while True:
                     yield NamedTemporaryFile(
-                        dir=os.path.dirname(fname), suffix='.nc').name
+                        dir=target_dir, suffix='.nc').name
 
             kwargs.setdefault('paths', tmp_it())
 
@@ -845,34 +849,32 @@ class Project(ArrayList):
             # there. After that we check the filenames again and force them
             # to the desired directory
             from shutil import copyfile
-            target_dir = os.path.dirname(fname)
-            if not os.path.exists(target_dir):
-                os.makedirs(target_dir)
-            fnames = self._get_dsnames(ret['arrays'])
-            alternate_paths = kwargs.pop('alternate_paths', {})
+            fnames = (f[0] for f in self._get_dsnames(ret['arrays']))
+            alternative_paths = kwargs.pop('alternative_paths', {})
             counters = defaultdict(int)
             if kwargs.get('use_rel_paths', True):
-                get_path = os.path.relpath
+                get_path = partial(os.path.relpath, start=target_dir)
             else:
                 get_path = os.path.abspath
-            for finfo in unique_everseen(chain(alternate_paths, fnames)):
-                ds_fname = finfo[0]
+            for ds_fname in unique_everseen(chain(alternative_paths, fnames)):
                 if ds_fname is None or is_remote_url(ds_fname):
                     continue
-                dst_file = alternate_paths.get(
+                dst_file = alternative_paths.get(
                     ds_fname, os.path.join(target_dir, os.path.basename(
                         ds_fname)))
+                orig_dst_file = dst_file
                 if counters[dst_file] and (
                         not os.path.exists(dst_file) or
                         not os.path.samefile(ds_fname, dst_file)):
-                    dst_file += '-' + str(counters[dst_file])
+                    dst_file, ext = os.path.splitext(dst_file)
+                    dst_file += '-' + str(counters[orig_dst_file]) + ext
                 if (not os.path.exists(dst_file) or
                         not os.path.samefile(ds_fname, dst_file)):
                     copyfile(ds_fname, dst_file)
-                    counters[dst_file] += 1
-                alternate_paths.setdefault(ds_fname, get_path(dst_file))
+                    counters[orig_dst_file] += 1
+                alternative_paths.setdefault(ds_fname, get_path(dst_file))
             ret['arrays'] = self.array_info(
-                pwd=pwd, alternate_paths=alternate_paths, **kwargs)
+                pwd=pwd, alternative_paths=alternative_paths, **kwargs)
         # store the plotter settings
         for arr, d in zip(self, six.itervalues(ret['arrays'])):
             if arr.psy.plotter is None:
@@ -988,7 +990,7 @@ class Project(ArrayList):
         Since the data is stored in external files when saving a project,
         make sure that the data is accessible under the relative paths
         as stored in the file `fname` or from the current working directory
-        if `fname` is a dictionary. Alternatively use the `alternate_paths`
+        if `fname` is a dictionary. Alternatively use the `alternative_paths`
         parameter or the `pwd` parameter
 
         Parameters

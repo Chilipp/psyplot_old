@@ -641,7 +641,10 @@ def get_filename_ds(ds, dump=True, paths=None, **kwargs):
     if paths is True or (dump and paths is None):
         paths = tmp_it()
     elif paths is not None:
-        paths = iter(safe_list(paths))
+        if isstring(paths):
+            paths = iter([paths])
+        else:
+            paths = iter(paths)
     # try to get the filename from  the data store of the obj
     store_mod, store_cls = ds.psy.data_store
     if store_mod is not None:
@@ -3116,7 +3119,7 @@ class ArrayList(list):
     @docstrings.dedent
     def array_info(self, dump=None, paths=None, attrs=True,
                    standardize_dims=True, pwd=None, use_rel_paths=True,
-                   alternate_paths={}, ds_description={'fname', 'store'},
+                   alternative_paths={}, ds_description={'fname', 'store'},
                    full_ds=True, **kwargs):
         """
         Get dimension informations on you arrays
@@ -3180,6 +3183,9 @@ class ArrayList(list):
         See Also
         --------
         from_dict"""
+        def get_alternative(f):
+            return next(filter(lambda t: os.path.samefile(f, t[0]),
+                               six.iteritems(alternative_paths)), [False, f])
         ret = OrderedDict()
         if ds_description == 'all':
             ds_description = {'fname', 'ds', 'num', 'arr', 'store'}
@@ -3197,7 +3203,7 @@ class ArrayList(list):
                     dump, paths, pwd=pwd, attrs=attrs,
                     standardize_dims=standardize_dims,
                     use_rel_paths=use_rel_paths, ds_description=ds_description,
-                    alternate_paths=alternate_paths, **kwargs)
+                    alternative_paths=alternative_paths, **kwargs)
             else:
                 if standardize_dims:
                     idims = arr.psy.decoder.standardize_dims(
@@ -3220,12 +3226,8 @@ class ArrayList(list):
                             if (f is None or is_remote_url(f)):
                                 d['fname'].append(f)
                             else:
-                                f = alternate_paths.get(
-                                    f, alternate_paths.get(
-                                        os.path.abspath(f), f))
-                                if f in alternate_paths:
-                                    f = alternate_paths[f]
-                                elif use_rel_paths:
+                                found, f = get_alternative(f)
+                                if use_rel_paths:
                                     f = os.path.relpath(f, pwd)
                                 else:
                                     f = os.path.abspath(f)
