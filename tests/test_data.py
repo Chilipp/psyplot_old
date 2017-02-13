@@ -66,7 +66,7 @@ class AlmostArrayEqualMixin(object):
             self.fail(e if six.PY3 else e.message)
 
 
-class DecoderTest(unittest.TestCase):
+class DecoderTest(unittest.TestCase, AlmostArrayEqualMixin):
     """Test the :class:`psyplot.data.CFDecoder` class"""
 
     def test_1D_cf_bounds(self):
@@ -317,6 +317,34 @@ class DecoderTest(unittest.TestCase):
         # close the dataset
         ds.close()
 
+    def test_plot_bounds_1d(self):
+        """Test to get 2d-interval breaks"""
+        x = xr.Variable(('x', ), np.arange(1, 5))
+        d = psyd.CFDecoder()
+        bounds = d.get_plotbounds(x)
+        self.assertAlmostArrayEqual(bounds, np.arange(0.5, 4.51, 1.0))
+
+    def test_plot_bounds_2d(self):
+        x = np.arange(1, 5)
+        y = np.arange(5, 10)
+        x2d, y2d = np.meshgrid(x, y)
+        x_bnds = np.arange(0.5, 4.51, 1.0)
+        y_bnds = np.arange(4.5, 9.51, 1.0)
+        # the borders are not modified
+        x_bnds[0] = 1.0
+        x_bnds[-1] = 4.0
+        y_bnds[0] = 5.0
+        y_bnds[-1] = 9.0
+        x2d_bnds, y2d_bnds = np.meshgrid(x_bnds, y_bnds)
+        d = psyd.CFDecoder()
+        # test x bounds
+        bounds = d.get_plotbounds(xr.Variable(('y', 'x'), x2d))
+        self.assertAlmostArrayEqual(bounds, x2d_bnds)
+
+        # test y bounds
+        bounds = d.get_plotbounds(xr.Variable(('y', 'x'), y2d))
+        self.assertAlmostArrayEqual(bounds, y2d_bnds)
+
 
 class UGridDecoderTest(unittest.TestCase, AlmostArrayEqualMixin):
     """Test the :class:`psyplot.data.UGridDecoder` class"""
@@ -343,31 +371,6 @@ class UGridDecoderTest(unittest.TestCase, AlmostArrayEqualMixin):
         self.assertIn('standard_name', y.attrs)
         self.assertEqual(y.attrs['standard_name'], 'latitude')
         self.assertAlmostArrayEqual(y.values, [0.4, 0.76666668])
-
-
-class TestTempBool(unittest.TestCase):
-    """Test the :class:`psyplot.data._TempBool` class"""
-
-    def test_descriptor(self):
-        """Test the descriptor functionality"""
-
-        class Test(object):
-
-            test = psyd._temp_bool_prop('test')
-
-        t = Test()
-
-        self.assertFalse(t.test)
-        with t.test:
-            self.assertTrue(t.test)
-
-        t.test = True
-        self.assertTrue(t.test)
-        with t.test:
-            self.assertTrue(t.test)
-
-        del t.test
-        self.assertFalse(t.test)
 
 
 class TestInteractiveArray(unittest.TestCase):
@@ -969,6 +972,36 @@ class TestArrayList(unittest.TestCase):
         import logging
         l = self.test_array_info()
         self.assertIsInstance(l.logger, logging.Logger)
+
+
+class TestInteractiveList(TestArrayList):
+    """Test case for the :class:`psyplot.data.InteractiveList` class"""
+
+    list_class = psyd.InteractiveList
+
+    def test_to_dataframe(self):
+        variables, coords = self._from_dataset_test_variables
+        variables['v1'][:] = np.arange(variables['v1'].size).reshape(
+            variables['v1'].shape)
+        ds = xr.Dataset(variables, coords)
+        l = psyd.InteractiveList.from_dataset(ds, name='v1', t=[0, 1])
+        l.extend(psyd.InteractiveList.from_dataset(ds, name='v1', t=2,
+                                                   x=slice(1, 3)),
+                 new_name=True)
+        self.assertEqual(len(l), 3)
+        self.assertTrue(all(arr.ndim == 1 for arr in l), msg=l)
+        df = l.to_dataframe()
+        self.assertEqual(df.shape, (ds.xdim.size, 3))
+        self.assertEqual(df.index.values.tolist(), ds.xdim.values.tolist())
+        self.assertEqual(df[l[0].psy.arr_name].values.tolist(),
+                         ds.v1[0].values.tolist())
+        self.assertEqual(df[l[1].psy.arr_name].values.tolist(),
+                         ds.v1[1].values.tolist())
+        self.assertEqual(df[l[2].psy.arr_name].notnull().sum(), 2)
+        self.assertEqual(
+            df[l[2].psy.arr_name].values[
+                df[l[2].psy.arr_name].notnull().values].tolist(),
+            ds.v1[2, 1:3].values.tolist())
 
 
 class AbsoluteTimeTest(unittest.TestCase, AlmostArrayEqualMixin):
