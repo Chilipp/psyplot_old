@@ -29,7 +29,6 @@ Submodules
    psyplot.data
    psyplot.docstring
    psyplot.gdal_store
-   psyplot.main
    psyplot.plotter
    psyplot.project
    psyplot.utils
