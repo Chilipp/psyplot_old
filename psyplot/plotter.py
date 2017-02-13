@@ -21,9 +21,9 @@ from psyplot.compat.pycompat import map, filter, zip, range
 from psyplot.config.rcsetup import SubDict
 from psyplot.docstring import docstrings, dedent
 from psyplot.data import (
-    InteractiveList, _TempBool, _no_auto_update_getter, check_key,
-    unique_everseen, _temp_bool_prop, CFDecoder)
-from psyplot.utils import DefaultOrderedDict
+    InteractiveList, _no_auto_update_getter, CFDecoder)
+from psyplot.utils import (DefaultOrderedDict, _TempBool, _temp_bool_prop,
+                           unique_everseen, check_key)
 
 #: the default function to use when printing formatoption infos (the default is
 #: use print or in the gui, use the help explorer)
