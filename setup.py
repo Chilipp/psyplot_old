@@ -46,5 +46,5 @@ setup(name='psyplot',
       include_package_data=True,
       setup_requires=pytest_runner,
       tests_require=['pytest'],
-      entry_points={'console_scripts': ['psyplot=psyplot.main:main']},
+      entry_points={'console_scripts': ['psyplot=psyplot.__main__:main']},
       zip_safe=False)

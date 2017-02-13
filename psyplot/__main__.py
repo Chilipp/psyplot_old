@@ -14,7 +14,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def main():
+def main(args=None):
     """Main function for usage of psyplot from the command line
 
     This function creates a parser that parses command lines to the
@@ -27,15 +27,16 @@ def main():
         The parser that has been used from the command line"""
     try:
         from psyplot_gui import get_parser as _get_parser
-        parser = _get_parser(create=False)
-        parser.create_arguments()
-        parser.parse_known2func()
     except ImportError:
         logger.debug('Failed to import gui', exc_info=True)
         parser = get_parser(create=False)
         parser.update_arg('output', required=True)
         parser.create_arguments()
-        parser.parse2func()
+        parser.parse2func(args)
+    else:
+        parser = _get_parser(create=False)
+        parser.create_arguments()
+        parser.parse_known2func(args)
 
 
 @docstrings.get_sectionsf('make_plot')
