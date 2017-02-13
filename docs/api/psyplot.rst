@@ -10,7 +10,8 @@ API Reference
     ~psyplot.config.rcsetup.rcParams 
     ~psyplot.data.InteractiveArray 
     ~psyplot.data.InteractiveList 
-
+    
+    
 Subpackages
 -----------
 
@@ -18,7 +19,6 @@ Subpackages
 
     psyplot.compat
     psyplot.config
-    psyplot.plotter
     psyplot.sphinxext
 
 Submodules
@@ -30,6 +30,8 @@ Submodules
    psyplot.docstring
    psyplot.gdal_store
    psyplot.main
+   psyplot.plotter
    psyplot.project
+   psyplot.utils
    psyplot.warning
 

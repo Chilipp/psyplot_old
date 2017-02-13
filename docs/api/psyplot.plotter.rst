@@ -1,8 +1,7 @@
-psyplot.plotter package
-=======================
+psyplot.plotter module
+======================
 
 .. automodule:: psyplot.plotter
     :members:
     :undoc-members:
     :show-inheritance:
-
