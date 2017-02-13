@@ -1,6 +1,7 @@
 """Test module of the :mod:`psyplot.project` module"""
 import os
 import os.path as osp
+import shutil
 import six
 import unittest
 from itertools import chain
@@ -13,11 +14,7 @@ import psyplot.plotter as psyp
 import psyplot.project as psy
 import matplotlib.pyplot as plt
 
-from test_plotter import TestPlotter, SimpleFmt
-
-
-def get_file(fname):
-    return os.path.join(bt.test_dir, fname)
+remove_temp_files = True
 
 
 class TestProject(td.TestArrayList):
@@ -36,10 +33,13 @@ class TestProject(td.TestArrayList):
         psy.close('all')
         plt.close('all')
         tp.results.clear()
-        for f in self._created_files:
-            if osp.exists(f):
-                os.remove(f)
-        self._created_files.clear()
+        if remove_temp_files:
+            for f in self._created_files:
+                if osp.exists(f) and osp.isdir(f):
+                    shutil.rmtree(f)
+                elif osp.exists(f):
+                    os.remove(f)
+            self._created_files.clear()
 
     def test_save_and_load_01_simple(self):
         """Test the saving and loading of a Project"""
@@ -64,6 +64,7 @@ class TestProject(td.TestArrayList):
         self.assertEqual(tp.results[arr_names[0] + '.fmt1'], 'test')
         self.assertEqual(tp.results[arr_names[1] + '.fmt1'], 'test')
         fname = 'test.pkl'
+        self._created_files.add(fname)
         sp.save_project(fname)
         psy.close()
         tp.results.clear()
@@ -79,13 +80,6 @@ class TestProject(td.TestArrayList):
         self.assertEqual(sp[1].psy.ax.colNum, 0)
         self.assertEqual(sp[1].psy.ax.numCols, 2)
         self.assertEqual(sp[1].psy.ax.numRows, 2)
-
-        psy.close()
-        psy.unregister_plotter('test_plotter')
-        tp.results.clear()
-
-        if osp.exists(fname):
-            os.remove(fname)
 
     def test_save_and_load_02_alternative_axes(self):
         """Test the saving and loading of a Project providing alternative axes
@@ -111,6 +105,7 @@ class TestProject(td.TestArrayList):
         self.assertEqual(tp.results[arr_names[0] + '.fmt1'], 'test')
         self.assertEqual(tp.results[arr_names[1] + '.fmt1'], 'test')
         fname = 'test.pkl'
+        self._created_files.add(fname)
         sp.save_project(fname)
         psy.close()
         tp.results.clear()
@@ -127,13 +122,6 @@ class TestProject(td.TestArrayList):
         self.assertEqual(sp[1].psy.ax.colNum, 1)
         self.assertEqual(sp[1].psy.ax.numCols, 2)
         self.assertEqual(sp[1].psy.ax.numRows, 1)
-
-        psy.close()
-        psy.unregister_plotter('test_plotter')
-        tp.results.clear()
-
-        if osp.exists(fname):
-            os.remove(fname)
 
     def test_save_and_load_03_alternative_ds(self):
         """Test the saving and loading of a Project providing alternative axes
@@ -159,6 +147,7 @@ class TestProject(td.TestArrayList):
         self.assertEqual(tp.results[arr_names[0] + '.fmt1'], 'test')
         self.assertEqual(tp.results[arr_names[1] + '.fmt1'], 'test')
         fname = 'test.pkl'
+        self._created_files.add(fname)
         sp.save_project(fname)
         psy.close()
         tp.results.clear()
@@ -178,13 +167,6 @@ class TestProject(td.TestArrayList):
         self.assertEqual(sp[1].psy.ax.numRows, 2)
         self.assertIs(sp[0].psy.base, ds)
         self.assertIs(sp[1].psy.base, ds)
-
-        psy.close()
-        psy.unregister_plotter('test_plotter')
-        tp.results.clear()
-
-        if osp.exists(fname):
-            os.remove(fname)
 
     def test_save_and_load_04_alternative_fname(self):
         """Test the saving and loading of a Project providing alternative axes
@@ -210,6 +192,7 @@ class TestProject(td.TestArrayList):
         self.assertEqual(tp.results[arr_names[0] + '.fmt1'], 'test')
         self.assertEqual(tp.results[arr_names[1] + '.fmt1'], 'test')
         fname = 'test.pkl'
+        self._created_files.add(fname)
         sp.save_project(fname)
         psy.close()
         tp.results.clear()
@@ -232,12 +215,66 @@ class TestProject(td.TestArrayList):
         self.assertEqual(psyd.get_filename_ds(sp[1].psy.base)[0],
                          bt.get_file('circumpolar_test.nc'))
 
-        psy.close()
-        psy.unregister_plotter('test_plotter')
-        tp.results.clear()
+    def test_save_and_load_05_pack(self):
+        import tempfile
+        psy.register_plotter('test_plotter', import_plotter=True,
+                             module='test_plotter', plotter_name='TestPlotter')
+        tempdir1 = tempfile.mkdtemp(prefix='psyplot_test_')
+        tempdir2 = tempfile.mkdtemp(prefix='psyplot_test_')
+        tempdir3 = tempfile.mkdtemp(prefix='psyplot_test_')
+        outdir = tempfile.mkdtemp(prefix='psyplot_test_')
+        self._created_files.update([tempdir1, tempdir2, tempdir3, outdir])
+        # first test file
+        shutil.copyfile(bt.get_file('test-t2m-u-v.nc'),
+                        osp.join(tempdir1, 'test-t2m-u-v.nc'))
+        psy.plot.test_plotter(osp.join(tempdir1, 'test-t2m-u-v.nc'),
+                              name='t2m', t=[1, 2])
+        # second test file
+        shutil.copyfile(bt.get_file('test-t2m-u-v.nc'),
+                        osp.join(tempdir2, 'test-t2m-u-v.nc'))
+        psy.plot.test_plotter(osp.join(tempdir2, 'test-t2m-u-v.nc'),
+                              name='t2m', t=[3, 4])
+        # third test file
+        shutil.copyfile(bt.get_file('test-t2m-u-v.nc'),
+                        osp.join(tempdir3, 'test-t2m-u-v.nc'))
+        psy.plot.test_plotter(osp.join(tempdir3, 'test-t2m-u-v.nc'),
+                              name='t2m', t=[3, 4])
+        # fourth test file with different name
+        psy.plot.test_plotter(bt.get_file('circumpolar_test.nc'), name='t2m',
+                              t=[0, 1])
+        mp = psy.gcp(True)
 
-        if osp.exists(fname):
-            os.remove(fname)
+        mp.save_project(osp.join(outdir, 'test.pkl'), pack=True)
+        files = {'test-t2m-u-v.nc', 'test-t2m-u-v-1.nc',
+                 'test-t2m-u-v-2.nc', 'test.pkl', 'circumpolar_test.nc'}
+        self.assertEqual(set(os.listdir(outdir)), files)
+
+        psy.close(mp)
+
+        # move the directory to check whether it is still working
+        outdir2 = tempfile.mkdtemp(prefix='psyplot_test_')
+        self._created_files.add(outdir2)
+        for f in files:
+            shutil.move(osp.join(outdir, f), osp.join(outdir2, f))
+        mp = psy.Project.load_project(osp.join(outdir2, 'test.pkl'), main=True,
+                                      )
+
+        self.assertEqual(len(mp), 8, msg=mp)
+
+        paths = {osp.join(outdir2, 'test-t2m-u-v.nc'),
+                 osp.join(outdir2, 'test-t2m-u-v-1.nc'),
+                 osp.join(outdir2, 'test-t2m-u-v-2.nc')}
+        found = set()
+
+        for i in range(6):
+            found.add(psyd.get_filename_ds(mp[i].psy.base)[0])
+        self.assertFalse(paths - found,
+                         msg='expected %s\n%s\nfound %s' % (paths, '-' * 80,
+                                                            found))
+        self.assertEqual(psyd.get_filename_ds(mp[6].psy.base)[0],
+                         osp.join(outdir2, 'circumpolar_test.nc'))
+        self.assertEqual(psyd.get_filename_ds(mp[7].psy.base)[0],
+                         osp.join(outdir2, 'circumpolar_test.nc'))
 
     def test_keys(self):
         """Test the :meth:`psyplot.project.Project.keys` method"""
@@ -899,9 +936,9 @@ class TestPlotterInterface(unittest.TestCase):
                              import_plotter=True, module='test_plotter',
                              plotter_name='TestPlotter')
         self.assertTrue(hasattr(psy.plot, 'test_plotter'))
-        self.assertIs(psy.plot.test_plotter.plotter_cls, TestPlotter)
+        self.assertIs(psy.plot.test_plotter.plotter_cls, tp.TestPlotter)
         psy.plot.test_plotter.print_func = str
-        self.assertEqual(psy.plot.test_plotter.fmt1, SimpleFmt.__doc__)
+        self.assertEqual(psy.plot.test_plotter.fmt1, tp.SimpleFmt.__doc__)
         psy.plot.test_plotter.print_func = None
         # test the warning
         if not six.PY2:
