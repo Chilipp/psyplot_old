@@ -27,8 +27,8 @@ from psyplot.warning import warn, critical
 from psyplot.docstring import docstrings, dedent, safe_modulo
 import psyplot.data as psyd
 from psyplot.data import (
-    ArrayList, open_dataset, open_mfdataset, sort_kwargs, _MissingModule,
-    to_netcdf, is_remote_url, Signal, CFDecoder, safe_list, InteractiveList)
+    ArrayList, open_dataset, open_mfdataset, _MissingModule,
+    to_netcdf, Signal, CFDecoder, safe_list, InteractiveList)
 from psyplot.plotter import unique_everseen, Plotter
 from psyplot.compat.pycompat import OrderedDict, range, getcwd
 try:
@@ -148,7 +148,7 @@ class Project(ArrayList):
     oncpchange = Signal(cls_signal=True)
 
     # block the
-    block_signals = psyd._TempBool()
+    block_signals = utils._TempBool()
 
     @property
     def main(self):
@@ -456,7 +456,7 @@ class Project(ArrayList):
                                                engine=engine)
         fmt = dict(fmt)
         possible_fmts = list(plotter_cls._get_formatoptions())
-        additional_fmt, kwargs = sort_kwargs(
+        additional_fmt, kwargs = utils.sort_kwargs(
             kwargs, possible_fmts)
         fmt.update(additional_fmt)
         # create the subproject
@@ -857,7 +857,7 @@ class Project(ArrayList):
             else:
                 get_path = os.path.abspath
             for ds_fname in unique_everseen(chain(alternative_paths, fnames)):
-                if ds_fname is None or is_remote_url(ds_fname):
+                if ds_fname is None or utils.is_remote_url(ds_fname):
                     continue
                 dst_file = alternative_paths.get(
                     ds_fname, os.path.join(target_dir, os.path.basename(
