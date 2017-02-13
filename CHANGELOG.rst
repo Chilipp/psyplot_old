@@ -7,6 +7,9 @@ Added
 
 Changed
 -------
+* The ``alternate_paths`` keyword in the ``psyplot.project.Project.save_project``
+  and ``psyplot.data.ArrayList.array_info`` methods has been changed to
+  ``alternative_paths``
 * The ``psyplot.project.Cdo`` class does not accept any of the keywords
   ``returnDA, returnMaps`` or ``returnLine`` anymore. Instead it takes
   the ``plot_method`` keyword and several others.
