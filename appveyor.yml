@@ -4,13 +4,13 @@ environment:
   PYTHON: "C:\\Python34-conda64"
 
   matrix:
-    - PYTHON_VERSION: "2.7"
+    - PYTHON_VERSION: "3.5"
       XARRAY_VERSION: "0.8"
-    - PYTHON_VERSION: "2.7"
+    - PYTHON_VERSION: "3.5"
       XARRAY_VERSION: "0.9"
-    - PYTHON_VERSION: "3.5"
+    - PYTHON_VERSION: "3.6"
       XARRAY_VERSION: "0.8"
-    - PYTHON_VERSION: "3.5"
+    - PYTHON_VERSION: "3.6"
       XARRAY_VERSION: "0.9"
 install:
   # Install miniconda Python
@@ -29,9 +29,7 @@ install:
   # Useful for debugging any issues with conda
   - conda info -a
   - set ENVKEY=py%PYTHON_VERSION%_xr%XARRAY_VERSION%
-  # delete pynio
-  - cmd: grep -v pynio tests/envs/environment_%ENVKEY%.yml > environment.yml
-  - conda env create -f environment.yml
+  - conda env create -f tests/envs/environment_%ENVKEY%.yml
   - activate psyplot_%ENVKEY%
   - pip install coveralls
   # install the test plugin
