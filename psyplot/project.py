@@ -38,6 +38,11 @@ except ImportError as e:
     Cdo = _MissingModule(e)
     with_cdo = False
 
+try:  # try import show_colormaps for convenience
+    from psy_simple.colors import show_colormaps, get_cmap
+except ImportError:
+    pass
+
 if rcParams['project.import_seaborn'] is not False:
     try:
         import seaborn as _sns
