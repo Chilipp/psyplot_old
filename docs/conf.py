@@ -86,8 +86,7 @@ source_suffix = '.rst'
 # The master toctree document.
 master_doc = 'index'
 
-autodoc_default_flags = ['show_inheritance', 'autosummary',
-                         'show-formatoptions']
+autodoc_default_flags = ['show_inheritance', 'autosummary']
 autoclass_content = 'both'
 
 not_document_data = ['psyplot.config.rcsetup.defaultParams',
