@@ -23,3 +23,5 @@ rcParams.HEADER += "\n\npsyplot version: " + __version__
 rcParams.load_from_file()
 
 rcParams.load_plugins('psyplot')
+
+_project_imported = False
