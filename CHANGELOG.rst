@@ -29,3 +29,5 @@ Changed
     *psyplotrc.yaml*
   - the default logging configuration file name is now *logging.yml* instead
     of *logging.yaml*
+* Under osx, the configuration directory is now also expected to be in
+  ``$HOME/.config/psyplot`` (as it is for linux)
