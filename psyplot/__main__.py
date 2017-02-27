@@ -192,9 +192,14 @@ def get_parser(create=True):
     parser.update_arg('dims', short='d', nargs='+', type=_load_dims,
                       metavar='dim,val1[,val2[,...]]')
 
-    pm_choices = [pm for pm, d in filter(
+    pm_choices = {pm for pm, d in filter(
                       lambda t: t[1].get('plot_func', True),
-                      six.iteritems(rcParams['project.plotters']))]
+                      six.iteritems(rcParams['project.plotters']))}
+    if psyplot._project_imported:
+        import psyplot.project as psy
+        pm_choices.update({pm for pm, d in filter(
+                      lambda t: t[1].get('plot_func', True),
+                      six.iteritems(psy.registered_plotters))})
     parser.update_arg('plot_method', short='pm', choices=pm_choices,
                       metavar='{%s}' % ', '.join(map(repr, pm_choices)))
 
