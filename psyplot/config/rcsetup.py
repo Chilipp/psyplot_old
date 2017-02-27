@@ -817,7 +817,7 @@ def psyplot_fname(env_key='PSYPLOTRC', fname='psyplotrc.yml'):
     return None
 
 
-def get_configdir():
+def get_configdir(name='psyplot', env_key='PSYPLOTCONFIGDIR'):
     """
     Return the string representing the configuration directory.
 
@@ -840,16 +840,17 @@ def get_configdir():
     References
     ----------
     [1]: http://matplotlib.org/api/"""
-    configdir = os.environ.get('PSYPLOTCONFIGDIR')
+    configdir = os.environ.get(env_key)
     if configdir is not None:
         return os.path.abspath(configdir)
 
     p = None
     h = _get_home()
-    if (sys.platform.startswith('linux') and h is not None):
-        p = os.path.join(h, '.config/psyplot')
+    if ((sys.platform.startswith('linux') or sys.platform == 'darwin') and
+            h is not None):
+        p = os.path.join(h, '.config/' + name)
     elif h is not None:
-        p = os.path.join(h, '.psyplot')
+        p = os.path.join(h, '.' + name)
 
     if not os.path.exists(p):
         os.makedirs(p)
