@@ -10,6 +10,8 @@ from psyplot.warning import warn
 from funcargparse import FuncArgParser
 import logging
 
+rcParams = psyplot.rcParams
+
 
 logger = logging.getLogger(__name__)
 
@@ -82,12 +84,11 @@ def make_plot(fnames=[], name=[], dims=None, plot_method=None,
         automatically determined by pickle. Note: Set this to ``'latin1'``
         if using a project created with python2 on python3.
     """
-
     if project is not None and (name != [] or dims is not None):
         warn('The `name` and `dims` parameter are ignored if the `project`'
              ' parameter is set!')
     if rc_file is not None:
-        psyplot.rcParams.load_from_file(rc_file)
+        rcParams.load_from_file(rc_file)
 
     if dims is not None and not isinstance(dims, dict):
         dims = dict(chain(*map(six.iteritems, dims)))
@@ -191,7 +192,11 @@ def get_parser(create=True):
     parser.update_arg('dims', short='d', nargs='+', type=_load_dims,
                       metavar='dim,val1[,val2[,...]]')
 
-    parser.update_arg('plot_method', short='pm')
+    pm_choices = [pm for pm, d in filter(
+                      lambda t: t[1].get('plot_func', True),
+                      six.iteritems(rcParams['project.plotters']))]
+    parser.update_arg('plot_method', short='pm', choices=pm_choices,
+                      metavar='{%s}' % ', '.join(map(repr, pm_choices)))
 
     parser.update_arg('output', short='o', group=output_grp)
 
