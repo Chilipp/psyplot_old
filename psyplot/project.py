@@ -21,6 +21,7 @@ import pandas as pd
 import matplotlib as mpl
 import matplotlib.figure as mfig
 import numpy as np
+import psyplot
 from psyplot import rcParams
 import psyplot.utils as utils
 from psyplot.warning import warn, critical
@@ -1935,3 +1936,5 @@ plot = ProjectPlotter()
 
 #: The project class that is used for creating new projects
 PROJECT_CLS = Project
+
+psyplot._project_imported = True
