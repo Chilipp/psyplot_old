@@ -1,9 +1,8 @@
 from setuptools import setup, find_packages
-import sys
 
 
 setup(name='psyplot_test',
       license="GPLv2",
       packages=find_packages(exclude=['docs', 'tests*', 'examples']),
-      entry_points={'psyplot_test': ['rcParams=psyplot_test.plugin:rcParams']},
+      entry_points={'psyplot_test': ['plugin=psyplot_test.plugin']},
       zip_safe=False)

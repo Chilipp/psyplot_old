@@ -701,9 +701,10 @@ environment variable."""
         defaultParams = self.defaultParams
         def_keys = {'default': defaultParams}
 
-        for ep in iter_entry_points(group=group, name='rcParams'):
+        for ep in iter_entry_points(group=group, name='plugin'):
             logger.debug('Loading entrypoint %s', ep)
-            rc = ep.load()
+            plugin_mod = ep.load()
+            rc = plugin_mod.rcParams
 
             # load the plotters
             plugin_plotters = rc.get('project.plotters', {})
