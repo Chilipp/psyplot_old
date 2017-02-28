@@ -338,6 +338,7 @@ class PlotterTest(unittest.TestCase):
         for i, d2 in enumerate(plotter.plot_data_decoder):
             self.assertIs(d2, decoder,
                           msg='Decoder %i has been set wrong!' % i)
+        self.assertEqual(plotter.fmt2.decoder, plotter.plot_data_decoder)
 
         # test with index in list of plot_data outside raw_data
         plotter.fmt1.index_in_list = 3
@@ -348,6 +349,27 @@ class PlotterTest(unittest.TestCase):
                           msg='Decoder %i has been set wrong!' % i)
         self.assertIsInstance(plotter.fmt1.decoder, psyd.CFDecoder)
         self.assertIs(plotter.fmt1.decoder, plotter.plot_data_decoder[3])
+
+    def test_any_decoder(self):
+        """Test the decoder property with an InteractiveList"""
+        data = psyd.InteractiveList([xr.DataArray([]), xr.DataArray([])])
+        plot_data = data.copy(True)
+        plot_data.extend([xr.DataArray([]), xr.DataArray([])],
+                         new_name=True)
+        for arr in data:
+            arr.psy.init_accessor(decoder=psyd.CFDecoder(arr.psy.base))
+        plotter = TestPlotter(data)
+        plotter.plot_data = plot_data
+        plot_data = plotter.plot_data  # the data might have been copied
+
+        # test without index in list
+        decoder = psyd.CFDecoder(data[0].psy.base)
+        plotter.fmt2.decoder = decoder
+        for i, d2 in enumerate(plotter.plot_data_decoder):
+            self.assertIs(d2, decoder,
+                          msg='Decoder %i has been set wrong!' % i)
+        self.assertEqual(plotter.fmt2.decoder, plotter.plot_data_decoder)
+        self.assertIs(plotter.fmt2.any_decoder, decoder)
 
     def test_get_enhanced_attrs_01_arr(self):
         """Test the :meth:`psyplot.plotter.Plotter.get_enhanced_attrs` method
