@@ -629,7 +629,7 @@ class CFDecoder(object):
     @docstrings.get_sectionsf('CFDecoder._check_triangular_bounds', sections=[
         'Parameters', 'Returns'])
     @dedent
-    def _check_triangular_bounds(self, var, axis='x', nans=None):
+    def _check_triangular_bounds(self, var, coords=None, axis='x', nans=None):
         """
         Checks whether the bounds in the variable attribute are triangular
 
@@ -637,6 +637,9 @@ class CFDecoder(object):
         ----------
         var: xarray.Variable or xarray.DataArray
             The variable to check
+        coords: dict
+            Coordinates to use. If None, the coordinates of the dataset in the
+            :attr:`ds` attribute are used.
         axis: {'x', 'y'}
             The spatial axis to check
         nans: {None, 'skip', 'only'}
@@ -649,11 +652,15 @@ class CFDecoder(object):
             True, if unstructered, None if it could not be determined
         xarray.Coordinate or None
             the bounds corrdinate (if existent)"""
-        coord = self.get_variable_by_axis(var, axis)
+        coord = self.get_variable_by_axis(var, axis, coords=coords)
         if coord is not None:
             bounds = coord.attrs.get('bounds')
             if bounds is not None:
                 bounds = self.ds.coords.get(bounds)
+                if coords is not None:
+                    bounds = bounds.sel(**{
+                        key: coords[key]
+                        for key in set(coords).intersection(bounds.dims)})
                 if nans == 'skip':
                     bounds = bounds[~np.isnan(var.values)]
                 elif nans == 'only':
@@ -1260,7 +1267,8 @@ class CFDecoder(object):
         from matplotlib.tri import Triangulation
 
         def get_vertices(axis):
-            bounds = self._check_triangular_bounds(var, axis, nans=nans)[1]
+            bounds = self._check_triangular_bounds(var, coords=coords,
+                                                   axis=axis, nans=nans)[1]
             if coords is not None:
                 bounds = coords.get(bounds.name, bounds)
             vertices = bounds.values.ravel()
