@@ -497,6 +497,8 @@ class Formatoption(object):
         -----
         This method uses the :attr:`Formatoption.data` attribute
         """
+        if self.index_in_list is not None:
+            i = self.index_in_list
         if i is not None and isinstance(self.plotter.plot_data,
                                         InteractiveList):
             self.plotter.plot_data[i] = data
