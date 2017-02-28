@@ -292,6 +292,14 @@ class Formatoption(object):
         self.set_decoder(value, self.index_in_list)
 
     @property
+    def any_decoder(self):
+        """Return the first possible decoder"""
+        ret = self.decoder
+        while not isinstance(ret, CFDecoder):
+            ret = ret[0]
+        return ret
+
+    @property
     def data(self):
         """The :class:`psyplot.DataArray` that is plotted"""
         if self.index_in_list is not None and isinstance(
