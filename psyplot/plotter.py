@@ -942,6 +942,7 @@ class Plotter(dict):
         for key in self:  # then we set the default values
             fmto = getattr(self, key)
             self._try2set(fmto, fmto.default, validate=False)
+        self._set_rc()
         for key, value in six.iteritems(kwargs):  # then the user values
             self[key] = value
         self.initialize_plot(data, ax=ax, draw=draw, clear=clear,

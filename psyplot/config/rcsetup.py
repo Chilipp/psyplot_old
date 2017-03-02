@@ -671,7 +671,7 @@ environment variable."""
                 yaml.dump(d, f, **kwargs)
         return None
 
-    def load_plugins(self, group='psyplot', raise_error=False):
+    def load_plugins(self, raise_error=False):
         """
         Load the plotters and defaultParams from the plugins
 
@@ -701,7 +701,7 @@ environment variable."""
         defaultParams = self.defaultParams
         def_keys = {'default': defaultParams}
 
-        for ep in iter_entry_points(group=group, name='plugin'):
+        for ep in iter_entry_points(group='psyplot', name='plugin'):
             logger.debug('Loading entrypoint %s', ep)
             plugin_mod = ep.load()
             rc = plugin_mod.rcParams
@@ -721,6 +721,8 @@ environment variable."""
                     raise ImportError(msg)
                 else:
                     warn(msg)
+            for d in plugin_plotters.values():
+                d['plugin'] = ep.module_name
             plotters.update(plugin_plotters)
 
             # load the defaultParams keys

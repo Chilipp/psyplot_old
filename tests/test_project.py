@@ -276,6 +276,51 @@ class TestProject(td.TestArrayList):
         self.assertEqual(psyd.get_filename_ds(mp[7].psy.base)[0],
                          osp.join(outdir2, 'circumpolar_test.nc'))
 
+    def test_versions_and_patch(self):
+        import psyplot_test.plugin as test_plugin
+        import warnings
+        rc = psyd.rcParams
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            rc.load_plugins()
+        psy._versions.clear()
+        psy.register_plotter('test_plotter',
+                             **rc['project.plotters']['test_plotter'])
+        psy.register_plotter('test_plotter2', import_plotter=True,
+                             module='test_plotter', plotter_name='TestPlotter')
+
+        psy.plot.test_plotter(bt.get_file('test-t2m-u-v.nc'), name='t2m',
+                              t=[1, 2])
+        psy.plot.test_plotter2(bt.get_file('test-t2m-u-v.nc'), name='t2m',
+                               t=[1, 2])
+        mp = psy.gcp(True)
+        self.assertEqual(len(mp), 4, msg=mp)
+        d = mp.save_project()
+        self.assertIn('versions', d)
+        self.assertEqual(len(d['versions']), 2, msg=d['versions'])
+        self.assertIn('psyplot', d['versions'])
+        self.assertIn('psyplot_test.plugin', d['versions'])
+        self.assertEqual(d['versions']['psyplot_test.plugin']['version'],
+                         '1.0.0')
+
+        # test the patch
+        self.assertEqual(test_plugin.patch_check, [])
+        test_plugin.checking_patch = True
+        try:
+            mp.close(True, True, True)
+            mp = psy.Project.load_project(d)
+            self.assertEqual(len(test_plugin.patch_check), 2)
+            self.assertIs(test_plugin.patch_check[0]['plotter'],
+                          d['arrays']['arr0']['plotter'])
+            self.assertIs(test_plugin.patch_check[1]['plotter'],
+                          d['arrays']['arr1']['plotter'])
+            self.assertIs(test_plugin.patch_check[0]['versions'],
+                          d['versions'])
+            self.assertIs(test_plugin.patch_check[1]['versions'],
+                          d['versions'])
+        finally:
+            test_plugin.checking_patch = False
+
     def test_keys(self):
         """Test the :meth:`psyplot.project.Project.keys` method"""
         import test_plotter as tp

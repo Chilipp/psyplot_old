@@ -197,9 +197,7 @@ def get_parser(create=True):
                       six.iteritems(rcParams['project.plotters']))}
     if psyplot._project_imported:
         import psyplot.project as psy
-        pm_choices.update({pm for pm, d in filter(
-                      lambda t: t[1].get('plot_func', True),
-                      six.iteritems(psy.registered_plotters))})
+        pm_choices.update(set(psy.plot._plot_methods))
     parser.update_arg('plot_method', short='pm', choices=pm_choices,
                       metavar='{%s}' % ', '.join(map(repr, pm_choices)))
 
