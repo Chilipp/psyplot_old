@@ -277,8 +277,12 @@ class TestProject(td.TestArrayList):
                          osp.join(outdir2, 'circumpolar_test.nc'))
 
     def test_versions_and_patch(self):
-        import psyplot_test.plugin as test_plugin
         import warnings
+        try:
+            import psyplot_test.plugin as test_plugin
+        except ImportError:
+            self.skipTest("Could not import the psyplot_test package")
+            return
         rc = psyd.rcParams
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')

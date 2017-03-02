@@ -126,7 +126,7 @@ class RcParamsTest(unittest.TestCase):
         try:
             from psyplot_test.plugin import rcParams as test_rc
         except ImportError:
-            self.skipTest("Could not install the psyplot_test package")
+            self.skipTest("Could not import the psyplot_test package")
             return
         rc = psyplot.rcParams.copy()
         rc.load_plugins()
