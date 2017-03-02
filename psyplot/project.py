@@ -8,7 +8,9 @@ keep reference to the main project without holding all array instances
 Furthermore this module contains an easy pyplot-like API to the current
 subproject."""
 import os
+import sys
 import six
+from copy import deepcopy as _deepcopy
 import logging
 import pickle
 from importlib import import_module
@@ -22,7 +24,7 @@ import matplotlib as mpl
 import matplotlib.figure as mfig
 import numpy as np
 import psyplot
-from psyplot import rcParams
+from psyplot import rcParams, get_versions
 import psyplot.utils as utils
 from psyplot.warning import warn, critical
 from psyplot.docstring import docstrings, dedent, safe_modulo
@@ -55,6 +57,19 @@ if rcParams['project.import_seaborn'] is not False:
 _open_projects = []  # list of open projects
 _current_project = None  # current main project
 _current_subproject = None  # current subproject
+
+# the informations on the psyplot and plugin versions
+_versions = get_versions(requirements=False)
+
+
+def _update_versions():
+    """Update :attr:`_versions` with the registered plotter methods"""
+    for pm_name in plot._plot_methods:
+        pm = getattr(plot, pm_name)
+        plugin = pm._plugin
+        if (plugin is not None and plugin not in _versions and
+                pm.module in sys.modules):
+            _versions.update(get_versions(key=lambda s: s == plugin))
 
 
 @docstrings.get_sectionsf('multiple_subplots')
@@ -848,8 +863,10 @@ class Project(ArrayList):
 
             kwargs.setdefault('paths', tmp_it())
 
+        _update_versions()
         ret = {'figs': dict(map(_ProjectLoader.inspect_figure, self.figs)),
-               'arrays': self.array_info(pwd=pwd, **kwargs)}
+               'arrays': self.array_info(pwd=pwd, **kwargs),
+               'versions': _deepcopy(_versions)}
         if pack and fname is not None:
             # we get the filenames out of the results and copy the datasets
             # there. After that we check the filenames again and force them
@@ -1040,6 +1057,7 @@ class Project(ArrayList):
         -------
         Project
             The project in state of the saving point"""
+        from pkg_resources import iter_entry_points
         pwd = kwargs.pop('pwd', None)
         if isinstance(fname, six.string_types):
             with open(fname, 'rb') as f:
@@ -1049,6 +1067,15 @@ class Project(ArrayList):
         else:
             d = dict(fname)
             pwd = pwd or getcwd()
+        # check for patches of plugins
+        for ep in iter_entry_points('psyplot', name='patches'):
+            patches = ep.load()
+            for arr_d in d.get('arrays').values():
+                plotter_cls = arr_d.get('plotter', {}).get('cls')
+                if plotter_cls is not None and plotter_cls in patches:
+                    # apply the patch
+                    patches[plotter_cls](arr_d['plotter'],
+                                         d.get('versions', {}))
         if alternative_axes is None:
             for fig_dict in six.itervalues(d.get('figs', {})):
                 _ProjectLoader.load_figure(fig_dict)
@@ -1258,8 +1285,11 @@ class PlotterInterface(object):
     @property
     def plotter_cls(self):
         """The plotter class"""
-        return self._plotter_cls or getattr(
-            import_module(self.module), self.plotter_name)
+        ret = self._plotter_cls
+        if ret is None:
+            ret = getattr(import_module(self.module), self.plotter_name)
+            _versions.update(get_versions(key=lambda s: s == self._plugin))
+        return ret
 
     _prefer_list = False
     _default_slice = None
@@ -1468,6 +1498,25 @@ class ProjectPlotter(object):
     docstrings.keep_params('ArrayList.from_dataset.parameters',
                            'default_slice')
 
+    @property
+    def _plot_methods(self):
+        """A dictionary with mappings from plot method to their summary"""
+        ret = {}
+        for attr in filter(lambda s: not s.startswith("_"), dir(self)):
+            obj = getattr(self, attr)
+            if isinstance(obj, PlotterInterface):
+                ret[attr] = docstrings.get_summary(obj.__doc__)
+        return ret
+
+    def show_plot_methods(self):
+        """Print the plotmethods of this instance"""
+        print_func = PlotterInterface._print_func
+        if print_func is None:
+            print_func = six.print_
+        s = "\n".join(
+            "%s\n    %s" % t for t in six.iteritems(self._plot_methods))
+        return print_func(s)
+
     @classmethod
     @docstrings.get_sectionsf('ProjectPlotter._register_plotter')
     @docstrings.dedent
@@ -1475,7 +1524,8 @@ class ProjectPlotter(object):
                           plotter_cls=None, summary='', prefer_list=False,
                           default_slice=None, default_dims={},
                           show_examples=True,
-                          example_call="filename, name=['my_variable'], ..."):
+                          example_call="filename, name=['my_variable'], ...",
+                          plugin=None):
         """
         Register a plotter for making plots
 
@@ -1505,6 +1555,8 @@ class ProjectPlotter(object):
             example of the generated plot method. This call will then appear as
             ``>>> psy.plot.%%(identifier)s(%%(example_call)s)`` in the
             documentation
+        plugin: str
+            The name of the plugin
         """
         full_name = '%s.%s' % (module, plotter_name)
         if plotter_cls is not None:  # plotter has already been imported
@@ -1519,6 +1571,9 @@ class ProjectPlotter(object):
             doc_str = ''
 
         summary = summary or 'Open and plot data via :class:`%s` plotters'
+
+        if plotter_cls is not None:
+            _versions.update(get_versions(key=lambda s: s == plugin))
 
         class PlotMethod(PlotterInterface):
             __doc__ = docstrings.dedents("""
@@ -1560,6 +1615,7 @@ class ProjectPlotter(object):
             _default_dims = default_dims
             _plotter_cls = plotter_cls
             _prefer_list = prefer_list
+            _plugin = plugin
 
             _summary = summary
 
@@ -1920,9 +1976,7 @@ def unregister_plotter(identifier, sorter=True, plot_func=True):
 
 registered_plotters = {}
 
-registered_plotters.update(rcParams['project.plotters'])
-
-for _identifier, _plotter_settings in registered_plotters.items():
+for _identifier, _plotter_settings in rcParams['project.plotters'].items():
     register_plotter(_identifier, **_plotter_settings)
 
 

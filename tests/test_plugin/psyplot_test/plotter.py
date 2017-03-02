@@ -9,6 +9,8 @@ from psyplot_test.plugin import rcParams
 class TestFmt(Formatoption):
     """Some documentation"""
 
+    default = None
+
     def update(self, value):
         pass
 

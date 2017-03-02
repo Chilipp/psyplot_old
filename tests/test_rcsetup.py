@@ -129,22 +129,21 @@ class RcParamsTest(unittest.TestCase):
             self.skipTest("Could not install the psyplot_test package")
             return
         rc = psyplot.rcParams.copy()
-        rc.load_plugins('psyplot_test')
+        rc.load_plugins()
         self.assertIn('test', rc)
         self.assertEqual(rc['test'], 1)
         with self.assertRaisesRegex(
                 ImportError, "plotters have already been defined"):
-            rc.load_plugins('psyplot_test', True)
+            rc.load_plugins(True)
         plotters = test_rc.pop('project.plotters')
         try:
             with self.assertRaisesRegex(
                     ImportError, "default keys have already been defined"):
-                rc.load_plugins('psyplot_test', True)
+                rc.load_plugins(True)
         except:
             raise
         finally:
             test_rc['project.plotters'] = plotters
-
 
 
 if __name__ == '__main__':
