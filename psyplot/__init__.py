@@ -1,5 +1,6 @@
 """psyplot visualization framework
 """
+import sys
 import datetime as dt
 import logging as _logging
 from psyplot.warning import warn, critical, disable_warnings
@@ -110,6 +111,7 @@ def _get_versions(requirements=True):
                 'requirements': {'matplotlib': mpl.__version__,
                                  'xarray': xr.__version__,
                                  'pandas': pd.__version__,
-                                 'numpy': np.__version__}}
+                                 'numpy': np.__version__,
+                                 'python': sys.version}}
     else:
         return {'version': __version__}
