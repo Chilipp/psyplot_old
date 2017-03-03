@@ -1,6 +1,9 @@
 """Test the :mod:`psyplot.__main__` module"""
+import sys
 import os
 import os.path as osp
+import subprocess as spr
+import yaml
 import shutil
 import tempfile
 import unittest
@@ -9,6 +12,7 @@ import six
 import _base_testing as bt
 import psyplot.__main__ as main
 import psyplot.project as psy
+import psyplot
 import matplotlib.pyplot as plt
 import test_plotter as tp
 import inspect
@@ -128,3 +132,13 @@ class TestCommandLine(unittest.TestCase):
                              msg='Wrong value for fmt1 of plotter %i!' % i)
             self.assertEqual(plotter['fmt2'], 'fmt2',
                              msg='Wrong value for fmt2 of plotter %i!' % i)
+
+    def test_all_versions(self):
+        """Test to display all versions"""
+        ref = psyplot.get_versions()
+        proc = spr.Popen([sys.executable, '-m', 'psyplot', '-aV'],
+                         stdout=spr.PIPE, stderr=spr.PIPE)
+        proc.wait()
+        self.assertFalse(proc.poll(), msg=proc.stderr.read())
+        d = yaml.load(proc.stdout.read())
+        self.assertEqual(d, ref)

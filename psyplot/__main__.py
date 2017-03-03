@@ -1,3 +1,4 @@
+import sys
 import argparse
 import pickle
 import six
@@ -178,6 +179,9 @@ def get_parser(create=True):
     parser.update_arg('version', short='V', long='version', action='version',
                       version=psyplot.__version__, if_existent=False)
 
+    parser.update_arg('all_versions', short='aV', long='all-versions',
+                      action=AllVersionsAction, if_existent=False)
+
     parser.setup_args(make_plot)
 
     output_grp = parser.add_argument_group(
@@ -236,6 +240,23 @@ def _load_dims(s):
     if len(s) > 1:
         return {s[0]: list(map(int, s[1:]))}
     return {}
+
+
+class AllVersionsAction(argparse.Action):
+
+    def __init__(self, option_strings, dest=argparse.SUPPRESS, nargs=None,
+                 default=argparse.SUPPRESS, **kwargs):
+        if nargs is not None:
+            raise ValueError("nargs not allowed")
+        kwargs['help'] = ("Print the versions of all plugins and requirements "
+                          "and exit")
+        super(AllVersionsAction, self).__init__(
+            option_strings, nargs=0, dest=dest, default=default,
+            **kwargs)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        print(yaml.dump(psyplot.get_versions(), default_flow_style=False))
+        sys.exit(0)
 
 
 if __name__ == '__main__':
