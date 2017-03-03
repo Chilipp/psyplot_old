@@ -39,13 +39,24 @@ addons:  # install cdo
   apt:
     packages:
     - cdo
+before_install:
+  # make sure, gfortran and gnu-sed are installed
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+      brew install gnu-sed --with-default-names;
+    fi
 install:
+  # select the os name for the conda installer
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+        OS_NAME=MacOSX;
+    else
+        OS_NAME=Linux;
+    fi
   # We do this conditionally because it saves us some downloading if the
   # version is the same.
   - if [[ "$PYTHON_VERSION" == "2.7" ]]; then
-      wget https://repo.continuum.io/miniconda/Miniconda2-latest-Linux-x86_64.sh -O miniconda.sh;
+        wget https://repo.continuum.io/miniconda/Miniconda2-latest-"${OS_NAME}"-x86_64.sh -O miniconda.sh;
     else
-      wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh;
+        wget https://repo.continuum.io/miniconda/Miniconda3-latest-"${OS_NAME}"-x86_64.sh -O miniconda.sh;
     fi
   # make sure we use an 'innocent' default matplotlib environment
   - touch matplotlibrc
