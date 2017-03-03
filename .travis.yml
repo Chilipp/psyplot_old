@@ -42,6 +42,8 @@ install:
   - python setup.py install
   # export the environment for debugging
   - conda env export -n psyplot_$ENVKEY
+  # print versions of all the important requirements
+  - psyplot -aV
 
 before_script:
   - "export DISPLAY=:99.0"
