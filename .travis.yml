@@ -1,12 +1,40 @@
-language: python
-python:
-  # We don't actually use the Travis Python, but this keeps it organized.
-  - "2.7"
-  - "3.5"
-  - "3.6"
-env:
-  - XARRAY_VERSION=0.8
-  - XARRAY_VERSION=0.9
+language: generic
+matrix:
+  include:
+  # linux environments
+  - env:
+      - PYTHON_VERSION=3.6
+      - XARRAY_VERSION=0.9
+    os: linux
+  - env:
+      - PYTHON_VERSION=3.6
+      - XARRAY_VERSION=0.8
+    os: linux
+  - env:
+      - PYTHON_VERSION=3.5
+      - XARRAY_VERSION=0.9
+    os: linux
+  - env:
+      - PYTHON_VERSION=3.5
+      - XARRAY_VERSION=0.8
+    os: linux
+  - env:
+      - PYTHON_VERSION=2.7
+      - XARRAY_VERSION=0.9
+    os: linux
+  - env:
+      - PYTHON_VERSION=2.7
+      - XARRAY_VERSION=0.8
+    os: linux
+  # osx environments
+  - env:
+      - PYTHON_VERSION=3.6
+      - XARRAY_VERSION=0.9
+    os: osx
+  - env:
+      - PYTHON_VERSION=2.7
+      - XARRAY_VERSION=0.9
+    os: osx
 addons:  # install cdo
   apt:
     packages:
@@ -14,7 +42,7 @@ addons:  # install cdo
 install:
   # We do this conditionally because it saves us some downloading if the
   # version is the same.
-  - if [[ "$TRAVIS_PYTHON_VERSION" == "2.7" ]]; then
+  - if [[ "$PYTHON_VERSION" == "2.7" ]]; then
       wget https://repo.continuum.io/miniconda/Miniconda2-latest-Linux-x86_64.sh -O miniconda.sh;
     else
       wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh;
@@ -29,7 +57,7 @@ install:
   - conda update -q conda
   # Useful for debugging any issues with conda
   - conda info -a
-  - 'ENVKEY=py"${TRAVIS_PYTHON_VERSION}"_xr"${XARRAY_VERSION}"'
+  - 'ENVKEY=py"${PYTHON_VERSION}"_xr"${XARRAY_VERSION}"'
   - conda env create -f tests/envs/environment_$ENVKEY.yml
   - source activate psyplot_$ENVKEY
   # install python cdo bindings
