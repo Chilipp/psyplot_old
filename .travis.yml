@@ -84,7 +84,7 @@ install:
   # export the environment for debugging
   - conda env export -n psyplot_$ENVKEY
   # print versions of all the important requirements
-  - psyplot -aVc
+  - psyplot -aV
 script:
   - coverage run --source=psyplot setup.py pytest
 
