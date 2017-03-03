@@ -72,7 +72,9 @@ install:
   - conda env create -f tests/envs/environment_$ENVKEY.yml
   - source activate psyplot_$ENVKEY
   # install python cdo bindings
-  - pip install cdo
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then
+        pip install cdo;
+    fi
   # install coveralls
   - pip install coveralls
   # install the test plugin
@@ -82,7 +84,7 @@ install:
   # export the environment for debugging
   - conda env export -n psyplot_$ENVKEY
   # print versions of all the important requirements
-  - psyplot -aV
+  - psyplot -aVc
 script:
   - coverage run --source=psyplot setup.py pytest
 
