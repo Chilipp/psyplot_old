@@ -644,6 +644,7 @@ environment variable."""
         d = {key: val for key, val in six.iteritems(self) if (
                 include_keys is None or key in include_keys) and
              key not in exclude_keys}
+        kwargs['default_flow_style'] = False
         if include_descriptions:
             s = yaml.dump(d, **kwargs)
             desc = self.descriptions
@@ -1057,4 +1058,3 @@ _str_err_msg = ('You must supply exactly {n:d} comma-separated values, '
 #: formatoptions and configuration settings.
 rcParams = RcParams()
 rcParams.update_from_defaultParams()
-rcParams.load_from_file()
