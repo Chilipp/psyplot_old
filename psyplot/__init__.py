@@ -94,12 +94,13 @@ def get_versions(requirements=True, key=None):
             ret[str(ep.module_name)] = {
                 'version': getattr(mod, 'plugin_version',
                                    getattr(mod, '__version__', ''))}
-    try:
-        import psyplot_gui
-    except ImportError:
-        pass
-    else:
-        ret['psyplot_gui'] = psyplot_gui.get_versions(requirements)
+    if key is None:
+        try:
+            import psyplot_gui
+        except ImportError:
+            pass
+        else:
+            ret['psyplot_gui'] = psyplot_gui.get_versions(requirements)
     return ret
 
 
