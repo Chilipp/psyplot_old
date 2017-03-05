@@ -4,7 +4,7 @@ import os.path as osp
 import unittest
 import six
 import psyplot
-from psyplot.config.rcsetup import SubDict, RcParams
+from psyplot.config.rcsetup import SubDict, RcParams, rcParams
 
 
 class SubDictTest(unittest.TestCase):
@@ -144,6 +144,35 @@ class RcParamsTest(unittest.TestCase):
             raise
         finally:
             test_rc['project.plotters'] = plotters
+
+    def test_connect(self):
+        """Test the connection and disconnection to rcParams"""
+        x = set()
+        y = set()
+
+        def update_x(val):
+            x.update(val)
+
+        def update_y(val):
+            y.update(val)
+
+        rcParams.connect('decoder.x', update_x)
+        rcParams.connect('decoder.y', update_y)
+
+        rcParams['decoder.x'] = {'test'}
+        self.assertEqual(x, {'test'})
+        self.assertEqual(y, set())
+
+        rcParams['decoder.y'] = {'test2'}
+        self.assertEqual(y, {'test2'})
+
+        rcParams.disconnect('decoder.x', update_x)
+        rcParams['decoder.x'] = {'test3'}
+        self.assertEqual(x, {'test'})
+
+        rcParams.disconnect()
+        rcParams['decoder.y'] = {'test4'}
+        self.assertEqual(y, {'test2'})
 
 
 if __name__ == '__main__':

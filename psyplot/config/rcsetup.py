@@ -449,9 +449,41 @@ environment variable."""
             return dict.__getitem__(self, key)
 
     def connect(self, key, func):
+        """Connect a function to the given formatoption
+
+        Parameters
+        ----------
+        key: str
+            The rcParams key
+        func: function
+            The function that shall be called when the rcParams key changes.
+            It must accept a single value that is the new value of the
+            key."""
         key = self._get_depreceated(key)[0]
         if key is not None:
             self._connections[key].append(func)
+
+    def disconnect(self, key=None, func=None):
+        """Disconnect the connections to the an rcParams key
+
+        Parameters
+        ----------
+        key: str
+            The rcParams key. If None, all keys are used
+        func: function
+            The function that is connected. If None, all functions are
+            connected
+        """
+        if key is None:
+            for key, connections in self._connections.items():
+                for conn in connections[:]:
+                    if func is None or conn is func:
+                        connections.remove(conn)
+        else:
+            connections = self._connections[key]
+            for conn in connections[:]:
+                if func is None or conn is func:
+                    connections.remove(conn)
 
     def remove(self, key, func):
         key = self._get_depreceated(key)[0]
