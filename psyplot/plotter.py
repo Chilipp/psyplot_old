@@ -185,7 +185,7 @@ class Formatoption(object):
     plot_fmt = False
 
     #: :class:`bool`. True if an update of this formatoption requires a
-    #: clearing of the axes and reinitializing of the plot
+    #: clearing of the axes and reinitialization of the plot
     requires_clearing = False
 
     #: :class:`str`. Key of the group name in :data:`groups` of this
@@ -260,7 +260,7 @@ class Formatoption(object):
 
     @property
     def raw_data(self):
-        """The full :class:`psyplot.InteractiveArray` of this plotter"""
+        """The original data of the plotter of this formatoption"""
         if self.index_in_list is not None and isinstance(
                 self.plotter.data, InteractiveList):
             return self.plotter.data[self.index_in_list]
@@ -301,7 +301,7 @@ class Formatoption(object):
 
     @property
     def data(self):
-        """The :class:`psyplot.DataArray` that is plotted"""
+        """The data that is plotted"""
         if self.index_in_list is not None and isinstance(
                 self.plotter.plot_data, InteractiveList):
             return self.plotter.plot_data[self.index_in_list]
@@ -314,21 +314,21 @@ class Formatoption(object):
 
     @property
     def iter_data(self):
-        """Returns an iterator over the data arrays"""
+        """Returns an iterator over the plot data arrays"""
         if isinstance(self.data, InteractiveList):
             return iter(self.data)
         return iter([self.data])
 
     @property
     def iter_raw_data(self):
-        """Returns an iterator over the plot data arrays"""
+        """Returns an iterator over the original data arrays"""
         if isinstance(self.raw_data, InteractiveList):
             return iter(self.raw_data)
         return iter([self.raw_data])
 
     @property
     def validate(self):
-        """Static validation method of the formatoption"""
+        """Validation method of the formatoption"""
         try:
             return self._validate
         except AttributeError:
@@ -462,7 +462,8 @@ class Formatoption(object):
     @dedent
     def set_value(self, value, validate=True, todefault=False):
         """
-        Set (and validate) the value in the plotter
+        Set (and validate) the value in the plotter. This method is called by
+        the plotter when it attempts to change the value of the formatoption.
 
         Parameters
         ----------
@@ -1144,6 +1145,13 @@ class Plotter(dict):
         # check the keys
         list(map(self.check_key, fmt))
         self._registered_updates.update(fmt)
+
+    def make_plot(self):
+        """Method for making the plot
+
+        This method is called at the end of the :attr:`BEFOREPLOTTING` stage if
+        and only if the :attr:`plot_fmt` attribute is set to ``True``"""
+        pass
 
     @docstrings.dedent
     def start_update(self, draw=None, queues=None, update_shared=True):
@@ -2129,9 +2137,9 @@ class Plotter(dict):
         return attrs
 
     def _make_plot(self):
-        plotters = [fmto for fmto in self._fmtos if fmto.plot_fmt]
-        plotters.sort(key=lambda fmto: fmto.priority, reverse=True)
-        for fmto in plotters:
+        plot_fmtos = [fmto for fmto in self._fmtos if fmto.plot_fmt]
+        plot_fmtos.sort(key=lambda fmto: fmto.priority, reverse=True)
+        for fmto in plot_fmtos:
             self.logger.debug("Making plot with %s formatoption", fmto.key)
             fmto.make_plot()
 
