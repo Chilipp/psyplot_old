@@ -1,3 +1,4 @@
+import os.path as osp
 from setuptools import setup, find_packages
 import sys
 
@@ -43,8 +44,14 @@ setup(name='psyplot',
           'xarray',
           'PyYAML'
       ],
+      package_data={'psyplot': [
+          osp.join('psyplot', 'plugin-template-files', '*'),
+          osp.join('psyplot', 'plugin-template-files', 'plugin_template', '*'),
+          ]},
       include_package_data=True,
       setup_requires=pytest_runner,
       tests_require=['pytest'],
-      entry_points={'console_scripts': ['psyplot=psyplot.__main__:main']},
+      entry_points={'console_scripts': [
+          'psyplot=psyplot.__main__:main',
+          'psyplot-plugin=psyplot.plugin_template:main']},
       zip_safe=False)
