@@ -2265,6 +2265,7 @@ class InteractiveArray(InteractiveBase):
             res = self.base[name].isel(**dims)
         else:
             self._idims = None
+            old_dims = self.arr.dims[:]
             for key, val in six.iteritems(self.arr.coords):
                 dims.setdefault(key, val)
             if any(isinstance(idx, slice) for idx in dims.values()):
@@ -2272,6 +2273,10 @@ class InteractiveArray(InteractiveBase):
                 res = self.base[name].sel(**dims)
             else:
                 res = self.base[name].sel(method=method, **dims)
+            # squeeze the 0-dimensional dimensions
+            res = res.isel(**{
+                dim: 0 for i, dim in enumerate(res.dims) if (
+                    res.shape[i] == 1 and dim not in old_dims)})
         self.arr._variable = res._variable
         self.arr._coords = res._coords
         # update to old attributes
