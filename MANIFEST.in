@@ -1,3 +1,4 @@
 include README.rst
 include LICENSE
-
+include psyplot/plugin-template-files/*
+include psyplot/plugin-template-files/plugin_template/*
