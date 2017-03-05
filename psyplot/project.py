@@ -1287,7 +1287,12 @@ class PlotterInterface(object):
         """The plotter class"""
         ret = self._plotter_cls
         if ret is None:
-            ret = getattr(import_module(self.module), self.plotter_name)
+            mod = import_module(self.module)
+            plotter = self.plotter_name
+            if plotter not in vars(mod):
+                raise ImportError("Module %r does not have a %r plotter!" % (
+                    mod, plotter))
+            ret = getattr(mod, plotter)
             _versions.update(get_versions(key=lambda s: s == self._plugin))
         return ret
 
@@ -1366,8 +1371,11 @@ class PlotterInterface(object):
         setattr(instance, '_' + self._method, value)
 
     def __dir__(self):
-        return sorted(chain(dir(self.__class__), self.__dict__,
-                            self.plotter_cls._get_formatoptions()))
+        try:
+            return sorted(chain(dir(self.__class__), self.__dict__,
+                                self.plotter_cls._get_formatoptions()))
+        except:
+            return sorted(chain(dir(self.__class__), self.__dict__))
 
     @docstrings.dedent
     def keys(self, *args, **kwargs):
