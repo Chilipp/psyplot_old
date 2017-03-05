@@ -88,9 +88,8 @@ Documentation
     getting_started
     command_line
     framework
-    new_formatoption
+    plugins
     api/psyplot
-    examples/index
     todos
     changelog
 
@@ -120,4 +119,3 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
-
