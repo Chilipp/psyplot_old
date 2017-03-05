@@ -628,7 +628,11 @@ environment variable."""
         fname = fname or psyplot_fname()
         if fname and os.path.exists(fname):
             with open(fname) as f:
-                self.update(yaml.load(f))
+                d = yaml.load(f)
+                self.update(d)
+                if (d.get('project.plotters.user') and
+                        'project.plotters' in self):
+                    self['project.plotters'].update(d['project.plotters.user'])
 
     def dump(self, fname=None, overwrite=True, include_keys=None,
              exclude_keys=['project.plotters'], include_descriptions=True,
@@ -728,24 +732,62 @@ environment variable."""
             :func:`psyplot.project.register_plotter` function"""
         from pkg_resources import iter_entry_points
         import logging
+
+        def load_plugin(ep):
+            if plugins_env == ['no']:
+                return False
+            elif ep.module_name in exclude_plugins:
+                return False
+            elif include_plugins and ep.module_name not in include_plugins:
+                return False
+            return True
+
+        def register_pm(ep, name):
+            full_name = '%s:%s' % (ep.module_name, name)
+            ret = True
+            if pm_env == ['no']:
+                ret = False
+            elif name in exclude_pms or full_name in exclude_pms:
+                ret = False
+            elif include_pms and (name not in include_pms and
+                                  full_name not in include_pms):
+                ret = False
+            if not ret:
+                logger.debug('Skipping plot method %s', full_name)
+            return ret
+
+        plugins_env = os.getenv('PSYPLOT_PLUGINS', '').split('::')
+        include_plugins = [s[4:] for s in plugins_env if s.startswith('yes:')]
+        exclude_plugins = [s[3:] for s in plugins_env if s.startswith('no:')]
+
+        pm_env = os.getenv('PSYPLOT_PLOTMETHODS', '').split('::')
+        include_pms = [s[4:] for s in pm_env if s.startswith('yes:')]
+        exclude_pms = [s[3:] for s in pm_env if s.startswith('no:')]
+
         logger = logging.getLogger(__name__)
         plotters = self['project.plotters']
-        def_plots = {}
+        def_plots = {'default': list(plotters)}
         defaultParams = self.defaultParams
         def_keys = {'default': defaultParams}
 
         for ep in iter_entry_points(group='psyplot', name='plugin'):
+            if not load_plugin(ep):
+                logger.debug('Skipping entrypoint %s', ep)
+                continue
             logger.debug('Loading entrypoint %s', ep)
             plugin_mod = ep.load()
             rc = plugin_mod.rcParams
 
             # load the plotters
-            plugin_plotters = rc.get('project.plotters', {})
+            plugin_plotters = {
+                key: val for key, val in rc.get('project.plotters', {}).items()
+                if register_pm(ep, key)}
             already_defined = set(plotters).intersection(plugin_plotters)
             if already_defined:
                 msg = ("Error while loading psyplot plugin %s! The "
                        "following plotters have already been "
-                       "defined:") % ep
+                       "defined") % ep
+                msg += 'and will be overwritten:' if not raise_error else ':'
                 msg += '\n' + '\n'.join(chain.from_iterable(
                     (('%s by %s' % (key, plugin)
                       for plugin, keys in def_plots.items() if key in keys)
@@ -757,6 +799,7 @@ environment variable."""
             for d in plugin_plotters.values():
                 d['plugin'] = ep.module_name
             plotters.update(plugin_plotters)
+            def_plots[ep] = list(plugin_plotters)
 
             # load the defaultParams keys
             plugin_defaultParams = rc.defaultParams
@@ -1071,6 +1114,12 @@ defaultParams = {
         ' See the :func:`psyplot.project.register_plotter` function for '
         'possible keywords and values. See '
         ':attr:`psyplot.project.registered_plotters` for examples.'],
+
+    'project.plotters.user': [
+        {}, validate_dict,
+        "Plot methods that are defined by the user and overwrite those in the"
+        "``'project.plotters'`` key. Use this if you want to define your own "
+        "plotters without writing a plugin"],
     }
 
 
