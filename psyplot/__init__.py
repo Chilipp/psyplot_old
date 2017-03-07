@@ -115,6 +115,6 @@ def _get_versions(requirements=True):
                                  'xarray': xr.__version__,
                                  'pandas': pd.__version__,
                                  'numpy': np.__version__,
-                                 'python': sys.version}}
+                                 'python': ' '.join(sys.version.splitlines())}}
     else:
         return {'version': __version__}
