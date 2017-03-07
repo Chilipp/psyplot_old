@@ -1,4 +1,4 @@
-.. _plugins:
+.. _plugins_guide:
 
 How to implement your own plotters and plugins
 ==============================================
@@ -96,7 +96,7 @@ when it is updated (the default implementation of the
 :meth:`~Formatoption.update` method). Implement theses methods in your
 formatoption and make use of the interface to the
 :ref:`data <fmt_data_interface>` and other
-:ref:`formatoptions <fmt_fmt_interface>``.
+:ref:`formatoptions <fmt_fmt_interface>`.
 
 .. _fmt_data_interface:
 

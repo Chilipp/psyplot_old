@@ -130,7 +130,7 @@ coordinate via
     In [14]: p.update(time=1)
 
 So far for the first quick introduction. If you are interested you are welcomed
-to visit our :ref:`example galleries <known_plugins>` or continue with this
+to visit our :ref:`example galleries <plugins>` or continue with this
 guide.
 
 In the end, don't forget to close the project in order to delete the data from
@@ -238,7 +238,6 @@ The formatoptions depend on the specific plotting method and can be seen via
 the methods
 
 .. autosummary::
-    :toctree: generated/
 
     ~psyplot.project.PlotterInterface.keys
     ~psyplot.project.PlotterInterface.summaries
@@ -359,11 +358,12 @@ Direct control on formatoption update
 By default, when updating a formatoption, it is checked for each plot whether
 the formatoption would change during the update or not. If not, the
 formatoption is not updated. However, sometimes you may want to do that and
-for this, you can use the `force` keyword in the
+for this, you can use the *force* keyword in the
 :meth:`~psyplot.data.ArrayList.update` method.
 
 
 .. _intro_multiple:
+
 Creating and managing multiple plots
 ------------------------------------
 

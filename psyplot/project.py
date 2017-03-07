@@ -753,7 +753,7 @@ class Project(ArrayList):
 
         Parameters
         ----------
-        base: None, plotter or data object or a list of them
+        base: None, Plotter, xarray.DataArray, InteractiveList, or list of them
             The source of the plotter that shares its formatoptions with the
             others. It can be None (then the first instance in this project
             is used), a :class:`~psyplot.plotter.Plotter` or any data object

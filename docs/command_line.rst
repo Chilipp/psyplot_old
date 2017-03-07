@@ -8,9 +8,8 @@ arguments change slightly if you have the ``psyplot_gui`` module installed
 .. highlight:: bash
 
 .. argparse::
-   :module: psyplot.main
+   :module: psyplot.__main__
    :func: get_parser
    :prog: psyplot
 
 .. _psyplot_gui: http://psyplot_gui.readthedocs.org/en/latest/command_line.html
-
