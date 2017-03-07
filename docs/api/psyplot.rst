@@ -30,6 +30,7 @@ Submodules
    psyplot.docstring
    psyplot.gdal_store
    psyplot.plotter
+   psyplot.plugin_template
    psyplot.project
    psyplot.utils
    psyplot.warning

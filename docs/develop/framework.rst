@@ -279,4 +279,4 @@ inherit from the abstract :class:`Formatoption` class. Each
 plotter is set up through it's formatoptions where each formatoption has a
 unique formatoption key inside the plotter. This formatoption key (e.g. 'title'
 or 'clabel') is what is used for updating the plot etc. You can find more
-information in :ref:`plugins` .
+information in :ref:`plugins_guide` .

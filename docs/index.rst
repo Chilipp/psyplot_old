@@ -86,9 +86,9 @@ Documentation
     about
     installing
     getting_started
-    command_line
-    framework
     plugins
+    command_line
+    develop/index
     api/psyplot
     todos
     changelog

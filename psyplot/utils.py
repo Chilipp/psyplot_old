@@ -9,7 +9,7 @@ from psyplot.docstring import dedent, docstrings
 
 
 class DefaultOrderedDict(OrderedDict):
-    """An ordered :class:`collections.defaultdict
+    """An ordered :class:`collections.defaultdict`
 
     Taken from http://stackoverflow.com/a/6190500/562769"""
     def __init__(self, default_factory=None, *a, **kw):
@@ -39,6 +39,7 @@ class DefaultOrderedDict(OrderedDict):
         return type(self), args, None, None, self.items()
 
     def copy(self):
+        """Return a shallow copy of the dictionary"""
         return self.__copy__()
 
     def __copy__(self):

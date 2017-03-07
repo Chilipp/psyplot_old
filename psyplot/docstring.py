@@ -41,9 +41,8 @@ def append_original_doc(parent, num=0):
 
 _docstrings = DocstringProcessor()
 
-_docstrings.get_summaryf('DocstringProcessor.get_sections')(
-    _docstrings.get_sectionsf('DocstringProcessor.get_sections')(
-        dedent(DocstringProcessor.get_sections)))
+_docstrings.get_sectionsf('DocstringProcessor.get_sections')(
+        dedent(DocstringProcessor.get_sections))
 
 
 class PsyplotDocstringProcessor(DocstringProcessor):
@@ -58,7 +57,7 @@ class PsyplotDocstringProcessor(DocstringProcessor):
     def get_sections(self, s, base, sections=[
             'Parameters', 'Other Parameters', 'Possible types']):
         """
-        %(DocstringProcessor.get_sections.summary)s
+        Extract the specified sections out of the given string
 
         The same as the :meth:`docrep.DocstringProcessor.get_sections` method
         but uses the ``'Possible types'`` section by default, too
