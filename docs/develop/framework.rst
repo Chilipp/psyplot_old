@@ -2,7 +2,13 @@
 
 The psyplot framework
 =====================
-.. image:: psyplot_framework.gif
+.. only:: html
+
+    .. image:: psyplot_framework.gif
+
+.. only:: latex
+
+    .. image:: psyplot_framework.png
 
 The main module we used so far, was the :mod:`psyplot.project` module. It is
 the end of a whole framework that is setup by the psyplot package.
