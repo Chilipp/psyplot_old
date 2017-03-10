@@ -182,6 +182,9 @@ def get_parser(create=True):
     parser.update_arg('all_versions', short='aV', long='all-versions',
                       action=AllVersionsAction, if_existent=False)
 
+    parser.update_arg('list_plugins', short='lp', long='list-plugins',
+                      action=ListPluginsAction, if_existent=False)
+
     parser.setup_args(make_plot)
 
     output_grp = parser.add_argument_group(
@@ -256,6 +259,22 @@ class AllVersionsAction(argparse.Action):
 
     def __call__(self, parser, namespace, values, option_string=None):
         print(yaml.dump(psyplot.get_versions(), default_flow_style=False))
+        sys.exit(0)
+
+
+class ListPluginsAction(argparse.Action):
+
+    def __init__(self, option_strings, dest=argparse.SUPPRESS, nargs=None,
+                 default=argparse.SUPPRESS, **kwargs):
+        if nargs is not None:
+            raise ValueError("nargs not allowed")
+        kwargs['help'] = ("Print the names of the plugins and exit")
+        super(ListPluginsAction, self).__init__(
+            option_strings, nargs=0, dest=dest, default=default,
+            **kwargs)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        print(yaml.dump(psyplot.rcParams._plugins, default_flow_style=False))
         sys.exit(0)
 
 
