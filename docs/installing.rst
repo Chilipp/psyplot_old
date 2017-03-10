@@ -15,10 +15,8 @@ the installer from anaconda_, you can install psyplot simply via::
 
     $ conda install -c chilipp psyplot
 
-If you want to use psyplot for visualizing geo-referenced data on a map, you
-furthermore have to install cartopy_ via::
-
-    $ conda install -c scitools cartopy
+However, this only installs the raw framework. For your specific task, you
+should consider one of the below mentioned plugins (see  :refZ:`optional_deps`).
 
 If you want to be able to read and write netCDF files, you can use for example
 the netCDF4_ package via::
@@ -46,39 +44,35 @@ Dependencies
 ------------
 Required dependencies
 ^^^^^^^^^^^^^^^^^^^^^
-Psyplot has been tested for python 2.7, 3.4 and 3.5. Furthermore the package is
-built upon multiple other packages, namely
+Psyplot has been tested for python 2.7, 3.4, 3.5 and 3.6. Furthermore the
+package is built upon multiple other packages, mainly
 
-- xarray_>=0.7: Is used for the data management in the psyplot package
+- xarray_>=0.8: Is used for the data management in the psyplot package
 - matplotlib_>=1.4.3: **The** python visualiation
   package
 - `PyYAML <http://pyyaml.org/>`__: Needed for the configuration of psyplot
+
+
+.. _optional_deps:
 
 Optional dependencies
 ^^^^^^^^^^^^^^^^^^^^^
 We furthermore recommend to use
 
-- cartopy_: For visualizing Georeferenced data using the plotters from the
-  :mod:`psyplot.plotter.maps` module.
-- seaborn_: For modifying the default style of matplotlib figures and making
-  :attr:`violinplots <psyplot.project.ProjectPlotter.violinplot>`
-- dask_: For an efficient management of the data
-- netCDF4_: For reading and writing netCDF files
-- gdal_: For reading GeoTiff Rasters using the
-  :class:`psyplot.gdal_store.GdalStore` or the
-  :func:`~psyplot.data.open_dataset` function.
-- `ipython <http://ipython.org/>`__: For using psyplot interactively
+- psyplot_gui_: A graphical user interface to psyplot
+- psy-simple_: A psyplot plugin to make simple plots
+- psy-maps_: A psyplot plugin for visualizing data on a map
+- psy-reg_: A psyplot plugin for visualizing fits to your data
 - cdo_: The python bindings for cdos (see also the
   :ref:`cdo example <gallery_examples_example_cdo.ipynb>`)
 
+.. _psyplot_gui: http://psyplot-gui.readthedocs.io/en/latest/
+.. _psy-simple: http://psy-simple.readthedocs.io/en/latest/
+.. _psy-maps: http://psy-maps.readthedocs.io/en/latest/
+.. _psy-reg: http://psy-reg.readthedocs.io/en/latest/
 .. _conda: http://conda.io/
 .. _anaconda: https://www.continuum.io/downloads
-.. _cartopy: http://scitools.org.uk/cartopy/docs/latest/installing.html
-.. _seaborn: http://stanford.edu/~mwaskom/software/seaborn/
-.. _netCDF4: https://github.com/Unidata/netcdf4-python
 .. _matplotlib: http://matplotlib.org
-.. _gdal: http://www.gdal.org/
-.. _dask: http://dask.pydata.org
 .. _xarray installation notes: http://xarray.pydata.org/en/stable/installing.html
 .. _xarray: http://xarray.pydata.org/
 .. _cdo: https://code.zmaw.de/projects/cdo/wiki/Anaconda
@@ -105,18 +99,21 @@ virtual environment via::
 
 Running the tests
 -----------------
-Check out the github_ repository and navigate to the ``'tests'`` directory.
-You can either simply run::
+Clone out the github_ repository and run::
 
-    $ python main.py
+    $ python setup.py test
 
-or install the pytest_ module and run::
+or after having install pytest_, you can run
 
     $ py.test
 
-or in the main directory::
+To also test the plugin functionality, install the ``psyplot_test`` module in
+``tests/test_plugin`` via::
 
-    $ python setup.py pytest
+    $ cd tests/test_plugin && python setup.py install
+
+and run the tests via one of the above mentioned commands.
+
 
 Building the docs
 -----------------
@@ -124,9 +121,8 @@ To build the docs, check out the github_ repository and install the
 requirements in ``'docs/environment.yml'``. The easiest way to do this is via
 anaconda by typing::
 
-    $ conda env create -n psyplot -f docs/environment.yml
+    $ conda env create -f docs/environment.yml
     $ source activate psyplot_docs
-    $ conda install sphinx ipykernel
 
 Then build the docs via::
 
@@ -135,7 +131,7 @@ Then build the docs via::
 
 .. note::
 
-    The building of the docs always reprocesses the examples. You might want to
+    The building of the docs always preprocesses the examples. You might want to
     disable that by setting ``process_examples = False``. Otherwise please note
     that the examples are written as python3 notebooks. So if you are using
     python2, you may have to install the python3 kernel. Just create a new
