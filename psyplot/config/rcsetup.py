@@ -370,6 +370,10 @@ environment variable."""
     #: possible connections that shall be called if the rcParams value change
     _connections = defaultdict(list)
 
+    #: the names of the entry points that are loaded during the
+    #: :meth:`load_plugins` method
+    _plugins = []
+
     @property
     def _all_deprecated(self):
         return set(chain(self._deprecated_ignore_map, self._deprecated_map))
@@ -756,6 +760,8 @@ environment variable."""
                 logger.debug('Skipping plot method %s', full_name)
             return ret
 
+        self._plugins = self._plugins or []
+
         plugins_env = os.getenv('PSYPLOT_PLUGINS', '').split('::')
         include_plugins = [s[4:] for s in plugins_env if s.startswith('yes:')]
         exclude_plugins = [s[3:] for s in plugins_env if s.startswith('no:')]
@@ -774,6 +780,7 @@ environment variable."""
             if not load_plugin(ep):
                 logger.debug('Skipping entrypoint %s', ep)
                 continue
+            self._plugins.append(str(ep))
             logger.debug('Loading entrypoint %s', ep)
             plugin_mod = ep.load()
             rc = plugin_mod.rcParams
