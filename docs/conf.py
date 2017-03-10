@@ -71,7 +71,10 @@ if on_rtd:
 
 # The cdo example would require the installation of climate data operators
 # which is a bit of an overkill
-example_gallery_config = {'dont_preprocess': ['../examples/example_cdo.ipynb']}
+example_gallery_config = dict(
+    dont_preprocess=['../examples/example_cdo.ipynb'],
+    urls='https://github.com/Chilipp/psyplot/blob/v1.0.0.dev0/examples',
+    )
 
 napoleon_use_admonition_for_examples = True
 
