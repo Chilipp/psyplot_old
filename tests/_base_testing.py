@@ -1,8 +1,12 @@
+import os
 import sys
 import os.path as osp
 import subprocess as spr
 
 test_dir = osp.dirname(__file__)
+
+
+os.environ['PSYPLOT_PLUGINS'] = 'yes:psyplot_test.plugin'
 
 
 def get_file(fname):

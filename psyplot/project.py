@@ -1513,7 +1513,7 @@ class ProjectPlotter(object):
         for attr in filter(lambda s: not s.startswith("_"), dir(self)):
             obj = getattr(self, attr)
             if isinstance(obj, PlotterInterface):
-                ret[attr] = docstrings.get_summary(obj.__doc__)
+                ret[attr] = obj._summary
         return ret
 
     def show_plot_methods(self):
@@ -1578,7 +1578,9 @@ class ProjectPlotter(object):
         else:
             doc_str = ''
 
-        summary = summary or 'Open and plot data via :class:`%s` plotters'
+        summary = summary or (
+            'Open and plot data via :class:`%s.%s` plotters' % (
+                module, plotter_name))
 
         if plotter_cls is not None:
             _versions.update(get_versions(key=lambda s: s == plugin))

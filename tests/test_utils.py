@@ -1,4 +1,5 @@
 """Module for testing the :mod:`psyplot.utils` module"""
+import _base_testing as bt
 import unittest
 import psyplot.utils as utils
 

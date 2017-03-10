@@ -1,3 +1,4 @@
+import _base_testing as bt
 
 def pytest_addoption(parser):
     group = parser.getgroup("psyplot", "psyplot specific options")

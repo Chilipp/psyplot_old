@@ -184,6 +184,9 @@ def get_parser(create=True):
 
     parser.update_arg('list_plugins', short='lp', long='list-plugins',
                       action=ListPluginsAction, if_existent=False)
+    parser.update_arg(
+        'list_plot_methods', short='lpm', long='list-plot-methods',
+        action=ListPlotMethodsAction, if_existent=False)
 
     parser.setup_args(make_plot)
 
@@ -275,6 +278,31 @@ class ListPluginsAction(argparse.Action):
 
     def __call__(self, parser, namespace, values, option_string=None):
         print(yaml.dump(psyplot.rcParams._plugins, default_flow_style=False))
+        sys.exit(0)
+
+
+class ListPlotMethodsAction(argparse.Action):
+
+    def __init__(self, option_strings, dest=argparse.SUPPRESS, nargs=None,
+                 default=argparse.SUPPRESS, **kwargs):
+        if nargs is not None:
+            raise ValueError("nargs not allowed")
+        kwargs['help'] = "List the available plot methods and what they do"
+        super(ListPlotMethodsAction, self).__init__(
+            option_strings, nargs=0, dest=dest, default=default,
+            **kwargs)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        pm_choices = {}
+        for pm, d in filter(lambda t: t[1].get('plot_func', True),
+                            six.iteritems(rcParams['project.plotters'])):
+            pm_choices[pm] = d.get('summary') or (
+                'Open and plot data via :class:`%s.%s` plotters' % (
+                    d['module'], d['plotter_name']))
+        if psyplot._project_imported:
+            import psyplot.project as psy
+            pm_choices.update(psy.plot._plot_methods)
+        print(yaml.dump(pm_choices, default_flow_style=False))
         sys.exit(0)
 
 
