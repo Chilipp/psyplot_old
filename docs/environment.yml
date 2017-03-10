@@ -16,3 +16,4 @@ dependencies:
         - sphinx-argparse
         - autodocsumm
         - cdo
+        - sphinx-nbexamples
