@@ -25,8 +25,8 @@ and install the necessary modules into that environment.
 There are lot's of more examples out there for the
 
 - psy-maps_ plugin
-- psy-simple plugin
-- psy-reg plugin
+- psy-simple_ plugin
+- psy-reg_ plugin
 
 .. _psy-maps: http://psy-maps.readthedocs.io/en/latest/examples/index.html
 .. _psy-simple: http://psy-simple.readthedocs.io/en/latest/examples/index.html
