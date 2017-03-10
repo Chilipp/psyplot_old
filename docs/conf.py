@@ -195,6 +195,7 @@ intersphinx_mapping = {
     'mpl_toolkits': ('http://matplotlib.org/basemap/', None),
     'psy_maps': ('https://psy-maps.readthedocs.io/en/latest', None),
     'psy_simple': ('https://psy-simple.readthedocs.io/en/latest', None),
+    'psy_reg': ('https://psy-reg.readthedocs.io/en/latest', None),
 }
 if six.PY3:
     intersphinx_mapping['python'] = ('https://docs.python.org/3.6/', None)
