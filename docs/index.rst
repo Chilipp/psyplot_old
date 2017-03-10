@@ -88,6 +88,7 @@ Documentation
     getting_started
     plugins
     command_line
+    examples/index
     develop/index
     api/psyplot
     todos

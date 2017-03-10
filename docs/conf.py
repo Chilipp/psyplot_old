@@ -14,6 +14,7 @@
 
 import sphinx
 import os
+import sys
 import re
 import six
 from itertools import product
@@ -49,6 +50,7 @@ extensions = [
     'sphinxarg.ext',
     'psyplot.sphinxext.extended_napoleon',
     'autodocsumm',
+    'sphinx_nbexamples',
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -59,7 +61,13 @@ templates_path = ['_templates']
 on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
 
 # boolean controlling wether to calculate the examples or not
-process_examples = not on_rtd
+process_examples = True
+
+if on_rtd:
+    import subprocess as spr
+    spr.call([sys.executable] +
+             ('-m ipykernel install --user --name python3 '
+              '--display-name python3').split())
 
 # The cdo example would require the installation of climate data operators
 # which is a bit of an overkill
