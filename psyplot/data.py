@@ -3715,10 +3715,10 @@ class _MissingModule(object):
         self.error = error
 
     def __getattr__(self, attr):
-        raise self.error.__class__(self.error.message)
+        raise self.error
 
     def __call__(self, *args, **kwargs):
-        raise self.error.__class__(self.error.message)
+        raise self.error
 
 
 def _open_ds_from_store(fname, store_mod=None, store_cls=None, **kwargs):
