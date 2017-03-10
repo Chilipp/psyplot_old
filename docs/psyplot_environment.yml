@@ -1,15 +1,13 @@
 name: psyplot
 channels:
     - chilipp
-    - scitools
+    - conda-forge
 dependencies:
     - psyplot
     - dask
-    - xarray
-    - netCDF4
-    - cartopy
+    - psy-simple
+    - psy-maps
+    - psy-reg
     - seaborn
     - bottleneck
-    - pip:
-        - cyordereddict
-
+    - netCDF4

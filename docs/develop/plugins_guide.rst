@@ -327,3 +327,51 @@ The advantages of this methodology are basically:
 
 Creating new plugins
 --------------------
+Now that you have created your plotter, you may want to include it in the
+plot methods of the :class:`~psyplot.project.Project` class such that you can
+do something like
+
+.. code-block:: python
+
+    import psyplot.project as psy
+    psy.plot.my_plotter('netcdf-file.nc', name='varname')
+
+There are three possibilities how you can do this:
+
+1. The easy and fast solution for one session: register the plotter using the
+   :func:`psyplot.project.register_plotter` function
+2. The easy and steady solution: Save the calls you used in step 1 in the
+   ``'project.plotter.user'`` key of the
+   :attr:`~psyplot.config.rcsetup.rcParams`
+3. The steady and shareable solution: Create a new plugin
+
+The third solution has been used for the psy-maps_ and psy-simple plugins. To
+create a skeleton for your plugin, you can use the ``psyplot-plugin`` command
+that is installed when you install psyplot.
+
+For our demonstration, let's create a plugin named my-plugin. This is simply
+done via
+
+.. ipython::
+
+    In [1]: !psyplot-plugin my-plugin
+
+    In [2]: !tree my-plugin
+
+The following files are created in a directory named ``'my-plugin'``:
+
+``'setup.py'``
+    The installation script
+``'my-plugin/plugin.py'``
+    The file that sets up the configuration of our plugin. This file should
+    define the ``rcParams`` for the plugin
+``'my-plugin/plotters.py'``
+    The file in which we define the plotters. This file should define the
+    plotters and formatoptions.
+
+If you want to see more, look into the comments in the created files.
+
+.. ipython::
+
+    @suppress
+    In [3]: !rm -r my-plugin
