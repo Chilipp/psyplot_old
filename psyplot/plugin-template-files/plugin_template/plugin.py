@@ -6,7 +6,17 @@ be imported when psyplot is imported. What is should contain is:
 - an rcParams variable as instance of :class:`psyplot.config.rcsetup.RcParams`
   that describes the configuration of your plugin
 - a get_versions function that returns the version of your plugin and the ones
-  from its requirements"""
+  from its requirements
+
+.. warning::
+
+    Because of recursion issues, You have to load the psyplot module before
+    loading this module! In other words, you have to type
+
+    .. code-block:: python
+
+        import psyplot
+        import PLUGIN_PYNAME.plugin"""
 from psyplot.config.rcsetup import RcParams
 from PLUGIN_PYNAME import __version__ as plugin_version
 
