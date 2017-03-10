@@ -1,5 +1,6 @@
 """Test script for the psyplot.plugin_template module
 """
+import _base_testing as bt
 import os.path as osp
 import unittest
 import tempfile

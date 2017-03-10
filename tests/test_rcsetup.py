@@ -1,5 +1,6 @@
 """Test module of the basic functionality in the :mod:`psyplot.plotter` module
 """
+import _base_testing as bt
 import os.path as osp
 import unittest
 import six

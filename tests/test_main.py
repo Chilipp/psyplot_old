@@ -142,3 +142,29 @@ class TestCommandLine(unittest.TestCase):
         self.assertFalse(proc.poll(), msg=proc.stderr.read())
         d = yaml.load(proc.stdout.read())
         self.assertEqual(d, ref)
+
+    def test_list_plugins(self):
+        """Test to display all versions"""
+        ref = psyplot.rcParams._plugins
+        proc = spr.Popen([sys.executable, '-m', 'psyplot', '-lp'],
+                         stdout=spr.PIPE, stderr=spr.PIPE)
+        proc.wait()
+        self.assertFalse(proc.poll(), msg=proc.stderr.read())
+        d = yaml.load(proc.stdout.read())
+        self.assertEqual(d, ref)
+
+    def test_list_plot_methods(self):
+        """Test to display all versions"""
+        proc = spr.Popen([sys.executable, '-m', 'psyplot', '-lpm'],
+                         stdout=spr.PIPE, stderr=spr.PIPE)
+        proc.wait()
+        self.assertFalse(proc.poll(), msg=proc.stderr.read())
+        import psyplot.project as psy
+        for pm, d in psyplot.rcParams['project.plotters'].items():
+            try:
+                psy.register_plotter(pm, **d)
+            except:
+                pass
+        ref = psy.plot._plot_methods
+        d = yaml.load(proc.stdout.read())
+        self.assertEqual(d, ref)
