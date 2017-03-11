@@ -5,8 +5,11 @@ python:
   - "3.4"
   - "3.5"
 env:
-  - MPL_VERSION=1.4
-  - MPL_VERSION=1.5
+  global:
+    - secure: "Wl+kNGhIijzW5+Jcu8LQhAb1hGgqYDSP3oXgy85WP7j9vyEwawhHlE6wkA7dcMXyZ4/iabQ/H0vWsuOrF2NsCu1pUXAkcqMAS8hLm6O7IN6D9nzrSJCrDtXfnWL0AAiEYPdRIQSVIykahD/6sItSnSM1UUVDYjZXuiVl+i4DdXQR6Q5IJM6IqmGFavm0o8j/q4Plnw1dhIxJJRgmUyjkZuUbYE1mU8/w7vSb9qM7HGRqHahk+sagZK04PQuub8JQG+0sp/cQ0rM46rgECrWlZrPMdywYO5tcXnRO37WaA8gZgm1BOcY1XEo0LgGPNxXuJkQpRvWczIGrbYF9um/Bax/G7THy7Hfk/v6mr9lN/bQuGY21ztaXFFOh9DE6KLH2/wx7KV+xVV5h95y5KjC/DfyBuzZTw70pYNDW9asJIwy3ejxEuRCIjYIzQZdZVabggCotah0eCOaKV7qOxqq40U6BOFZ2mk3iyfPveJ7qjMCnLchXabuIgEsik0vePUXP6oLwfQ/TVPS6pEDvhbk3qMJuuRFV6exKqHmI2tetyXUAtwVhdTDR9EyvJU4F9luhvdpjHlARQf2dVkg6TUMea55YscuKEDwmLNUFNszU1XYyzTnYTmdk4OYL8AusiUMWn8+8+5F8nWY2xxy+5WvXbIpRs9mSAanGNA3AWHhwzmQ="
+  matrix:
+    - MPL_VERSION=1.4
+    - MPL_VERSION=1.5
 install:
   # We do this conditionally because it saves us some downloading if the
   # version is the same.
@@ -38,7 +41,17 @@ before_script:
   - sleep 3 # give xvfb some time to start
 
 script:
+  - python tests/create_references.py
   - coverage run --source=psyplot setup.py pytest
+
+after_failure:
+  git clone "https://${GH_REPO_TOKEN}@github.com/Chilipp/psyplot_references.git" &&
+  cd psyplot_references &&
+  git branch $ENVKEY &&
+  git checkout $ENVKEY &&
+  cp ../tests/reference_figures/linux*/py"${TRAVIS_PYTHON_VERSION}"/mpl"${MPL_VERSION}"/*.png . &&
+  git add . && git commit -m "Added reference figures" &&
+  git push origin $ENVKEY
 
 after_success:
   coveralls
