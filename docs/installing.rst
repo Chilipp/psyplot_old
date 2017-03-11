@@ -16,7 +16,7 @@ the installer from anaconda_, you can install psyplot simply via::
     $ conda install -c chilipp psyplot
 
 However, this only installs the raw framework. For your specific task, you
-should consider one of the below mentioned plugins (see  :refZ:`optional_deps`).
+should consider one of the below mentioned plugins (see  :ref:`optional_deps`).
 
 If you want to be able to read and write netCDF files, you can use for example
 the netCDF4_ package via::
@@ -69,6 +69,8 @@ We furthermore recommend to use
 .. _psyplot_gui: http://psyplot-gui.readthedocs.io/en/latest/
 .. _psy-simple: http://psy-simple.readthedocs.io/en/latest/
 .. _psy-maps: http://psy-maps.readthedocs.io/en/latest/
+.. _netCDF4: https://github.com/Unidata/netcdf4-python
+.. _gdal: http://www.gdal.org/
 .. _psy-reg: http://psy-reg.readthedocs.io/en/latest/
 .. _conda: http://conda.io/
 .. _anaconda: https://www.continuum.io/downloads
