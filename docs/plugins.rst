@@ -20,21 +20,19 @@ Existing plugins
     - :ref:`Examples Gallery <psy_simple:gallery_examples>`
     - plot methods
 
-      :attr:`psy_maps:psyplot.project.plot.simple`
-          All plotters that are visualized by the psy-simple package
-      :attr:`psy_maps:psyplot.project.plot.density`
+      :attr:`psy_simple:psyplot.project.plot.density`
           Make a density plot of point data
-      :attr:`psy_maps:psyplot.project.plot.plot2d`
+      :attr:`psy_simple:psyplot.project.plot.plot2d`
           Make a simple plot of a 2D scalar field
-      :attr:`psy_maps:psyplot.project.plot.combined`
+      :attr:`psy_simple:psyplot.project.plot.combined`
           Plot a 2D scalar field with an overlying vector field
-      :attr:`psy_maps:psyplot.project.plot.violinplot`
+      :attr:`psy_simple:psyplot.project.plot.violinplot`
           Make a violin plot of your data
-      :attr:`psy_maps:psyplot.project.plot.lineplot`
+      :attr:`psy_simple:psyplot.project.plot.lineplot`
           Make a line plot of one-dimensional data
-      :attr:`psy_maps:psyplot.project.plot.vector`
+      :attr:`psy_simple:psyplot.project.plot.vector`
           Make a simple plot of a 2D vector field
-      :attr:`psy_maps:psyplot.project.plot.barplot`
+      :attr:`psy_simple:psyplot.project.plot.barplot`
           Make a bar plot of one-dimensional data
 :mod:`psy_maps.plugin`
     A psyplot plugin for visualizing data on a map
@@ -44,13 +42,10 @@ Existing plugins
 
       :attr:`psy_maps:psyplot.project.plot.mapplot`
           Plot a 2D scalar field on a map
-      :attr:`psy_maps:psyplot.project.plot.maps`
-          The data objects visualized on a map
       :attr:`psy_maps:psyplot.project.plot.mapvector`
           Plot a 2D vector field on a map
       :attr:`psy_maps:psyplot.project.plot.mapcombined`
           Plot a 2D scalar field with an overlying vector field on a map
-
 :mod:`psy_reg.plugin`
     A psyplot plugin for visualizing and calculating regression fits
 
