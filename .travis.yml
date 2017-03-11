@@ -44,14 +44,12 @@ script:
   - python tests/create_references.py
   - coverage run --source=psyplot setup.py pytest
 
-after_failure:
-  git clone "https://${GH_REPO_TOKEN}@github.com/Chilipp/psyplot_references.git" &&
-  cd psyplot_references &&
-  git branch $ENVKEY &&
-  git checkout $ENVKEY &&
-  cp ../tests/reference_figures/linux*/py"${TRAVIS_PYTHON_VERSION}"/mpl"${MPL_VERSION}"/*.png . &&
-  git add . && git commit -m "Added reference figures" &&
-  git push origin $ENVKEY
-
 after_success:
-  coveralls
+  - coveralls
+  - git clone "https://${GH_REPO_TOKEN}@github.com/Chilipp/psyplot_references.git" &&
+    cd psyplot_references &&
+    git branch $ENVKEY &&
+    git checkout $ENVKEY &&
+    cp ../tests/reference_figures/linux*/py"${TRAVIS_PYTHON_VERSION}"/mpl"${MPL_VERSION}"/*.png . &&
+    git add . && git commit -m "Added reference figures" &&
+    git push origin $ENVKEY
