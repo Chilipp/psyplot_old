@@ -42,12 +42,14 @@ before_script:
 
 script:
   - python tests/create_references.py
-  - coverage run --source=psyplot setup.py pytest
+#  - coverage run --source=psyplot setup.py pytest
 
 after_success:
   - coveralls
   - git clone "https://${GH_REPO_TOKEN}@github.com/Chilipp/psyplot_references.git" &&
     cd psyplot_references &&
+    git config user.name "Travis" &&
+    git config user.email "philipp.sommer@unil.ch" &&
     git branch $ENVKEY &&
     git checkout $ENVKEY &&
     cp ../tests/reference_figures/linux*/py"${TRAVIS_PYTHON_VERSION}"/mpl"${MPL_VERSION}"/*.png . &&
