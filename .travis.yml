@@ -41,12 +41,12 @@ before_script:
   - sleep 3 # give xvfb some time to start
 
 script:
-  - if [[ $TRAVIS_PYTHON == 3.5 && $MPL_VERSION == 1.5 ]]; then python tests/create_references.py; fi
-  - if [[ $TRAVIS_PYTHON == 3.5 && $MPL_VERSION == 1.5 ]]; then echo 'skip tests'; else coverage run --source=psyplot setup.py pytest; fi
+  - if [[ $TRAVIS_PYTHON_VERSION == 3.5 && $MPL_VERSION == 1.5 ]]; then python tests/create_references.py; fi
+  - if [[ $TRAVIS_PYTHON_VERSION == 3.5 && $MPL_VERSION == 1.5 ]]; then echo 'skip tests'; else coverage run --source=psyplot setup.py pytest; fi
 
 after_success:
   - coveralls
-  - if [[ $TRAVIS_PYTHON == 3.5 && $MPL_VERSION == 1.5 ]]; then
+  - if [[ $TRAVIS_PYTHON_VERSION == 3.5 && $MPL_VERSION == 1.5 ]]; then
     git clone "https://${GH_REPO_TOKEN}@github.com/Chilipp/psyplot_references.git" &&
     cd psyplot_references &&
     git config user.name "Travis" &&
