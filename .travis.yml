@@ -86,7 +86,6 @@ install:
   # print versions of all the important requirements
   - psyplot -aV
 script:
-  - python tests/create_references.py
   - coverage run --source=psyplot setup.py pytest
 
 after_success:
