@@ -41,8 +41,7 @@ before_script:
   - sleep 3 # give xvfb some time to start
 
 script:
-  - python tests/create_references.py
-#  - coverage run --source=psyplot setup.py pytest
+  - coverage run --source=psyplot setup.py pytest
 
 after_success:
   - coveralls
