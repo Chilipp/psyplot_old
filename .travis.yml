@@ -41,11 +41,13 @@ before_script:
   - sleep 3 # give xvfb some time to start
 
 script:
+  - if [[ $TRAVIS_PYTHON == 3.5 && $MPL_VERSION == 1.5 ]]; then python tests/create_references.py; fi
   - coverage run --source=psyplot setup.py pytest
 
 after_success:
   - coveralls
-  - git clone "https://${GH_REPO_TOKEN}@github.com/Chilipp/psyplot_references.git" &&
+  - if [[ $TRAVIS_PYTHON == 3.5 && $MPL_VERSION == 1.5 ]]; then
+    git clone "https://${GH_REPO_TOKEN}@github.com/Chilipp/psyplot_references.git" &&
     cd psyplot_references &&
     git config user.name "Travis" &&
     git config user.email "philipp.sommer@unil.ch" &&
@@ -53,4 +55,5 @@ after_success:
     git checkout $ENVKEY &&
     cp ../tests/reference_figures/linux*/py"${TRAVIS_PYTHON_VERSION}"/mpl"${MPL_VERSION}"/*.png . &&
     git add . && git commit -m "Added reference figures" &&
-    git push origin $ENVKEY
+    git push origin $ENVKEY;
+    fi
