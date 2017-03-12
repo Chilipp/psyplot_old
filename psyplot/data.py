@@ -1454,7 +1454,7 @@ class CFDecoder(object):
             arr = target_crs.transform_points(src_crs, xvert, yvert)
             xvert = arr[:, 0]
             yvert = arr[:, 1]
-        triangles = np.reshape(range(len(xvert)), (len(xvert) / 3, 3))
+        triangles = np.reshape(range(len(xvert)), (int(len(xvert) / 3), 3))
         return Triangulation(xvert, yvert, triangles)
 
     docstrings.delete_params(
