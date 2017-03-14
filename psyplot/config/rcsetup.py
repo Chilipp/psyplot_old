@@ -841,7 +841,8 @@ environment variable."""
         return RcParams(self)
 
 
-def psyplot_fname(env_key='PSYPLOTRC', fname='psyplotrc.yml'):
+def psyplot_fname(env_key='PSYPLOTRC', fname='psyplotrc.yml',
+                  if_exists=True):
     """
     Get the location of the config file.
 
@@ -854,7 +855,7 @@ def psyplot_fname(env_key='PSYPLOTRC', fname='psyplotrc.yml'):
 
     - `$PSYPLOTCONFIGDIR/psyplot`
 
-    - On Linux,
+    - On Linux and osx,
 
           - `$HOME/.config/psyplot/psyplotrc.yml`
 
@@ -865,19 +866,26 @@ def psyplot_fname(env_key='PSYPLOTRC', fname='psyplotrc.yml'):
     - Lastly, it looks in `$PSYPLOTDATA/psyplotrc.yml` for a
       system-defined copy.
 
+    Parameters
+    ----------
+    env_key: str
+        The environment variable that can be used for the configuration
+        directory
+    fname: str
+        The name of the configuration file
+    if_exists: bool
+        If True, the path is only returned if the file exists
+
     Returns
     -------
     None or str
-        None, if no file could be found, else the path to the psyplot
-        configuration file
+        None, if no file could be found and `if_exists` is True, else the path
+        to the psyplot configuration file
 
     Notes
     -----
-    This function is taken from the matplotlib [1] module
-
-    References
-    ----------
-    [1]: http://matplotlib.org/api/"""
+    This function is motivated by the :func:`matplotlib.matplotlib_fname`
+    function"""
     cwd = getcwd()
     full_fname = os.path.join(cwd, fname)
     if os.path.exists(full_fname):
@@ -896,7 +904,7 @@ def psyplot_fname(env_key='PSYPLOTRC', fname='psyplotrc.yml'):
     configdir = get_configdir()
     if configdir is not None:
         full_fname = os.path.join(configdir, fname)
-        if os.path.exists(full_fname):
+        if os.path.exists(full_fname) or not if_exists:
             return full_fname
 
     return None
@@ -908,23 +916,28 @@ def get_configdir(name='psyplot', env_key='PSYPLOTCONFIGDIR'):
 
     The directory is chosen as follows:
 
-    1. If the MPLCONFIGDIR environment variable is supplied, choose that.
+    1. If the `env_key` environment variable is supplied, choose that.
 
-    2a. On Linux, choose `$HOME/.config`.
+    2a. On Linux and osx, choose ``'$HOME/.config/' + name`.
 
-    2b. On other platforms, choose `$HOME/.matplotlib`.
+    2b. On other platforms, choose ``'$HOME/.' + name``.
 
     3. If the chosen directory exists, use that as the
        configuration directory.
     4. A directory: return None.
 
+    Parameters
+    ----------
+    name: str
+        The name of the program
+    env_key: str
+        The environment variable that can be used for the configuration
+        directory
+
     Notes
     -----
-    This function is taken from the matplotlib [1] module
-
-    References
-    ----------
-    [1]: http://matplotlib.org/api/"""
+    This function is motivated by the :func:`matplotlib.matplotlib_fname`
+    function"""
     configdir = os.environ.get(env_key)
     if configdir is not None:
         return os.path.abspath(configdir)
