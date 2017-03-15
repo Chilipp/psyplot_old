@@ -9,6 +9,7 @@ package.
 import os
 import sys
 import six
+import logging
 import re
 import yaml
 from itertools import chain
@@ -712,6 +713,40 @@ environment variable."""
                 yaml.dump(d, f, **kwargs)
         return None
 
+    def _load_plugin_entrypoints(self):
+        """Load the modules for the psyplot plugins
+
+        Yields
+        ------
+        pkg_resources.EntryPoint
+            The entry point for the psyplot plugin module"""
+        from pkg_resources import iter_entry_points
+
+        def load_plugin(ep):
+            if plugins_env == ['no']:
+                return False
+            elif ep.module_name in exclude_plugins:
+                return False
+            elif include_plugins and ep.module_name not in include_plugins:
+                return False
+            return True
+
+        self._plugins = self._plugins or []
+
+        plugins_env = os.getenv('PSYPLOT_PLUGINS', '').split('::')
+        include_plugins = [s[4:] for s in plugins_env if s.startswith('yes:')]
+        exclude_plugins = [s[3:] for s in plugins_env if s.startswith('no:')]
+
+        logger = logging.getLogger(__name__)
+
+        for ep in iter_entry_points(group='psyplot', name='plugin'):
+            if not load_plugin(ep):
+                logger.debug('Skipping entrypoint %s', ep)
+                continue
+            self._plugins.append(str(ep))
+            logger.debug('Loading entrypoint %s', ep)
+            yield ep
+
     def load_plugins(self, raise_error=False):
         """
         Load the plotters and defaultParams from the plugins
@@ -734,17 +769,17 @@ environment variable."""
         dict
             The plotters configuration dictionaries from the plugins for the
             :func:`psyplot.project.register_plotter` function"""
-        from pkg_resources import iter_entry_points
-        import logging
 
-        def load_plugin(ep):
-            if plugins_env == ['no']:
-                return False
-            elif ep.module_name in exclude_plugins:
-                return False
-            elif include_plugins and ep.module_name not in include_plugins:
-                return False
-            return True
+        pm_env = os.getenv('PSYPLOT_PLOTMETHODS', '').split('::')
+        include_pms = [s[4:] for s in pm_env if s.startswith('yes:')]
+        exclude_pms = [s[3:] for s in pm_env if s.startswith('no:')]
+
+        logger = logging.getLogger(__name__)
+
+        plotters = self['project.plotters']
+        def_plots = {'default': list(plotters)}
+        defaultParams = self.defaultParams
+        def_keys = {'default': defaultParams}
 
         def register_pm(ep, name):
             full_name = '%s:%s' % (ep.module_name, name)
@@ -760,28 +795,7 @@ environment variable."""
                 logger.debug('Skipping plot method %s', full_name)
             return ret
 
-        self._plugins = self._plugins or []
-
-        plugins_env = os.getenv('PSYPLOT_PLUGINS', '').split('::')
-        include_plugins = [s[4:] for s in plugins_env if s.startswith('yes:')]
-        exclude_plugins = [s[3:] for s in plugins_env if s.startswith('no:')]
-
-        pm_env = os.getenv('PSYPLOT_PLOTMETHODS', '').split('::')
-        include_pms = [s[4:] for s in pm_env if s.startswith('yes:')]
-        exclude_pms = [s[3:] for s in pm_env if s.startswith('no:')]
-
-        logger = logging.getLogger(__name__)
-        plotters = self['project.plotters']
-        def_plots = {'default': list(plotters)}
-        defaultParams = self.defaultParams
-        def_keys = {'default': defaultParams}
-
-        for ep in iter_entry_points(group='psyplot', name='plugin'):
-            if not load_plugin(ep):
-                logger.debug('Skipping entrypoint %s', ep)
-                continue
-            self._plugins.append(str(ep))
-            logger.debug('Loading entrypoint %s', ep)
+        for ep in self._load_plugin_entrypoints():
             plugin_mod = ep.load()
             rc = plugin_mod.rcParams
 
