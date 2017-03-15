@@ -21,7 +21,7 @@ logger.debug("Configuration file: %s", config.config_path)
 
 
 rcParams.HEADER += "\n\npsyplot version: " + __version__
-rcParams.load_plugins('psyplot')
+rcParams.load_plugins()
 rcParams.load_from_file()
 
 
