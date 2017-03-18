@@ -78,12 +78,16 @@ class _TempBool(object):
             value of the object"""
         self.default = default
         self.value = default
+        self._entered = []
 
     def __enter__(self):
         self.value = not self.default
+        self._entered.append(1)
 
     def __exit__(self, type, value, tb):
-        self.value = self.default
+        self._entered.pop(-1)
+        if not self._entered:
+            self.value = self.default
 
     if six.PY2:
         def __nonzero__(self):
