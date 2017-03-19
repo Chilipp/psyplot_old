@@ -35,7 +35,7 @@ groups = {
     'data': 'Data manipulation formatoptions',
     'axes': 'Axes formatoptions',
     'labels': 'Label formatoptions',
-    'plot': 'Plot formatoptions',
+    'plotting': 'Plot formatoptions',
     'colors': 'Color coding formatoptions',
     'misc': 'Miscallaneous formatoptions',
     'ticks': 'Axis tick formatoptions',
