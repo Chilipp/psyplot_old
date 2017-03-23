@@ -349,7 +349,9 @@ class Signal(object):
     def emit(self, *args, **kwargs):
         if (not getattr(self.owner, 'block_signals', False) and
                 not getattr(self.instance, 'block_signals', False)):
+            logger.debug('Emitting signal %s', self.name)
             for func in self._connections[:]:
+                logger.debug('Calling %s', func)
                 func(*args, **kwargs)
 
     def disconnect(self, func=None):
