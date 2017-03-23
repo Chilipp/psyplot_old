@@ -7,6 +7,9 @@ Added
 
 Changed
 -------
+* When creating new plots using the ``psyplot.project.Project.plot`` attribute,
+  ``scp`` for the newly created subproject is only called when the
+  corresponding ``Project`` is the current main project (``gcp(True)``)
 * The ``alternate_paths`` keyword in the ``psyplot.project.Project.save_project``
   and ``psyplot.data.ArrayList.array_info`` methods has been changed to
   ``alternative_paths``

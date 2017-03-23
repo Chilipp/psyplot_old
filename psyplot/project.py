@@ -166,7 +166,7 @@ class Project(ArrayList):
     _registered_plotters = {}  #: registered plotter identifiers
 
     #: signal to be emiitted when the current main and/or subproject changes
-    oncpchange = Signal(cls_signal=True)
+    oncpchange = Signal(name='oncpchange', cls_signal=True)
 
     # block the
     block_signals = utils._TempBool()
@@ -490,7 +490,8 @@ class Project(ArrayList):
         if isinstance(ax, tuple):
             axes = iter(multiple_subplots(
                 *ax, n=len(sub_project), subplot_kw={'projection': proj}))
-        elif ax is None or isinstance(ax, mpl.axes.SubplotBase):
+        elif ax is None or isinstance(ax, (mpl.axes.SubplotBase,
+                                           mpl.axes.Axes)):
             axes = repeat(ax)
         else:
             axes = iter(ax)
@@ -519,7 +520,8 @@ class Project(ArrayList):
             if rcParams['auto_show']:
                 self.show()
         self.extend(sub_project, new_name=True)
-        scp(sub_project)
+        if self is gcp(True):
+            scp(sub_project)
         return sub_project
 
     def __getitem__(self, key):
