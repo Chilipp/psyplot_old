@@ -27,6 +27,10 @@ rcParams.load_from_file()
 
 _project_imported = False
 
+#: Boolean that is True, if psyplot runs inside the graphical user interface
+#: by the ``psyplot_gui`` module
+with_gui = False
+
 
 def get_versions(requirements=True, key=None):
     """
