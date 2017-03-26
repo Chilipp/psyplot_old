@@ -586,7 +586,8 @@ class Project(ArrayList):
         all_keys = set(chain(*(attrs.keys() for attrs in all_attrs)))
         ret = {}
         for key in all_keys:
-            vals = {attrs.get(key, None) for attrs in all_attrs} - {None}
+            vals = {utils.hashable(attrs.get(key, None))
+                    for attrs in all_attrs} - {None}
             if len(vals) == 1:
                 ret[key] = next(iter(vals))
             else:
@@ -1248,6 +1249,7 @@ class _ProjectLoader(object):
         if proj is not None and not isinstance(proj, six.string_types):
             proj = (proj.__class__.__module__, proj.__class__.__name__)
         ret['projection'] = proj
+        ret['visible'] = ax.get_visible()
         if isinstance(ax, mfig.SubplotBase):
             sp = ax.get_subplotspec().get_topmost_subplotspec()
             ret['grid_spec'] = sp.get_geometry()[:2]
@@ -1289,12 +1291,13 @@ class PlotterInterface(object):
         """The plotter class"""
         ret = self._plotter_cls
         if ret is None:
+            self.project.logger.debug('importing %s', self.module)
             mod = import_module(self.module)
             plotter = self.plotter_name
             if plotter not in vars(mod):
                 raise ImportError("Module %r does not have a %r plotter!" % (
                     mod, plotter))
-            ret = getattr(mod, plotter)
+            ret = self._plotter_cls = getattr(mod, plotter)
             _versions.update(get_versions(key=lambda s: s == self._plugin))
         return ret
 
