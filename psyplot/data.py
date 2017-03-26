@@ -2437,7 +2437,13 @@ class ArrayList(list):
     @property
     def names(self):
         """Set of the variable in this list"""
-        return set(arr.name for arr in self)
+        ret = set()
+        for arr in self:
+            if isinstance(arr, InteractiveList):
+                ret.update(arr.names)
+            else:
+                ret.add(arr.name)
+        return ret
 
     @property
     def coords(self):
@@ -3545,7 +3551,7 @@ class DatasetAccessor(object):
         return ret
 
     def __getattr__(self, attr):
-        if attr in self.ds:
+        if attr != 'ds' and attr in self.ds:
             ret = getattr(self.ds, attr)
             ret.psy.base = self.ds
             return ret
@@ -3702,6 +3708,16 @@ class InteractiveList(ArrayList, InteractiveBase):
         if plotter is not None:
             plotter.initialize_plot(instance, make_plot=make_plot)
         return instance
+
+    def extend(self, *args, **kwargs):
+        # reimplemented to emit onupdate
+        super(InteractiveList, self).extend(*args, **kwargs)
+        self.onupdate.emit()
+
+    def append(self, *args, **kwargs):
+        # reimplemented to emit onupdate
+        super(InteractiveList, self).append(*args, **kwargs)
+        self.onupdate.emit()
 
 
 class _MissingModule(object):
