@@ -5,7 +5,6 @@ channels:
 dependencies:
     - psyplot
     - dask
-    - psy-simple
     - psy-maps
     - psy-reg
     - seaborn

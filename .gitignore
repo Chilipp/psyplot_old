@@ -54,6 +54,7 @@ coverage.xml
 docs/_build/
 docs/index.doctree
 docs/examples/
+docs/api/
 
 # test results
 *psyplot_testresults

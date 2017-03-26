@@ -9,5 +9,4 @@ dependencies:
     - seaborn
     - bottleneck
     - psy-maps
-    - psy-simple
     - psy-reg

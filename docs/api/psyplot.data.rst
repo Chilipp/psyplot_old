@@ -1,7 +1,0 @@
-psyplot.data module
-===================
-
-.. automodule:: psyplot.data
-    :members:
-    :undoc-members:
-    :show-inheritance:

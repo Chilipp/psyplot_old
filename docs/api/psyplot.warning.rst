@@ -1,7 +1,0 @@
-psyplot.warning module
-======================
-
-.. automodule:: psyplot.warning
-    :members:
-    :undoc-members:
-    :show-inheritance:
