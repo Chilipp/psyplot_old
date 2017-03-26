@@ -14,9 +14,11 @@
 
 import sphinx
 import os
+import os.path as osp
 import sys
 import re
 import six
+import subprocess as spr
 from itertools import product
 import warnings
 import psyplot
@@ -64,10 +66,13 @@ on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
 process_examples = True
 
 if on_rtd:
-    import subprocess as spr
     spr.call([sys.executable] +
              ('-m ipykernel install --user --name python3 '
               '--display-name python3').split())
+
+# create the api documentation
+if not osp.exists(osp.join(osp.dirname(__file__), 'api')):
+    spr.check_call(['bash', 'apigen.bash'])
 
 # The cdo example would require the installation of climate data operators
 # which is a bit of an overkill
@@ -204,9 +209,15 @@ intersphinx_mapping = {
     'xarray': ('http://xarray.pydata.org/en/stable/', None),
     'cartopy': ('http://scitools.org.uk/cartopy/docs/latest/', None),
     'mpl_toolkits': ('http://matplotlib.org/basemap/', None),
-    'psy_maps': ('https://psy-maps.readthedocs.io/en/latest', None),
-    'psy_simple': ('https://psy-simple.readthedocs.io/en/latest', None),
-    'psy_reg': ('https://psy-reg.readthedocs.io/en/latest', None),
+    'psy_maps': (
+        'https://psyplot.readthedocs.io/projects/psy-maps/en/latest/', None),
+    'psy_simple': (
+        'https://psyplot.readthedocs.io/projects/psy-simple/en/latest/', None),
+    'psy_reg': ('https://psyplot.readthedocs.io/projects/psy-reg/en/latest/',
+                None),
+    'psyplot_gui': (
+        'https://psyplot.readthedocs.io/projects/psyplot_gui/en/latest/'
+    )
 }
 if six.PY3:
     intersphinx_mapping['python'] = ('https://docs.python.org/3.6/', None)

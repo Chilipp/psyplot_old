@@ -1,50 +1,53 @@
 About psyplot
 =============
 
-Why psyplot
------------
-The main idea for the psyplot package arose from the need of the author to
-create plots interactively when developing and analysing climate models. There
-is a wide range of software tools available for visualizing raster data, but
-they often are difficult to use in a script or have low flexibility or are far
-to complex for a simple visualization. Therefore, the choice was to use the
-python package matplotlib_. With python we have an interactive and developping
-programming language and matplotlib allows a very flexible handling of data
-visualization with a very convincing and well documented API.
+Why psyplot?
+------------
+When visualizing data, one always has to choose:
 
-However, matplotlib can be quite costly in terms of time when modifying the
-plot for specific needs. Therefore it's use very often results in long scripts
-of about hundreds of lines and the reproduction of one specific change in
-another plot can be very tidious. Furthermore, although matplotlib in
-principle allows interactive usage, it can be very unconfortable because every
-artist has to be stored in a variable in order to be modified (if that works at all).
+- create the plot with an intuitive graphical user interface (GUI)
+  (e.g. panoply) but less options for customization and difficult to script
+- create the plot from the command line, e.g. via NCL, R or python with more
+  possibilities for customization and scripting but also less intuitive
 
-This finally gave the motiviation to pack together the different scripts into
-one framework that can be used for interactive visualization without minimizing
-the extensive visualization capabilities of matplotlib. Furthermore the
-framework allows to easily manage and format multiple plots and enables the
-User to automatically apply the same settings to multiple datasets.
+``psyplot`` wants to combine these two worlds: create a well-documented and
+easy accessible framework to visualize data from a GUI and the command line. We
+want something that can be accessed through the command line and that is fully
+and easy scriptable and something that can be accessed through a GUI.
 
-But try it and :ref:`get started <getting-started>`.
+Hence, I provide a modular framework that can create and customize plots
+efficiently with short and comprehensive commands and that can be accessed
+through a GUI (see :ref:`projects`).
+
+To be honest, I love matplotlib_ and it's capabilities. But, I hate
+copy-and-paste. Not only that I and prefer the *don't repeat yourself*
+principle, it is also harder to maintain the code when new versions of
+matplotlib or other libraries are released. However, if you do plots from the
+command line, no matter if it's python, R or NCL, you almost always end up with
+copy and paste. Therefore I put each of the small parts that make up a
+visualization in a formatoption that I can reuse when I need it.
+
+Nevertheless, it's again a new piece of software. Therefore, if you want to use
+it, for sure you need a bit of time to get comfortable with the framework. I
+promise to you, it's worth it. So :ref:`get started <getting-started>` and
+please let me know if you have a different opinion.
 
 .. _matplotlib: http://matplotlib.org
 
 
 About the author
 ----------------
-`Philipp Sommer`_ works as a PhD student for climate modelling in the
-Arve-Regolith-Vegetation (ARVE) group in the Institute of Earth Surface
-Dynamics (IDYST) at the University of Lausanne. He has done his master in
-Integrated Climate System Science at the University of Hamburg and a Bachelor
-in Phyiscs at the University of Heidelberg. His master thesis focused on the
-development of an irrigation scheme for the land-surface scheme JSBACH of the
-`Max-Planck-Institute Earth-System-Model (MPI-ESM)`_. Having worked for two
-years as a student helper in the working group on Terrestrial Hydrology at the
-MPI with Stefan Hagemann, he mainly focused on the evaluation of climate model
-data of CMIP5 models but also on the work with the `ICON model`_.
-The latter basicly was the motivation for the visualization package psyplot.
+I (`Philipp Sommer`_) work as a PhD student for climate modeling in the
+Atmosphere-Regolith-Vegetation (ARVE) group in the Institute of Earth Surface
+Dynamics (IDYST) at the University of Lausanne. During my time at the
+`Max-Planck-Institute for Meteorology`_ I worked a lot with the
+`Max-Planck-Institute Earth-System-Model (MPI-ESM)`_ and the `ICON model`_
+in the working group on Terrestrial Hydrology of Stefan Hagemann. This
+included a lot of evaluation of climate model data. It finally gave the
+motivation for the visualization framework ``psyplot``.
 
 .. _Philipp Sommer: http://arve.unil.ch/people/philipp-sommer
+.. _Max-Planck-Institute for Meteorology: http://www.mpimet.mpg.de
 .. _Max-Planck-Institute Earth-System-Model (MPI-ESM): http://www.mpimet.mpg.de/en/science/models/mpi-esm.html
 .. _ICON model: http://www.mpimet.mpg.de/en/science/models/icon.html
 

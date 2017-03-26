@@ -59,19 +59,17 @@ Optional dependencies
 ^^^^^^^^^^^^^^^^^^^^^
 We furthermore recommend to use
 
-- psyplot_gui_: A graphical user interface to psyplot
-- psy-simple_: A psyplot plugin to make simple plots
-- psy-maps_: A psyplot plugin for visualizing data on a map
-- psy-reg_: A psyplot plugin for visualizing fits to your data
+- :ref:`psyplot_gui <psyplot_gui:install>`: A graphical user interface to psyplot
+- :ref:`psy-simple <psy_simple:install>`: A psyplot plugin to make simple plots
+- :ref:`psy-maps <psy_maps:install>`: A psyplot plugin for visualizing data on a
+  map
+- :ref:`psy-reg <psy_reg:install>`: A psyplot plugin for visualizing fits to
+  your data
 - cdo_: The python bindings for cdos (see also the
   :ref:`cdo example <gallery_examples_example_cdo.ipynb>`)
 
-.. _psyplot_gui: http://psyplot-gui.readthedocs.io/en/latest/
-.. _psy-simple: http://psy-simple.readthedocs.io/en/latest/
-.. _psy-maps: http://psy-maps.readthedocs.io/en/latest/
 .. _netCDF4: https://github.com/Unidata/netcdf4-python
 .. _gdal: http://www.gdal.org/
-.. _psy-reg: http://psy-reg.readthedocs.io/en/latest/
 .. _conda: http://conda.io/
 .. _anaconda: https://www.continuum.io/downloads
 .. _matplotlib: http://matplotlib.org
@@ -86,7 +84,7 @@ an efficient handling of netCDF files and the visualization of data on a globe.
 
 Those environments are
 
-- :download:`psyplot with cartopy, netCDF4, gdal, dask, bottleneck, cyordereddict <psyplot_environment.yml>`.
+- :download:`psyplot and psy-maps with netCDF4, dask and bottleneck <psyplot_environment.yml>`.
   This environment contains the recommended modules to view geo-referenced netCDF
   files without a GUI
 - :download:`psyplot with graphical user interface and the above packages <psyplot_gui_environment.yml>`.
@@ -101,11 +99,12 @@ virtual environment via::
 
 Running the tests
 -----------------
-Clone out the github_ repository and run::
+We us pytest_ to run our tests. So you can either run clone out the github_
+repository and run::
 
     $ python setup.py test
 
-or after having install pytest_, you can run
+or install pytest_ by yourself and run
 
     $ py.test
 

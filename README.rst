@@ -60,15 +60,18 @@ package. The main purpose is to have a framework that allows a  fast,
 attractive, flexible, easily applicable, easily reproducible and especially
 an interactive visualization of your data.
 
-The ultimate goal is to help scientiests and especially climate model
-developers in their daily work by providing a flexibel visualization tool that
-can be enhanced by their own visualization scripts.
+The ultimate goal is to help scientists and especially climate model
+developers in their daily work by providing a flexible visualization tool that
+can be enhanced by their own visualization scripts. ``psyplot`` can be used
+through the python command line and through the psyplot_gui_ module which
+provides a graphical user interface for an easier interactive usage. See the
+:ref:`about` section for more motivation.
 
 The package is very new and there are many features that will be included in
-the near future. So we are very pleased for feedback! Please simply raise an issue
-on `GitHub <https://github.com/Chilipp/psyplot>`__. The package may also be
-enhanced by the psyplot_gui_ module which provides a graphical user interface
-for an easier interactive usage.
+the future. So we are very pleased for feedback! Please simply raise an issue
+on `GitHub <https://github.com/Chilipp/psyplot>`__.
+
+.. _psyplot_gui: http://psyplot-gui.readthedocs.io/en/latest/
 
 You can see the full documentation on
 `readthedocs.org <http://psyplot.readthedocs.io/en/latest/?badge=latest>`__.
@@ -76,19 +79,16 @@ You can see the full documentation on
 
 Acknowledgment
 --------------
-This package has been developped by Philipp Sommer as a part of the
-`PyEarthScience <https://github.com/KMFleischer/PyEarthScience>`__ project.
+This package has been developed by Philipp Sommer.
 
-Thanks to the developers of the matplotlib_, xarray_ and cartopy_
-packages for their great packages and for the python delevopers for their
+I want to thank the developers of the matplotlib_, xarray_ and cartopy_
+packages for their great packages and of course the python developers for their
 fascinating work on this beautiful language.
 
 A special thanks to Stefan Hagemann and Tobias Stacke from the
-Max-Planck-Institute of Meterology in Hamburg, Germany for the motivation on
+Max-Planck-Institute of Meteorology in Hamburg, Germany for the motivation on
 this project.
 
-.. _psyplot_gui: http://psyplot-gui.readthedocs.io/en/latest/
 .. _matplotlib: http://matplotlib.org
 .. _xarray: http://xarray.pydata.org/
 .. _cartopy: http://scitools.org.uk/cartopy
-
