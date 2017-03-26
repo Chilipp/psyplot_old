@@ -257,3 +257,12 @@ def sort_kwargs(kwargs, *param_lists):
     return chain(
         ({key: kwargs.pop(key) for key in params.intersection(kwargs)}
          for params in map(set, param_lists)), [kwargs])
+
+
+def hashable(val):
+    if val is None:
+        return val
+    try:
+        return hash(val)
+    except TypeError:
+        return None
