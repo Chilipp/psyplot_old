@@ -17,15 +17,14 @@ an interactive visualization of your data.
 The ultimate goal is to help scientists and especially climate model
 developers in their daily work by providing a flexible visualization tool that
 can be enhanced by their own visualization scripts. ``psyplot`` can be used
-through the python command line and through the psyplot_gui_ module which
+through the python command line and through the
+:ref:`psyplot-gui <psyplot_gui:psyplot-gui>` module which
 provides a graphical user interface for an easier interactive usage. See the
 :ref:`about` section for more motivation.
 
 The package is very new and there are many features that will be included in
 the future. So we are very pleased for feedback! Please simply raise an issue
 on `GitHub <https://github.com/Chilipp/psyplot>`__.
-
-.. _psyplot_gui: http://psyplot-gui.readthedocs.io/en/latest/
 
 
 .. start-badges

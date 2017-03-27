@@ -59,7 +59,7 @@ Optional dependencies
 ^^^^^^^^^^^^^^^^^^^^^
 We furthermore recommend to use
 
-- :ref:`psyplot_gui <psyplot_gui:install>`: A graphical user interface to psyplot
+- :ref:`psyplot-gui <psyplot_gui:install>`: A graphical user interface to psyplot
 - :ref:`psy-simple <psy_simple:install>`: A psyplot plugin to make simple plots
 - :ref:`psy-maps <psy_maps:install>`: A psyplot plugin for visualizing data on a
   map

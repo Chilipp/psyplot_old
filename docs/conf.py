@@ -216,7 +216,7 @@ intersphinx_mapping = {
     'psy_reg': ('https://psyplot.readthedocs.io/projects/psy-reg/en/latest/',
                 None),
     'psyplot_gui': (
-        'https://psyplot.readthedocs.io/projects/psyplot_gui/en/latest/'
+        'https://psyplot.readthedocs.io/projects/psyplot-gui/en/latest/'
     )
 }
 if six.PY3:
