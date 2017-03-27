@@ -260,9 +260,22 @@ def sort_kwargs(kwargs, *param_lists):
 
 
 def hashable(val):
+    """Test if `val` is hashable and if not, get it's string representation
+
+    Parameters
+    ----------
+    val: object
+        Any (possibly not hashable) python object
+
+    Returns
+    -------
+    val or string
+        The given `val` if it is hashable or it's string representation"""
     if val is None:
         return val
     try:
-        return hash(val)
+        hash(val)
     except TypeError:
-        return None
+        return repr(val)
+    else:
+        return val
