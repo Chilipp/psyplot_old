@@ -1190,7 +1190,8 @@ class CFDecoder(object):
             try:
                 return self._get_plotbounds_from_cf(coord, bounds)
             except ValueError as e:
-                warn(e.message + " Bounds are calculated automatically!")
+                warn((e.message if six.PY2 else str(e)) +
+                     " Bounds are calculated automatically!")
         return self._infer_interval_breaks(coord, kind=kind)
 
     @staticmethod
