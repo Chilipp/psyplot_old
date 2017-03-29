@@ -3,7 +3,7 @@ channels:
     - chilipp
     - conda-forge
 dependencies:
-    - psyplot_gui
+    - psyplot-gui
     - dask
     - netCDF4
     - seaborn
