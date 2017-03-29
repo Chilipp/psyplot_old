@@ -87,7 +87,7 @@ Those environments are
 - :download:`psyplot and psy-maps with netCDF4, dask and bottleneck <psyplot_environment.yml>`.
   This environment contains the recommended modules to view geo-referenced netCDF
   files without a GUI
-- :download:`psyplot with graphical user interface and the above packages <psyplot_gui_environment.yml>`.
+- :download:`psyplot with graphical user interface and the above packages <psyplot-gui_environment.yml>`.
   The same environment as above plus graphical user interface
 
 After you downloaded one of the files, you can create and activate the new
