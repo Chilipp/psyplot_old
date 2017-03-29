@@ -41,7 +41,7 @@ groups = {
     'ticks': 'Axis tick formatoptions',
     'vector': 'Vector plot formatoptions',
     'masking': 'Masking formatoptions',
-    'fit': 'Fitting formatoptions',
+    'regression': 'Fitting formatoptions',
     }
 
 
