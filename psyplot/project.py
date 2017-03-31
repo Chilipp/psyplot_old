@@ -822,7 +822,7 @@ class Project(ArrayList):
         for plotter in self.plotters:
             plotter.unshare_me(**kwargs)
 
-    docstrings.delete_params('ArrayList.array_info.parameters', 'pwd')
+    docstrings.delete_params('ArrayList.array_info.parameters', 'pwd', 'copy')
 
     @docstrings.get_sectionsf('Project.save_project')
     @docstrings.dedent
@@ -844,7 +844,7 @@ class Project(ArrayList):
         pack: bool
             If True, all datasets are packed into the folder of `fname`
             and will be used if the data is loaded
-        %(ArrayList.array_info.parameters.no_pwd)s
+        %(ArrayList.array_info.parameters.no_pwd|copy)s
 
         Notes
         -----
@@ -865,6 +865,8 @@ class Project(ArrayList):
                         dir=target_dir, suffix='.nc').name
 
             kwargs.setdefault('paths', tmp_it())
+        if fname is not None:
+            kwargs['copy'] = True
 
         _update_versions()
         ret = {'figs': dict(map(_ProjectLoader.inspect_figure, self.figs)),
