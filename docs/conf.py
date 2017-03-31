@@ -151,6 +151,10 @@ if not on_rtd:  # only import and set the theme if we're building docs locally
 # Output file base name for HTML help builder.
 htmlhelp_basename = 'psyplotdoc'
 
+# The name of an image file (relative to this directory) to place at the top
+# of the sidebar.
+html_logo = 'psyplot.png'
+
 # -- Options for LaTeX output ---------------------------------------------
 
 latex_elements = {
@@ -216,7 +220,7 @@ intersphinx_mapping = {
     'psy_reg': ('https://psyplot.readthedocs.io/projects/psy-reg/en/latest/',
                 None),
     'psyplot_gui': (
-        'https://psyplot.readthedocs.io/projects/psyplot-gui/en/latest/'
+        'http://psyplot.readthedocs.io/projects/psyplot-gui/en/latest/'
     )
 }
 if six.PY3:
