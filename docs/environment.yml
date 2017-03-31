@@ -16,7 +16,7 @@ dependencies:
     - sphinx
     - psy-maps
     - pip:
-        - sphinx-argparse
+        - sphinx-argparse==0.1.17
         - autodocsumm
         - cdo
         - sphinx-nbexamples
