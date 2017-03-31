@@ -8,8 +8,8 @@ from psyplot.config.rcsetup import rcParams
 import psyplot.config as config
 from psyplot.data import (
     ArrayList, InteractiveArray, InteractiveList, open_dataset, open_mfdataset)
+from psyplot.version import __version__
 
-__version__ = "1.0.0.dev0"
 __author__ = "Philipp Sommer (philipp.sommer@unil.ch)"
 
 logger = _logging.getLogger(__name__)
