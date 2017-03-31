@@ -2407,6 +2407,15 @@ class InteractiveArray(InteractiveBase):
         ret.psy._base = self._base
         return ret
 
+    def copy(self, deep=False):
+        """Copy the array
+
+        This method returns a copy of the underlying array in the :attr:`arr`
+        attribute. It is more stable because it creates a new `psy` accessor"""
+        arr = self.arr.copy(deep)
+        arr.psy = InteractiveArray(arr)
+        return arr
+
     isel.__doc__ = xr.DataArray.isel.__doc__
     sel.__doc__ = xr.DataArray.sel.__doc__
 
@@ -2567,9 +2576,9 @@ class ArrayList(list):
             auto_update = rcParams['lists.auto_update']
         self.auto_update = not bool(auto_update)
         # append the data in order to set the correct names
-        for arr in iterable:
-            if isinstance(getattr(arr, 'psy', None), InteractiveBase):
-                self.append(arr, new_name=new_name)
+        self.extend(filter(
+            lambda arr: isinstance(getattr(arr, 'psy', None), InteractiveBase),
+            iterable), new_name=new_name)
 
     def copy(self, deep=False):
         """Returns a copy of the list
@@ -2584,7 +2593,7 @@ class ArrayList(list):
                                   auto_update=not bool(self.no_auto_update))
         else:
             return self.__class__(
-                [arr.copy(deep) for arr in self], attrs=self.attrs.copy(),
+                [arr.psy.copy(deep) for arr in self], attrs=self.attrs.copy(),
                 auto_update=not bool(self.auto_update))
 
     docstrings.keep_params('InteractiveArray.update.parameters', 'method')
@@ -2898,7 +2907,8 @@ class ArrayList(list):
         for arr_name, info in six.iteritems(d):
             if arr_name in ignore_keys:
                 continue
-            if 'fname' not in info and 'ds' not in info:
+            if not {'fname', 'ds', 'arr'}.intersection(info):
+                # the described object is an InteractiveList
                 arr = InteractiveList.from_dict(
                     info, alternative_paths=alternative_paths,
                     datasets=datasets)
@@ -2907,7 +2917,9 @@ class ArrayList(list):
                     arrays.pop(i)
                     continue
             else:
-                if 'ds' in info:
+                if 'arr' in info:
+                    arr = info.pop('arr')
+                elif 'ds' in info:
                     arr = cls.from_dataset(
                         info['ds'], dims=info['dims'], name=info['name'])[0]
                 else:
@@ -2943,7 +2955,7 @@ class ArrayList(list):
     def array_info(self, dump=None, paths=None, attrs=True,
                    standardize_dims=True, pwd=None, use_rel_paths=True,
                    alternative_paths={}, ds_description={'fname', 'store'},
-                   full_ds=True, **kwargs):
+                   full_ds=True, copy=False, **kwargs):
         """
         Get dimension informations on you arrays
 
@@ -2991,6 +3003,8 @@ class ArrayList(list):
             If True and ``'ds'`` is in `ds_description`, the entire dataset is
             included. Otherwise, only the DataArray converted to a dataset is
             included
+        copy: bool
+            If True, the arrays and datasets are deep copied
 
 
         Other Parameters
@@ -3009,6 +3023,13 @@ class ArrayList(list):
         def get_alternative(f):
             return next(filter(lambda t: os.path.samefile(f, t[0]),
                                six.iteritems(alternative_paths)), [False, f])
+
+        if copy:
+            def copy_obj(obj):
+                return obj.psy.copy(True)
+        else:
+            def copy_obj(obj):
+                return obj
         ret = OrderedDict()
         if ds_description == 'all':
             ds_description = {'fname', 'ds', 'num', 'arr', 'store'}
@@ -3026,7 +3047,7 @@ class ArrayList(list):
                     dump, paths, pwd=pwd, attrs=attrs,
                     standardize_dims=standardize_dims,
                     use_rel_paths=use_rel_paths, ds_description=ds_description,
-                    alternative_paths=alternative_paths, **kwargs)
+                    alternative_paths=alternative_paths, copy=copy, **kwargs)
             else:
                 if standardize_dims:
                     idims = arr.psy.decoder.standardize_dims(
@@ -3062,13 +3083,13 @@ class ArrayList(list):
                             d['fname'] = tuple(safe_list(fname))
                 if 'ds' in ds_description:
                     if full_ds:
-                        d['ds'] = arr.psy.base
+                        d['ds'] = copy_obj(arr.psy.base)
                     else:
-                        d['ds'] = arr.to_dataset()
+                        d['ds'] = copy_obj(arr.to_dataset())
                 if 'num' in ds_description:
                     d['num'] = self._get_psyplot_num(arr.psy.base)
                 if 'arr' in ds_description:
-                    d['arr'] = arr
+                    d['arr'] = copy_obj(arr)
                 if attrs:
                     d['attrs'] = arr.attrs
         ret['attrs'] = self.attrs
@@ -3559,6 +3580,15 @@ class DatasetAccessor(object):
         else:
             raise AttributeError("%s has not Attribute %s" % (
                 self.__class__.__name__, attr))
+
+    def copy(self, deep=False):
+        """Copy the array
+
+        This method returns a copy of the underlying array in the :attr:`arr`
+        attribute. It is more stable because it creates a new `psy` accessor"""
+        ds = self.ds.copy(deep)
+        ds.psy = DatasetAccessor(ds)
+        return ds
 
 
 class InteractiveList(ArrayList, InteractiveBase):
