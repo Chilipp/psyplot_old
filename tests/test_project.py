@@ -23,6 +23,8 @@ class TestProject(td.TestArrayList):
     _created_files = set()
 
     def setUp(self):
+        for identifier in list(psy.registered_plotters):
+            psy.unregister_plotter(identifier)
         psy.close('all')
         plt.close('all')
         self._created_files = set()
