@@ -529,10 +529,11 @@ class Project(ArrayList):
         slice"""
         if isinstance(key, slice):  # return a new project
             ret = self.__class__(
-                super(Project, self).__getitem__(key), main=self.main)
-            return ret
+                super(Project, self).__getitem__(key))
+            ret.main = self.main
         else:  # return the item
-            return super(Project, self).__getitem__(key)
+            ret = super(Project, self).__getitem__(key)
+        return ret
 
     if six.PY2:  # for compatibility to python 2.7
         def __getslice__(self, *args):
@@ -540,8 +541,8 @@ class Project(ArrayList):
 
     def __add__(self, other):
         # overwritte to return a subproject
-        ret = self.__class__(super(Project, self).__add__(other),
-                             main=self.main)
+        ret = self.__class__(super(Project, self).__add__(other))
+        ret.main = self.main
         return ret
 
     @staticmethod
