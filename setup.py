@@ -10,9 +10,13 @@ def readme():
     with open('README.rst') as f:
         return f.read()
 
+# read the version from version.py
+with open(osp.join('psyplot', 'version.py')) as f:
+    exec(f.read())
+
 
 setup(name='psyplot',
-      version='1.0.0.dev0',
+      version=__version__,
       description='Python package for interactive data visualization',
       long_description=readme(),
       classifiers=[
