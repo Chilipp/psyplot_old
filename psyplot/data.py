@@ -2615,7 +2615,7 @@ class ArrayList(list):
         %(InteractiveArray.update.parameters.method)s
         %(InteractiveBase.parameters.auto_update)s
         prefer_list: bool
-            If True and multiple variable names per array are found, the
+            If True and multiple variable names pher array are found, the
             :class:`InteractiveList` class is used. Otherwise the arrays are
             put together into one :class:`InteractiveArray`.
         default_slice: indexer
@@ -2789,7 +2789,7 @@ class ArrayList(list):
         ds_description = set(ds_description)
         for d in cls._get_ds_descriptions_unsorted(data, **kwargs):
             try:
-                num = d.get('num') or cls._get_psyplot_num(d['ds'])
+                num = d.get('num') or d['ds'].psy.num
             except KeyError:
                 raise ValueError(
                     'Could not find either the dataset number nor the dataset '
@@ -2810,7 +2810,7 @@ class ArrayList(list):
         ds_description = {'ds', 'fname', 'num', 'arr', 'store'}
         if 'ds' in data:
             # make sure that the data set has a number assigned to it
-            cls._get_psyplot_num(data['ds'])
+            data['ds'].psy.num
         keys_in_data = ds_description.intersection(data)
         if keys_in_data:
             return {key: data[key] for key in keys_in_data}
@@ -3020,12 +3020,26 @@ class ArrayList(list):
         See Also
         --------
         from_dict"""
+        saved_ds = kwargs.pop('_saved_ds', {})
+
         def get_alternative(f):
             return next(filter(lambda t: os.path.samefile(f, t[0]),
                                six.iteritems(alternative_paths)), [False, f])
 
         if copy:
             def copy_obj(obj):
+                # try to get the number of the dataset and create only one copy
+                # copy for each dataset
+                try:
+                    num = obj.psy.num
+                except AttributeError:
+                    pass
+                else:
+                    try:
+                        return saved_ds[num]
+                    except KeyError:
+                        saved_ds[num] = obj.psy.copy(True)
+                        return saved_ds[num]
                 return obj.psy.copy(True)
         else:
             def copy_obj(obj):
@@ -3047,7 +3061,8 @@ class ArrayList(list):
                     dump, paths, pwd=pwd, attrs=attrs,
                     standardize_dims=standardize_dims,
                     use_rel_paths=use_rel_paths, ds_description=ds_description,
-                    alternative_paths=alternative_paths, copy=copy, **kwargs)
+                    alternative_paths=alternative_paths, copy=copy,
+                    _saved_ds=saved_ds, **kwargs)
             else:
                 if standardize_dims:
                     idims = arr.psy.decoder.standardize_dims(
@@ -3087,22 +3102,13 @@ class ArrayList(list):
                     else:
                         d['ds'] = copy_obj(arr.to_dataset())
                 if 'num' in ds_description:
-                    d['num'] = self._get_psyplot_num(arr.psy.base)
+                    d['num'] = arr.psy.base.psy.num
                 if 'arr' in ds_description:
                     d['arr'] = copy_obj(arr)
                 if attrs:
                     d['attrs'] = arr.attrs
         ret['attrs'] = self.attrs
         return ret
-
-    @staticmethod
-    def _get_psyplot_num(ds, nums=None):
-        """Assign a unique number to the dataset"""
-        if nums is None:
-            nums = _ds_counter
-        if ds.psy.num is None:
-            ds.psy.num = next(nums)
-        return ds.psy.num
 
     def _get_tnames(self):
         """Get the name of the time coordinate of the objects in this list"""
@@ -3502,7 +3508,18 @@ class DatasetAccessor(object):
 
     _filename = None
     _data_store = None
-    num = None
+    _num = None
+
+    @property
+    def num(self):
+        """A unique number for the dataset"""
+        if self._num is None:
+            self._num = next(_ds_counter)
+        return self._num
+
+    @num.setter
+    def num(self, value):
+        self._num = value
 
     def __init__(self, ds):
         self.ds = ds
