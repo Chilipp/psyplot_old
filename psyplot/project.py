@@ -1253,6 +1253,12 @@ class _ProjectLoader(object):
             proj = (proj.__class__.__module__, proj.__class__.__name__)
         ret['projection'] = proj
         ret['visible'] = ax.get_visible()
+        ret['spines'] = {}
+        for key, val in ax.spines.items():
+            ret['spines'][key] = {}
+            for prop in ['linestyle', 'edgecolor', 'linewidth',
+                         'facecolor', 'visible']:
+                ret['spines'][key][prop] = getattr(val, 'get_' + prop)()
         if isinstance(ax, mfig.SubplotBase):
             sp = ax.get_subplotspec().get_topmost_subplotspec()
             ret['grid_spec'] = sp.get_geometry()[:2]
@@ -1270,6 +1276,7 @@ class _ProjectLoader(object):
         import matplotlib.pyplot as plt
         fig = plt.figure(d.pop('fig', None))
         proj = d.pop('projection', None)
+        spines = d.pop('spines', None)
         if proj is not None and not isinstance(proj, six.string_types):
             proj = getattr(import_module(proj[0]), proj[1])()
         if d.pop('is_subplot', None):
@@ -1277,7 +1284,11 @@ class _ProjectLoader(object):
             subplotspec = mpl.gridspec.SubplotSpec(
                 grid_spec, *d.pop('subplotspec', (1, None)))
             return fig.add_subplot(subplotspec, projection=proj, **d)
-        return fig.add_axes(*d.pop('args', []), projection=proj, **d)
+        ret = fig.add_axes(*d.pop('args', []), projection=proj, **d)
+        if spines is not None:
+            for key, val in spines.items():
+                ret.spines[key].update(val)
+        return ret
 
 
 class PlotterInterface(object):
