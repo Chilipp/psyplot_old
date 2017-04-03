@@ -1,14 +1,12 @@
-{% set path = PWD %}
-{% set version = VERSION %}
-{% set name = "psyplot" %}
-
+# template for psyplot recipe. Please change ``PWD`` and ``VERSION`` to the
+# correct path and version number. See also ci/enhance_recipe.pypackage:
 package:
-  name: {{ name|lower }}
-  version: {{ version }}
+  name: psyplot
+  version: VERSION
 
 source:
-  fn: {{ name }}-{{ version }}.tar.gz
-  url: file://{{ path }}/dist/{{ name }}-{{ version }}.tar.gz
+  fn: psyplot-VERSION.tar.gz
+  url: file://PWD/dist/psyplot-VERSION.tar.gz
 
 build:
   script: python setup.py install --single-version-externally-managed --record record.txt
