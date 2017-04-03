@@ -168,7 +168,7 @@ class Project(ArrayList):
     #: signal to be emiitted when the current main and/or subproject changes
     oncpchange = Signal(name='oncpchange', cls_signal=True)
 
-    # block the
+    # block the signals of this class
     block_signals = utils._TempBool()
 
     @property
