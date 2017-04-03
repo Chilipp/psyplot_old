@@ -2,16 +2,23 @@ import os.path as osp
 from setuptools import setup, find_packages
 import sys
 
+
+setup_dir = osp.dirname(__file__)
+
+# is set down below
+__version__ = None
+
 needs_pytest = {'pytest', 'test', 'ptr'}.intersection(sys.argv)
 pytest_runner = ['pytest-runner'] if needs_pytest else []
 
 
 def readme():
-    with open('README.rst') as f:
+    with open(osp.join(setup_dir, 'README.rst')) as f:
         return f.read()
 
+
 # read the version from version.py
-with open(osp.join('psyplot', 'version.py')) as f:
+with open(osp.join(setup_dir, 'psyplot', 'version.py')) as f:
     exec(f.read())
 
 
