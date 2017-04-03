@@ -1842,6 +1842,9 @@ class InteractiveBase(object):
                 'Cannot set the axes because the plotter attribute is None!')
         self.plotter.ax = value
 
+    block_signals = utils._temp_bool_prop(
+        'block_signals', "Block the emitting of signals of this instance")
+
     # -------------------------------------------------------------------------
     # -------------------------------- SIGNALS --------------------------------
     # -------------------------------------------------------------------------
@@ -2501,8 +2504,9 @@ class ArrayList(list):
 
     @property
     def arrays(self):
-        """An iterator over all the data arrays instances in this list"""
-        return ArrayList(chain.from_iterable(
+        """A list of all the :class:`xarray.DataArray` instances in this list
+        """
+        return list(chain.from_iterable(
             ([arr] if not isinstance(arr, InteractiveList) else arr.arrays
              for arr in self)))
 
@@ -2551,6 +2555,9 @@ class ArrayList(list):
                     "parameter to None for renaming!" % arr.psy.arr_name)
             elif new_name is True:
                 new_name = new_name if isstring(new_name) else 'arr{0}'
+                self.logger.debug('renaming %s to %s in %s',
+                    arr.psy.arr_name, self.next_available_name(new_name),
+                    self)
                 arr.psy.arr_name = self.next_available_name(new_name)
                 return arr, True
         return arr, None
@@ -2577,7 +2584,8 @@ class ArrayList(list):
         self.auto_update = not bool(auto_update)
         # append the data in order to set the correct names
         self.extend(filter(
-            lambda arr: isinstance(getattr(arr, 'psy', None), InteractiveBase),
+            lambda arr: isinstance(getattr(arr, 'psy', None),
+                                   InteractiveBase),
             iterable), new_name=new_name)
 
     def copy(self, deep=False):
@@ -3651,7 +3659,8 @@ class InteractiveList(ArrayList, InteractiveBase):
             kwargs, ['plotter', 'arr_name'])
         self._registered_updates = {}
         InteractiveBase.__init__(self, **ibase_kwargs)
-        ArrayList.__init__(self, *args, **kwargs)
+        with self.block_signals:
+            ArrayList.__init__(self, *args, **kwargs)
 
     @docstrings.dedent
     def _register_update(self, method='isel', replot=False, dims={}, fmt={},
