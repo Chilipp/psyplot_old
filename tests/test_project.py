@@ -552,7 +552,7 @@ class TestProject(td.TestArrayList):
         self.assertEqual(sp2, [])
         self.assertEqual(mp, [])
         if not six.PY2:
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises((RuntimeError, AssertionError)):
                 ds.t2m.values
 
     def test_close_global(self):
@@ -590,7 +590,7 @@ class TestProject(td.TestArrayList):
         ds = mp2[2].psy.base
         psy.close()
         if not six.PY2:
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises((RuntimeError, AssertionError)):
                 ds.u.values
         self.assertIs(psy.gcp(True), mp2)
         self.assertEqual(psy.gcp(), [])
@@ -606,7 +606,7 @@ class TestProject(td.TestArrayList):
         self.assertIs(psy.gcp().main, mp1)
         self.assertEqual(psy.gcp().arr_names, mp1.arr_names)
         if not six.PY2:
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises((RuntimeError, AssertionError)):
                 ds.u.values
         # close all projects
         ds0 = mp0[0].psy.base
@@ -620,7 +620,7 @@ class TestProject(td.TestArrayList):
         self.assertIsNot(psy.gcp(True), mp0)
         self.assertIsNot(psy.gcp(True), mp1)
         if not six.PY2:
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises((RuntimeError, AssertionError)):
                 ds0.u.values
                 ds1.u.values
 
