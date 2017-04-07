@@ -21,6 +21,8 @@ import six
 import subprocess as spr
 from itertools import product
 import warnings
+# make sure, psyplot from parent directory is used
+sys.path.insert(0, os.path.abspath('..'))
 import psyplot
 from psyplot.plotter import Formatoption, Plotter
 
