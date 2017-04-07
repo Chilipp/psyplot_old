@@ -604,4 +604,48 @@ To restore your project, simply use the
     axes within the project are stored. Other axes in the matplotlib figures are
     not considered and will not be restored. You can, however, use the
     `alternative_axes` keyword in the :meth:`Project.load_project` method if
-    you want to restore your settings.
+    you want to restore your settings and/or customize your plot with the
+    :attr:`~psyplot.plotter.Plotter.post` formatoption (see
+    :ref:`own-scripts`)
+
+
+.. _own-scripts:
+
+Adding your own script: The :attr:`~psyplot.plotter.Plotter.post` formatoption
+------------------------------------------------------------------------------
+Very likely, you will face the problem that not all your needs are satisfied
+by the formatoptions in one plotter. You then have two choices:
+
+1. define your own plotter with new formatoptions (see :ref:`plugins_guide`)
+
+   Pros
+       - more structured approach
+       - you can enhance the plotter with other formatoptions afterwards and
+         reuse it
+   Cons
+       - more complicated
+       - you always have to ship the module where you define your plotter when
+         you want to :ref:`save and load <save_and_load>` your project
+       - can get messy if you define a lot of different plotters
+2. use the :attr:`~psyplot.plotter.Plotter.post` formatoption
+
+   Pros
+       - fast and easy
+       - easy to :ref:`save and load <save_and_load>`
+   Cons
+       - may get complicated for large scripts
+       - has to be enabled manually by the user
+
+For most of the cases, the :attr:`~psyplot.plotter.Plotter.post` formatoptions
+is probably what you are looking for (the first option is described in our
+:ref:`developers guide <developers-guide>`).
+
+This formatoption is designed for applying your own postprocessing script to
+your plot. It accepts a string that is executed using the built-in :func:`exec`
+function and is executed at the very end of the plotting. In this python
+script, the formatoption itself (and therefore the
+:attr:`~psyplot.plotter.Formatoption.plotter` and
+:attr:`axes <psyplot.plotter.Formatoption.ax>` can be accessed inside the
+script through the ``self`` variable. An example how to handle this
+formatoption can be found in
+:ref:`our example gallery <gallery_examples_example_post.ipynb>`.

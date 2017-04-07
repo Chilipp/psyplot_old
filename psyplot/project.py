@@ -416,7 +416,7 @@ class Project(ArrayList):
     @docstrings.dedent
     def _add_data(self, plotter_cls, filename_or_obj, fmt={}, make_plot=True,
                   draw=None, mf_mode=False, ax=None, engine=None, delete=True,
-                  share=False, clear=False, *args, **kwargs):
+                  share=False, clear=False, enable_post=None, *args, **kwargs):
         """
         Extract data from a dataset and visualize it with the given plotter
 
@@ -460,6 +460,11 @@ class Project(ArrayList):
             If True, axes are cleared before making the plot. This is only
             necessary if the `ax` keyword consists of subplots with projection
             that differs from the one that is needed
+        enable_post: bool
+            If True, the :attr:`~psyplot.plotter.Plotter.post` formatoption is 
+            enabled and post processing scripts are allowed. If ``None``, this
+            parameter is set to True if there is a value given for the `post`
+            formatoption in `fmt` or `kwargs`
         %(ArrayList.from_dataset.parameters.no_base)s
 
         Other Parameters
@@ -480,6 +485,8 @@ class Project(ArrayList):
         additional_fmt, kwargs = utils.sort_kwargs(
             kwargs, possible_fmts)
         fmt.update(additional_fmt)
+        if enable_post is None:
+            enable_post = bool(fmt.get('post'))
         # create the subproject
         sub_project = self.from_dataset(filename_or_obj, **kwargs)
         sub_project.main = self
@@ -499,7 +506,7 @@ class Project(ArrayList):
         for arr in sub_project:
             plotter_cls(arr, make_plot=(not bool(share) and make_plot),
                         draw=False, ax=next(axes), clear=clear,
-                        project=self, **fmt)
+                        project=self, enable_post=enable_post, **fmt)
         if share:
             if share is True:
                 share = possible_fmts
@@ -1008,7 +1015,7 @@ class Project(ArrayList):
     @docstrings.dedent
     def load_project(cls, fname, auto_update=None, make_plot=True,
                      draw=None, alternative_axes=None, main=False,
-                     encoding=None, **kwargs):
+                     encoding=None, enable_post=False, **kwargs):
         """
         Load a project from a file or dict
 
@@ -1048,6 +1055,11 @@ class Project(ArrayList):
             The encoding to use for loading the project. If None, it is
             automatically determined by pickle. Note: Set this to ``'latin1'``
             if using a project created with python2 on python3.
+        enable_post: bool
+            If True, the :attr:`~psyplot.plotter.Plotter.post` formatoption is 
+            enabled and post processing scripts are allowed. Do only set this
+            parameter to ``True`` if you know you can trust the information in
+            `fname`
         pwd: str or None, optional
             Path to the working directory from where the data can be imported.
             If None and `fname` is the path to a file, `pwd` is set to the
@@ -1118,7 +1130,8 @@ class Project(ArrayList):
                         plot_dict['ax'])
             plotter_cls(
                 arr, make_plot=False, draw=False, clear=False,
-                ax=ax, project=obj.main, **plot_dict['fmt'])
+                ax=ax, project=obj.main, enable_post=enable_post,
+                **plot_dict['fmt'])
         for arr in obj.with_plotter:
             shared = d['arrays'][arr.psy.arr_name]['plotter'].get('shared', {})
             for key, arr_names in six.iteritems(shared):
@@ -1246,8 +1259,11 @@ class _ProjectLoader(object):
     @staticmethod
     def inspect_axes(ax):
         """Inspect an axes or subplot to get the initialization parameters"""
-        ret = {'fig': ax.get_figure().number,
-               'axisbg': ax.get_axis_bgcolor()}
+        ret = {'fig': ax.get_figure().number}
+        if mpl.__version__ < '2.0':
+            ret['axisbg'] = ax.get_axis_bgcolor()
+        else:  # axisbg is depreceated
+            ret['facecolor'] = ax.get_facecolor()
         proj = getattr(ax, 'projection', None)
         if proj is not None and not isinstance(proj, six.string_types):
             proj = (proj.__class__.__module__, proj.__class__.__name__)
@@ -1277,6 +1293,8 @@ class _ProjectLoader(object):
         fig = plt.figure(d.pop('fig', None))
         proj = d.pop('projection', None)
         spines = d.pop('spines', None)
+        if mpl.__version__ >= '2.0' and 'axisbg' in d:  # axisbg is depreceated
+            d['facecolor'] = d.pop('axisbg')
         if proj is not None and not isinstance(proj, six.string_types):
             proj = getattr(import_module(proj[0]), proj[1])()
         if d.pop('is_subplot', None):
