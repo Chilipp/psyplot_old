@@ -101,6 +101,48 @@ class TestPlotter(psyp.Plotter):
     fmt1 = SimpleFmt('fmt1')
     fmt2 = SimpleFmt2('fmt2')
     fmt3 = SimpleFmt3('fmt3')
+    
+    
+class TestPostFormatoption(unittest.TestCase):
+    """TestCase for the :class:`psyplot.plotter.PostProcessing` formatoption"""
+    
+    def test_timing(self):
+        plotter = TestPlotter(xr.DataArray([]), enable_post=True)
+        # test attribute for the formatoption
+        plotter.post.test = []
+        plotter.update(
+            post='self.test.append(1)')
+        # check if the post fmt has been updated
+        self.assertEqual(plotter.post.test, [1])
+        plotter.update(fmt1='something')
+        # check if the post fmt has been updated
+        self.assertEqual(plotter.post.test, [1])
+        
+        # -- test replot timing
+        plotter.update(post_timing='replot')
+        plotter.update(fmt1='something else')
+        # check if the post fmt has been updated
+        self.assertEqual(plotter.post.test, [1])
+        plotter.update(fmt2='test', replot=True)
+        # check if the post fmt has been updated
+        self.assertEqual(plotter.post.test, [1, 1])
+        
+        # -- test always timing
+        plotter.update(post_timing='always')
+        # check if the post fmt has been updated
+        self.assertEqual(plotter.post.test, [1, 1, 1])
+        plotter.update(fmt1='okay')
+        # check if the post fmt has been updated
+        self.assertEqual(plotter.post.test, [1, 1, 1, 1])
+        
+    def test_enable(self):
+        """Test if the warning is raised"""
+        plotter = TestPlotter(xr.DataArray([]), 
+                              post='self.ax.set_title("test")')
+        self.assertEqual(plotter.ax.get_title(), '')
+        plotter.enable_post = True
+        plotter.update(post=plotter.post.value, force=True)
+        self.assertEqual(plotter.ax.get_title(), 'test')
 
 
 class PlotterTest(unittest.TestCase):
@@ -432,12 +474,12 @@ class PlotterTest(unittest.TestCase):
     def test_show_keys(self):
         """Test the :meth:`psyplot.plotter.Plotter.show_keys` method"""
         plotter = TestPlotter(xr.DataArray([]))
-        s = plotter.show_keys(func=str)
+        s = plotter.show_keys(['fmt1', 'fmt2', 'fmt3'], func=str)
         self.assertEqual(s,
                          '+------+------+------+\n'
                          '| fmt1 | fmt2 | fmt3 |\n'
                          '+------+------+------+')
-        s = plotter.show_keys(func=str, grouped=True)
+        s = plotter.show_keys(['fmt1', 'fmt2', 'fmt3'], func=str, grouped=True)
         title = psyp.groups['labels']
         self.assertEqual(s,
                          '*' * len(title) + '\n' +
@@ -471,11 +513,14 @@ class PlotterTest(unittest.TestCase):
         """Test the :meth:`psyplot.plotter.Plotter.show_docs` method"""
         plotter = TestPlotter(xr.DataArray([]))
         s = plotter.show_docs(func=str)
+        self.maxDiff = None
         self.assertEqual(s, '\n'.join([
             'fmt1', '====', SimpleFmt.__doc__, '',
             'fmt2', '====', SimpleFmt2.__doc__, '',
-            'fmt3', '====', SimpleFmt3.__doc__, '']))
-        s = plotter.show_docs(func=str, grouped=True)
+            'fmt3', '====', SimpleFmt3.__doc__, '',
+            'post', '====', psyp.PostProcessing.__doc__, '',
+            'post_timing', '===========', psyp.PostTiming.__doc__, '']))
+        s = plotter.show_docs(['fmt1', 'fmt2', 'fmt3'], func=str, grouped=True)
         title = psyp.groups['labels']
         self.assertEqual(s, '\n'.join([
             '*' * len(title),
@@ -495,8 +540,13 @@ class PlotterTest(unittest.TestCase):
         self.assertEqual(s, '\n'.join([
             'fmt1', indent(SimpleFmt.__doc__.splitlines()[0], '    '),
             'fmt2', indent(SimpleFmt2.__doc__.splitlines()[0], '    '),
-            'fmt3', indent(SimpleFmt3.__doc__.splitlines()[0], '    ')]))
-        s = plotter.show_summaries(func=str, grouped=True)
+            'fmt3', indent(SimpleFmt3.__doc__.splitlines()[0], '    '),
+            'post', indent(psyp.PostProcessing.__doc__.splitlines()[0], 
+                           '    '),
+            'post_timing', indent(psyp.PostTiming.__doc__.splitlines()[0], 
+                                  '    ')]))
+        s = plotter.show_summaries(['fmt1', 'fmt2', 'fmt3'], func=str, 
+                                   grouped=True)
         title = psyp.groups['labels']
         self.assertEqual(s, '\n'.join([
             '*' * len(title),
@@ -568,7 +618,7 @@ class PlotterTest(unittest.TestCase):
             return "%s.%s" % (aname, key)
 
         plotter = ThisTestPlotter(xr.DataArray([]))
-        for key in plotter:
+        for key in set(plotter) - {'post', 'post_timing'}:
             plotter[key] = 999
         aname = plotter.data.psy.arr_name
         results.clear()
@@ -624,7 +674,7 @@ class PlotterTest(unittest.TestCase):
         ax.plot([6, 7])
 
         plotter = ThisTestPlotter()
-        keys = list(plotter)
+        keys = list(set(plotter) - {'post', 'post_timing'})
         plotter = ThisTestPlotter(xr.DataArray([]), ax=ax,
                                   **dict(zip(keys, repeat(1))))
 

@@ -46,7 +46,7 @@ def main(args=None):
 @docstrings.dedent
 def make_plot(fnames=[], name=[], dims=None, plot_method=None,
               output=None, project=None, engine=None, formatoptions=None,
-              tight=False, rc_file=None, encoding=None):
+              tight=False, rc_file=None, encoding=None, enable_post=False):
     """
     Eventually start the QApplication or only make a plot
 
@@ -84,6 +84,11 @@ def make_plot(fnames=[], name=[], dims=None, plot_method=None,
         The encoding to use for loading the project. If None, it is
         automatically determined by pickle. Note: Set this to ``'latin1'``
         if using a project created with python2 on python3.
+    enable_post: bool
+        Enable the :attr:`~psyplot.plotter.Plotter.post` processing 
+        formatoption. If True/set, post processing scripts are enabled in the 
+        given `project`. Only set this if you are sure that you can trust the 
+        given project file because it may be a security vulnerability.
     """
     if project is not None and (name != [] or dims is not None):
         warn('The `name` and `dims` parameter are ignored if the `project`'
@@ -112,7 +117,7 @@ def make_plot(fnames=[], name=[], dims=None, plot_method=None,
         alternative_paths.update([l for l in fnames if len(l) == 2])
         p = psy.Project.load_project(
             project, alternative_paths=alternative_paths,
-            engine=engine, encoding=encoding)
+            engine=engine, encoding=encoding, enable_post=enable_post)
         if formatoptions is not None:
             p.update(fmt=formatoptions)
         p.export(output, tight=tight)
@@ -227,6 +232,8 @@ def get_parser(create=True):
     parser.pop_key('rc_file', 'metavar')
 
     parser.update_arg('encoding', short='e')
+    
+    parser.pop_key('enable_post', 'short')
 
     if create:
         parser.create_arguments()

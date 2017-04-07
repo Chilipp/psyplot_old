@@ -3203,7 +3203,7 @@ class ArrayList(list):
     @docstrings.dedent
     def update(self, method='isel', dims={}, fmt={}, replot=False,
                auto_update=False, draw=None, force=False, todefault=False,
-               **kwargs):
+               enable_post=None, **kwargs):
         """
         Update the coordinates and the plot
 
@@ -3215,6 +3215,9 @@ class ArrayList(list):
         %(InteractiveArray._register_update.parameters)s
         %(InteractiveArray.update.parameters.auto_update)s
         %(ArrayList.start_update.parameters)s
+        enable_post: bool
+            If not None, enable (``True``) or disable (``False``) the 
+            :attr:`~psyplot.plotter.Plotter.post`  formatoption in the plotters
         ``**kwargs``
             Any other formatoption or dimension that shall be updated
             (additionally to those in `fmt` and `dims`)
@@ -3236,6 +3239,9 @@ class ArrayList(list):
 
         self._register_update(method=method, replot=replot, dims=dims, fmt=fmt,
                               force=force, todefault=todefault)
+        if enable_post is not None:
+            for arr in self.with_plotter:
+                arr.psy.plotter.enable_post = enable_post
         if not self.no_auto_update or auto_update:
             self.start_update(draw)
 
