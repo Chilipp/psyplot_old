@@ -162,6 +162,13 @@ html_logo = '_static/psyplot.png'
 # pixels large.
 html_favicon = '_static/psyplot.ico'
 
+# Custom sidebar templates, maps document names to template names.
+html_sidebars = {
+    'index': ['sidebarlogo.html', 'sidebarusefullinks.html', 'searchbox.html'],
+    '**': ['sidebarlogo.html', 'relations.html', 'searchbox.html', 
+           'localtoc.html', 'sidebarusefullinks.html']
+}
+
 # -- Options for LaTeX output ---------------------------------------------
 
 latex_elements = {
