@@ -155,7 +155,7 @@ htmlhelp_basename = 'psyplotdoc'
 
 # The name of an image file (relative to this directory) to place at the top
 # of the sidebar.
-html_logo = 'psyplot.png'
+html_logo = '_static/psyplot.png'
 
 # -- Options for LaTeX output ---------------------------------------------
 
