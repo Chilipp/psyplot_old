@@ -54,8 +54,7 @@ The psyplot interactive visualization framework
 
 .. end-badges
 
-**THIS IS THE OLD PSYPLOT REPOSITORY FOR PSYPLOT<1.0! PLEASE USE THE ACTUAL VERSION ON 
-GITHUB_**
+**THIS IS THE OLD PSYPLOT REPOSITORY FOR PSYPLOT<1.0! PLEASE USE THE ACTUAL VERSION ON `GITHUB`_**
 
 .. _GITHUB: https://github.com/Chilipp/psyplot
 
