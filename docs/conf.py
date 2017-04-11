@@ -80,7 +80,7 @@ if not osp.exists(osp.join(osp.dirname(__file__), 'api')):
 # which is a bit of an overkill
 example_gallery_config = dict(
     dont_preprocess=['../examples/example_cdo.ipynb'],
-    urls='https://github.com/Chilipp/psyplot/blob/v1.0.0.dev0/examples',
+    urls='https://github.com/Chilipp/psyplot/blob/master/examples',
     )
 
 napoleon_use_admonition_for_examples = True
