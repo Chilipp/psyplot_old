@@ -54,9 +54,8 @@ The psyplot interactive visualization framework
 
 .. end-badges
 
-**THIS IS THE OLD PSYPLOT REPOSITORY FOR PSYPLOT<1.0! PLEASE USE THE ACTUAL VERSION ON `GITHUB`_**
-
-.. _GITHUB: https://github.com/Chilipp/psyplot
+**THIS IS THE OLD PSYPLOT REPOSITORY FOR PSYPLOT<1.0! PLEASE USE THE ACTUAL VERSION ON**
+`GitHub <https://github.com/Chilipp/psyplot>`__
 
 Welcome! **psyplot** is an open source python project that mainly combines the
 plotting utilities of matplotlib_ and the data management of the xarray_
@@ -68,8 +67,7 @@ The ultimate goal is to help scientists and especially climate model
 developers in their daily work by providing a flexible visualization tool that
 can be enhanced by their own visualization scripts. ``psyplot`` can be used
 through the python command line and through the psyplot-gui_ module which
-provides a graphical user interface for an easier interactive usage. See the
-:ref:`about` section for more motivation.
+provides a graphical user interface for an easier interactive usage. 
 
 The package is very new and there are many features that will be included in
 the future. So we are very pleased for feedback! Please simply raise an issue
