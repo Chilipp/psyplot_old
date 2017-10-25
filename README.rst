@@ -1,6 +1,11 @@
-===============================================
-The psyplot interactive visualization framework
-===============================================
+DEPRECEATED
+===========
+.. image:: http://unmaintained.tech/badge.svg
+    :target: http://unmaintained.tech/
+    :alt: No Maintenance Intended
+    
+**THIS IS THE OLD PSYPLOT REPOSITORY FOR PSYPLOT<1.0! PLEASE USE THE ACTUAL VERSION ON**
+`GitHub <https://github.com/Chilipp/psyplot>`__
 
 .. start-badges
 
@@ -53,9 +58,6 @@ The psyplot interactive visualization framework
 
 
 .. end-badges
-
-**THIS IS THE OLD PSYPLOT REPOSITORY FOR PSYPLOT<1.0! PLEASE USE THE ACTUAL VERSION ON**
-`GitHub <https://github.com/Chilipp/psyplot>`__
 
 Welcome! **psyplot** is an open source python project that mainly combines the
 plotting utilities of matplotlib_ and the data management of the xarray_
